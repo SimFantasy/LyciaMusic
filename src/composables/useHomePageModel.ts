@@ -71,6 +71,9 @@ export function useHomePageModel() {
   const selectedPaths = ref<Set<string>>(new Set());
   const songTableRef = ref<any>(null);
   const showAddToPlaylistModal = ref(false);
+  const setSongTableRef = (instance: any | null) => {
+    songTableRef.value = instance;
+  };
 
   const {
     localViewMode,
@@ -252,6 +255,7 @@ export function useHomePageModel() {
     coverCache,
     loadingSet,
     songTableRef,
+    setSongTableRef,
     handlePlayAll,
     handleBatchPlay,
     showAddToPlaylistModal,

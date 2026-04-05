@@ -34,7 +34,7 @@ interface Props {
   coverCache: Map<string, string>;
   loadingSet: Set<string>;
   selectedPaths: Set<string>;
-  songTableRef: unknown;
+  setSongTableRef?: (instance: any | null) => void;
 }
 
 defineProps<Props>();
@@ -117,7 +117,7 @@ const handleTableDragStart = (...args: any[]) => {
         :coverCache="coverCache"
         :loadingSet="loadingSet"
         :selectedPaths="selectedPaths"
-        :songTableRef="songTableRef"
+        :setSongTableRef="setSongTableRef"
         @update:isBatchMode="$emit('update:isBatchMode', $event)"
         @update:artistActiveTab="$emit('update:artistActiveTab', $event)"
         @update:selectedPaths="$emit('update:selectedPaths', $event)"

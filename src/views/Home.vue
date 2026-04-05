@@ -18,7 +18,7 @@
       :coverCache="coverCache"
       :loadingSet="loadingSet"
       :selectedPaths="selectedPaths"
-      :songTableRef="songTableRef"
+      :setSongTableRef="setSongTableRef"
       @update:isBatchMode="isBatchMode = $event"
       @update:isManagementMode="isManagementMode = $event"
       @update:artistActiveTab="artistActiveTab = $event"
@@ -145,7 +145,7 @@ const {
   artistAlbumList,
   coverCache,
   loadingSet,
-  songTableRef,
+  setSongTableRef,
   handlePlayAll,
   handleBatchPlay,
   showAddToPlaylistModal,

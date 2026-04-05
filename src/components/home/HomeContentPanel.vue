@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 import type { Song } from '../../types';
 import AlbumDetailHeader from '../headers/AlbumDetailHeader.vue';
@@ -31,7 +31,7 @@ interface Props {
   coverCache: Map<string, string>;
   loadingSet: Set<string>;
   selectedPaths: Set<string>;
-  songTableRef: unknown;
+  setSongTableRef?: (instance: any | null) => void;
 }
 
 const props = defineProps<Props>();
@@ -61,7 +61,15 @@ const artistActiveTabModel = computed({
   set: (value: 'songs' | 'albums' | 'details') => emit('update:artistActiveTab', value),
 });
 
-const songTableComponentRef = props.songTableRef as any;
+const localSongTableRef = ref<any>(null);
+
+watch(localSongTableRef, value => {
+  props.setSongTableRef?.(value);
+}, { immediate: true });
+
+onBeforeUnmount(() => {
+  props.setSongTableRef?.(null);
+});
 
 const handleSongContextMenu = (...args: [MouseEvent, Song]) => {
   emit('contextMenuSong', args[0], args[1]);
@@ -126,7 +134,7 @@ const handleTableDragStart = (...args: any[]) => {
 
       <SongTable
         v-else
-        :ref="songTableComponentRef"
+        ref="localSongTableRef"
         :songs="localSongList"
         :isBatchMode="isBatchMode"
         :selectedPaths="selectedPaths"
