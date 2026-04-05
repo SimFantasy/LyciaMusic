@@ -79,7 +79,7 @@ const handleTableDragStart = (...args: any[]) => {
       :isManagementMode="isManagementMode"
     />
 
-    <section class="flex-1 min-w-0 flex flex-col overflow-y-auto overflow-x-hidden custom-scrollbar relative">
+    <section class="flex-1 min-w-0 min-h-0 flex flex-col overflow-x-hidden relative">
       <ArtistDetailHeader
         v-if="localViewMode === 'artist'"
         v-model:isBatchMode="isBatchModeModel"
@@ -130,7 +130,7 @@ const handleTableDragStart = (...args: any[]) => {
         :songs="localSongList"
         :isBatchMode="isBatchMode"
         :selectedPaths="selectedPaths"
-        class="min-h-[500px]"
+        class="min-h-0"
         @play="$emit('playSong', $event)"
         @contextmenu="handleSongContextMenu"
         @update:selectedPaths="$emit('update:selectedPaths', $event)"
