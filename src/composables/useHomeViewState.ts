@@ -16,7 +16,7 @@ export function useHomeViewState({
   const artistActiveTab = ref<'songs' | 'albums' | 'details'>('songs');
 
   const viewTransitionKey = computed(
-    () => `${localViewMode.value}:${localFilterCondition.value}:${artistActiveTab.value}`,
+    () => `${localViewMode.value}:${localFilterCondition.value}`,
   );
 
   watch(

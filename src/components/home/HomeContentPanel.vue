@@ -116,34 +116,53 @@ const handleTableDragStart = (...args: any[]) => {
         @batchMove="$emit('batchMove')"
       />
 
-      <StatisticsPage v-if="localViewMode === 'statistics'" />
+      <Transition name="tab-slide" mode="out-in">
+        <StatisticsPage v-if="localViewMode === 'statistics'" />
 
-      <ArtistAlbumGrid
-        v-else-if="localViewMode === 'artist' && artistActiveTab === 'albums'"
-        :albums="artistAlbumList"
-        :coverCache="coverCache"
-        :loadingSet="loadingSet"
-        @openAlbum="$emit('artistAlbumClick', $event)"
-      />
+        <ArtistAlbumGrid
+          v-else-if="localViewMode === 'artist' && artistActiveTab === 'albums'"
+          :albums="artistAlbumList"
+          :coverCache="coverCache"
+          :loadingSet="loadingSet"
+          @openAlbum="$emit('artistAlbumClick', $event)"
+        />
 
-      <HomeEmptyState
-        v-else-if="localViewMode === 'artist' && artistActiveTab === 'details'"
-        message="Artist details coming soon"
-        icon-path="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-      />
+        <HomeEmptyState
+          v-else-if="localViewMode === 'artist' && artistActiveTab === 'details'"
+          message="Artist details coming soon"
+          icon-path="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+        />
 
-      <SongTable
-        v-else
-        ref="localSongTableRef"
-        :songs="localSongList"
-        :isBatchMode="isBatchMode"
-        :selectedPaths="selectedPaths"
-        class="min-h-0"
-        @play="$emit('playSong', $event)"
-        @contextmenu="handleSongContextMenu"
-        @update:selectedPaths="$emit('update:selectedPaths', $event)"
-        @drag-start="handleTableDragStart"
-      />
+        <SongTable
+          v-else
+          ref="localSongTableRef"
+          :songs="localSongList"
+          :isBatchMode="isBatchMode"
+          :selectedPaths="selectedPaths"
+          class="min-h-0"
+          @play="$emit('playSong', $event)"
+          @contextmenu="handleSongContextMenu"
+          @update:selectedPaths="$emit('update:selectedPaths', $event)"
+          @drag-start="handleTableDragStart"
+        />
+      </Transition>
     </section>
   </div>
 </template>
+
+<style scoped>
+.tab-slide-enter-active,
+.tab-slide-leave-active {
+  transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.tab-slide-enter-from {
+  opacity: 0;
+  transform: translateX(15px);
+}
+
+.tab-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-15px);
+}
+</style>

@@ -164,7 +164,7 @@ const handlePlayAll = () => {
     <div class="flex gap-8 text-[15px] font-medium mt-auto w-full">
       <button 
         class="pb-1.5 transition-colors relative"
-        :class="activeTab === 'songs' ? 'text-gray-900 dark:text-white font-bold' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+        :class="activeTab === 'songs' ? 'text-gray-900 dark:text-white font-bold' : 'text-black/60 dark:text-white/60 hover:text-black/90 dark:hover:text-white/90'"
         @click="emit('update:activeTab', 'songs')"
       >
         歌曲
@@ -173,7 +173,7 @@ const handlePlayAll = () => {
 
       <button 
         class="pb-1.5 transition-colors relative"
-        :class="activeTab === 'albums' ? 'text-gray-900 dark:text-white font-bold' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+        :class="activeTab === 'albums' ? 'text-gray-900 dark:text-white font-bold' : 'text-black/60 dark:text-white/60 hover:text-black/90 dark:hover:text-white/90'"
         @click="emit('update:activeTab', 'albums')"
       >
         专辑
@@ -182,7 +182,7 @@ const handlePlayAll = () => {
 
       <button 
         class="pb-1.5 transition-colors relative"
-        :class="activeTab === 'details' ? 'text-gray-900 dark:text-white font-bold' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+        :class="activeTab === 'details' ? 'text-gray-900 dark:text-white font-bold' : 'text-black/60 dark:text-white/60 hover:text-black/90 dark:hover:text-white/90'"
         @click="emit('update:activeTab', 'details')"
       >
         歌手详情
