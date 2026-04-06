@@ -160,7 +160,7 @@ fn apply_insert_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                 container = excluded.container,
                 codec = excluded.codec,
                 file_size = excluded.file_size,
-                added_at = COALESCE(songs.added_at, excluded.added_at),
+                added_at = excluded.added_at,
                 file_modified_at = excluded.file_modified_at",
             )
             .map_err(|error| error.to_string())?;
@@ -234,13 +234,15 @@ fn apply_update_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                  container = ?15,
                  codec = ?16,
                  file_size = ?17,
-                 file_modified_at = ?18
-             WHERE path = ?19",
+                 added_at = ?18,
+                 file_modified_at = ?19
+             WHERE path = ?20",
             )
             .map_err(|error| error.to_string())?;
 
         for song in songs {
             let file_size_i64 = u64_to_i64_saturated(song.file_size);
+            let added_at_i64 = u64_opt_to_i64_saturated(song.added_at);
             let mtime_i64 = u64_opt_to_i64_saturated(song.file_modified_at);
             let artist_names_json = serialize_string_list(&song.artist_names)?;
             let effective_artist_names_json = serialize_string_list(&song.effective_artist_names)?;
@@ -263,6 +265,7 @@ fn apply_update_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                     &song.container,
                     &song.codec,
                     file_size_i64,
+                    added_at_i64,
                     mtime_i64,
                     &song.path
                 ])

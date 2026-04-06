@@ -1,4 +1,7 @@
 use rusqlite::Connection;
+use std::fs;
+use std::path::Path;
+use std::time::UNIX_EPOCH;
 
 fn get_table_columns(conn: &Connection, table_name: &str) -> Result<Vec<String>, String> {
     let query = format!("PRAGMA table_info({table_name})");
@@ -115,6 +118,49 @@ fn migrate_song_columns(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
+fn timestamp_from_path(path: &str) -> Option<i64> {
+    let metadata = fs::metadata(Path::new(path)).ok()?;
+    let created = metadata
+        .created()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_secs() as i64);
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_secs() as i64);
+
+    created.or(modified)
+}
+
+fn normalize_song_added_at(conn: &Connection) -> Result<(), String> {
+    let mut select_stmt = conn
+        .prepare("SELECT path FROM songs")
+        .map_err(|error| error.to_string())?;
+    let rows = select_stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|error| error.to_string())?;
+    let song_paths: Vec<String> = rows.filter_map(|row| row.ok()).collect();
+    drop(select_stmt);
+
+    let mut update_stmt = conn
+        .prepare("UPDATE songs SET added_at = ?1 WHERE path = ?2")
+        .map_err(|error| error.to_string())?;
+
+    for path in song_paths {
+        let Some(timestamp) = timestamp_from_path(&path) else {
+            continue;
+        };
+
+        update_stmt
+            .execute(rusqlite::params![timestamp, path])
+            .map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
+}
+
 fn migrate_play_history(conn: &Connection) -> Result<(), String> {
     let columns = get_table_columns(conn, "play_history")?;
 
@@ -152,6 +198,7 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
     migrate_library_folders(conn)?;
     merge_legacy_sidebar_roots(conn);
     migrate_song_columns(conn)?;
+    normalize_song_added_at(conn)?;
     migrate_play_history(conn)?;
     Ok(())
 }

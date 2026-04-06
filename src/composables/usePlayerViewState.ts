@@ -18,7 +18,7 @@ export function usePlayerViewState() {
     libraryRefs.folderSortMode.value = mode;
   };
 
-  const setLocalSortMode = (mode: 'title' | 'name' | 'artist' | 'added_at' | 'custom' | 'default') => {
+  const setLocalSortMode = (mode: 'title' | 'name' | 'artist' | 'added_at' | 'custom') => {
     libraryRefs.localSortMode.value = mode;
   };
 

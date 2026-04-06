@@ -601,7 +601,7 @@ function createPlayerCore() {
     setFolderSortMode: (mode: 'title' | 'name' | 'artist' | 'added_at' | 'custom') => {
       folderSortMode.value = mode;
     },
-    setLocalSortMode: (mode: 'title' | 'name' | 'artist' | 'added_at' | 'custom' | 'default') => {
+    setLocalSortMode: (mode: 'title' | 'name' | 'artist' | 'added_at' | 'custom') => {
       localSortMode.value = mode;
     },
     setPlaylistSortMode: (mode: 'title' | 'name' | 'artist' | 'added_at' | 'custom') => {

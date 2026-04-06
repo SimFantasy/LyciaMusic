@@ -35,7 +35,7 @@ describe('player library view', () => {
     libraryStore.albumCustomOrder = [];
     libraryStore.folderSortMode = 'title';
     libraryStore.folderCustomOrder = {};
-    libraryStore.localSortMode = 'default';
+    libraryStore.localSortMode = 'title';
     libraryStore.localCustomOrder = [];
     collectionsStore.playlistSortMode = 'custom';
   });

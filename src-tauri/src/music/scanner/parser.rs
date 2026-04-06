@@ -11,6 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 use symphonia::core::codecs::CODEC_TYPE_NULL;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
@@ -41,6 +42,12 @@ fn derive_bitrate_kbps(file_size: u64, duration: u32) -> u32 {
     let bits = (file_size as u128).saturating_mul(8);
     let kbps = bits / (duration as u128) / 1000;
     kbps.min(u32::MAX as u128) as u32
+}
+
+fn system_time_to_unix_seconds(time: std::time::SystemTime) -> Option<u64> {
+    time.duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_secs())
 }
 
 pub(super) fn preferred_parse_workers(task_count: usize) -> usize {
@@ -95,17 +102,18 @@ pub(super) fn parse_song_from_file(path: &Path, path_str: &str, format: &str) ->
     let mut sample_rate = 0u32;
     let mut bit_depth: Option<u8> = None;
     let mut file_size = 0u64;
+    let mut file_created_at: Option<u64> = None;
     let mut file_modified_at: Option<u64> = None;
     let mut container = Some(normalize_container_from_extension(format));
     let mut codec = None;
 
     if let Ok(meta) = fs::metadata(path) {
         file_size = meta.len();
+        if let Ok(created) = meta.created() {
+            file_created_at = system_time_to_unix_seconds(created);
+        }
         if let Ok(modified) = meta.modified() {
-            file_modified_at = modified
-                .duration_since(std::time::UNIX_EPOCH)
-                .ok()
-                .map(|duration| duration.as_secs());
+            file_modified_at = system_time_to_unix_seconds(modified);
         }
     }
 
@@ -185,12 +193,8 @@ pub(super) fn parse_song_from_file(path: &Path, path_str: &str, format: &str) ->
         container,
         codec,
         file_size,
-        added_at: Some(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
-        ),
+        // Keep `added_at` as the frontend sort field, but source it from file time.
+        added_at: file_created_at.or(file_modified_at),
         file_modified_at,
     })
 }

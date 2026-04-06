@@ -62,7 +62,7 @@ export function useSongTableAlphabetIndex({
   let hideIndexBarTimer: ReturnType<typeof setTimeout> | null = null;
 
   const indexLabelGetter = computed<((song: Song) => string) | null>(() => {
-    if (currentViewMode.value === 'all' && ['default', 'title', 'name'].includes(localSortMode.value)) {
+    if (currentViewMode.value === 'all' && ['title', 'name'].includes(localSortMode.value)) {
       return localSortMode.value === 'name'
         ? (song: Song) => song.name
         : (song: Song) => song.title || song.name;

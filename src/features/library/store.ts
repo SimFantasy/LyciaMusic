@@ -33,7 +33,7 @@ export const useLibraryStore = defineStore('library', () => {
   const albumCustomOrder = ref<string[]>([]);
   const folderSortMode = ref<FolderSortMode>('title');
   const folderCustomOrder = ref<Record<string, string[]>>({});
-  const localSortMode = ref<LocalSortMode>('default');
+  const localSortMode = ref<LocalSortMode>('title');
   const localCustomOrder = ref<string[]>([]);
 
   const setSourceSongs = (songs: Song[]) => {

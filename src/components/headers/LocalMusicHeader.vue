@@ -27,9 +27,8 @@ const sortLabelMap = {
   title: '\u6b4c\u66f2\u540d',
   name: '\u6587\u4ef6\u540d',
   artist: '\u6b4c\u624b',
-  added_at: '\u6dfb\u52a0\u65f6\u95f4',
+  added_at: '\u6587\u4ef6\u65f6\u95f4',
   custom: '\u81ea\u5b9a\u4e49',
-  default: '\u9ed8\u8ba4',
 } as const;
 
 const showSortMenu = ref(false);
@@ -150,7 +149,6 @@ const handleEnterBatchMode = () => {
         <button
           @click.stop="handleSortClick"
           class="sort-menu-trigger bg-white/1 hover:bg-white/10 border border-white/1 text-gray-900 dark:text-gray-100 hover:text-black dark:hover:text-white w-7 h-7 flex items-center justify-center rounded-full transition active:scale-95 shadow-sm hover:border-gray-200 dark:hover:border-white/20"
-          :class="{ 'text-blue-500 border-blue-200 bg-blue-50/50 dark:bg-blue-500/10': localSortMode !== 'default' }"
           title="&#25490;&#24207;&#26041;&#24335;"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -167,7 +165,7 @@ const handleEnterBatchMode = () => {
               : { left: sortMenuX + 'px', top: sortMenuY + 'px' }"
           >
             <div
-              v-for="mode in (['title', 'name', 'artist', 'added_at', 'custom', 'default'] as const)"
+              v-for="mode in (['title', 'name', 'artist', 'added_at', 'custom'] as const)"
               :key="mode"
               @click="setLocalSortMode(mode); showSortMenu = false"
               class="px-3 py-2 text-xs cursor-pointer flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
