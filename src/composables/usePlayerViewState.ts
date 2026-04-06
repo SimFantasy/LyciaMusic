@@ -14,15 +14,15 @@ export function usePlayerViewState() {
   const navigationRefs = storeToRefs(navigationStore);
   const uiRefs = storeToRefs(uiStore);
 
-  const setFolderSortMode = (mode: 'title' | 'name' | 'artist' | 'added_at' | 'custom') => {
+  const setFolderSortMode = (mode: 'title' | 'name' | 'artist' | 'added_at' | 'added_at_asc' | 'custom') => {
     libraryRefs.folderSortMode.value = mode;
   };
 
-  const setLocalSortMode = (mode: 'title' | 'name' | 'artist' | 'added_at' | 'custom') => {
+  const setLocalSortMode = (mode: 'title' | 'name' | 'artist' | 'added_at' | 'added_at_asc' | 'custom') => {
     libraryRefs.localSortMode.value = mode;
   };
 
-  const setPlaylistSortMode = (mode: 'title' | 'name' | 'artist' | 'added_at' | 'custom') => {
+  const setPlaylistSortMode = (mode: 'title' | 'name' | 'artist' | 'added_at' | 'added_at_asc' | 'custom') => {
     collectionsRefs.playlistSortMode.value = mode;
   };
 

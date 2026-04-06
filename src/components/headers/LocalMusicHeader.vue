@@ -27,7 +27,7 @@ const sortLabelMap = {
   title: '\u6b4c\u66f2\u540d',
   name: '\u6587\u4ef6\u540d',
   artist: '\u6b4c\u624b',
-  added_at: '\u6587\u4ef6\u65f6\u95f4',
+  added_at: '下载时间',
   custom: '\u81ea\u5b9a\u4e49',
 } as const;
 
@@ -167,14 +167,26 @@ const handleEnterBatchMode = () => {
             <div
               v-for="mode in (['title', 'name', 'artist', 'added_at', 'custom'] as const)"
               :key="mode"
-              @click="setLocalSortMode(mode); showSortMenu = false"
+              @click="
+                if (mode === 'added_at') {
+                  setLocalSortMode(localSortMode === 'added_at' ? 'added_at_asc' : 'added_at');
+                } else {
+                  setLocalSortMode(mode);
+                }
+                showSortMenu = false;
+              "
               class="px-3 py-2 text-xs cursor-pointer flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-              :class="localSortMode === mode ? 'text-blue-500 font-medium' : 'text-gray-600 dark:text-gray-300'"
+              :class="(localSortMode || '').startsWith(mode) ? 'text-blue-500 font-medium' : 'text-gray-600 dark:text-gray-300'"
             >
               <span>{{ sortLabelMap[mode] }}</span>
-              <svg v-if="localSortMode === mode" xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
-              </svg>
+              <div v-if="(localSortMode || '').startsWith(mode)" class="flex items-center gap-1.5">
+                <svg v-if="mode === 'added_at'" xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform duration-200" :class="{ 'rotate-180': localSortMode === 'added_at_asc' }" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M14.707 12.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l2.293-2.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                </svg>
+              </div>
             </div>
           </div>
         </Teleport>

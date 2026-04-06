@@ -40,6 +40,8 @@ const sortSongsByLocalMode = (songs: Song[], mode: LocalSortMode) => {
     songs.sort((left, right) => (left.artist || '').localeCompare(right.artist || '', 'zh-CN'));
   } else if (mode === 'added_at') {
     songs.sort((left, right) => (right.added_at || 0) - (left.added_at || 0));
+  } else if (mode === 'added_at_asc') {
+    songs.sort((left, right) => (left.added_at || 0) - (right.added_at || 0));
   }
 };
 
@@ -122,6 +124,8 @@ export function useLibraryCurrentViewSongs({
         base.sort((left, right) => (left.artist || '').localeCompare(right.artist || '', 'zh-CN'));
       } else if (localSortMode.value === 'added_at') {
         base.sort((left, right) => (right.added_at || 0) - (left.added_at || 0));
+      } else if (localSortMode.value === 'added_at_asc') {
+        base.sort((left, right) => (left.added_at || 0) - (right.added_at || 0));
       } else if (localSortMode.value === 'custom') {
         const orderMap = new Map(localCustomOrder.value.map((path, index) => [path, index]));
         base.sort((left, right) => {
@@ -192,6 +196,8 @@ export function useLibraryCurrentViewSongs({
         songs.sort((left, right) => (left.artist || '').localeCompare(right.artist || '', 'zh-CN'));
       } else if (playlistSortMode.value === 'added_at') {
         songs.sort((left, right) => (right.added_at || 0) - (left.added_at || 0));
+      } else if (playlistSortMode.value === 'added_at_asc') {
+        songs.sort((left, right) => (left.added_at || 0) - (right.added_at || 0));
       }
 
       return songs;
