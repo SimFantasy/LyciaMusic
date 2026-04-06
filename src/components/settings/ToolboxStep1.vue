@@ -37,11 +37,7 @@ const isApplying = ref(false);
 const hasScanned = ref(false);
 const removeTrackPrefix = ref(true);
 const previewItems = ref<CleanPreview[]>([]);
-
-watch(removeTrackPrefix, () => {
-  hasScanned.value = false;
-  previewItems.value = [];
-});
+let latestScanId = 0;
 
 const validItems = computed(() =>
   previewItems.value.filter((item) => item.status !== 'skipped' && !item.error),
@@ -66,12 +62,15 @@ watch(
   { immediate: true, deep: true },
 );
 
-const handleScan = async () => {
+const scanPreview = async () => {
   if (!props.targetPath) {
-    toast.showToast('请先返回准备页选择目标文件夹', 'error');
+    previewItems.value = [];
+    hasScanned.value = false;
+    isScanning.value = false;
     return;
   }
 
+  const scanId = ++latestScanId;
   isScanning.value = true;
 
   try {
@@ -87,15 +86,42 @@ const handleScan = async () => {
       config,
     });
 
+    if (scanId !== latestScanId) {
+      return;
+    }
+
     previewItems.value = result;
     hasScanned.value = true;
   } catch (error) {
+    if (scanId !== latestScanId) {
+      return;
+    }
+
     console.error(error);
+    previewItems.value = [];
+    hasScanned.value = false;
     toast.showToast(`扫描失败: ${error}`, 'error');
   } finally {
-    isScanning.value = false;
+    if (scanId === latestScanId) {
+      isScanning.value = false;
+    }
   }
 };
+
+watch(
+  [() => props.targetPath, removeTrackPrefix],
+  ([targetPath]) => {
+    if (!targetPath) {
+      previewItems.value = [];
+      hasScanned.value = false;
+      isScanning.value = false;
+      return;
+    }
+
+    void scanPreview();
+  },
+  { immediate: true },
+);
 
 const handleApply = async () => {
   if (validItems.value.length === 0) {
@@ -112,7 +138,7 @@ const handleApply = async () => {
     }));
 
     const count = await invoke<number>('apply_rename', { operations });
-    toast.showToast(`成功清洗 ${count} 个文件名`, 'success');
+    toast.showToast(`成功处理 ${count} 个文件名`, 'success');
     emit('next');
   } catch (error) {
     console.error(error);
@@ -125,55 +151,42 @@ const handleApply = async () => {
 
 <template>
   <div class="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-    <section class="rounded-3xl border border-sky-200/80 bg-sky-50/80 p-5 dark:border-sky-500/20 dark:bg-sky-500/10">
-      <div class="flex items-start gap-4">
-        <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-500 text-xl text-white shadow-sm">1</div>
-        <div>
-          <h3 class="text-lg font-semibold text-sky-950 dark:text-sky-200">预处理：去除序号前缀</h3>
-          <p class="mt-2 text-sm leading-7 text-sky-800/80 dark:text-sky-300">
-            这一步只处理文件名前面的轨道序号，例如 <code class="rounded bg-white/70 px-1.5 py-0.5 dark:bg-white/10">01. Song.flac</code>
-            变为
-            <code class="rounded bg-white/70 px-1.5 py-0.5 dark:bg-white/10">Song.flac</code>。
-          </p>
-        </div>
-      </div>
-    </section>
+    <section class="space-y-4">
+      <h3 class="text-2xl font-semibold text-slate-900 dark:text-white">预处理选项</h3>
 
-    <section class="rounded-3xl border border-slate-200/70 bg-slate-50/75 p-5 dark:border-white/10 dark:bg-white/5">
-      <div class="text-sm font-semibold text-slate-900 dark:text-white">当前目标文件夹</div>
-      <div class="mt-3 rounded-2xl border border-dashed border-slate-300 bg-white/85 px-4 py-3 text-sm text-slate-600 dark:border-white/10 dark:bg-black/20 dark:text-slate-300">
-        <span class="break-all">{{ targetPath }}</span>
-      </div>
-    </section>
-
-    <section class="rounded-3xl border border-slate-200/70 bg-slate-50/75 p-5 dark:border-white/10 dark:bg-white/5">
-      <div class="text-sm font-semibold text-slate-900 dark:text-white">预处理选项</div>
-      <label class="mt-4 flex cursor-pointer items-start gap-4 rounded-2xl border border-slate-200/80 bg-white px-4 py-4 transition hover:border-sky-300 dark:border-white/10 dark:bg-black/20 dark:hover:border-sky-400/40">
+      <label class="flex cursor-pointer items-start gap-4 rounded-[28px] border border-slate-200/80 bg-white/70 px-5 py-5 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.45)] backdrop-blur-sm transition hover:border-sky-300 dark:border-white/10 dark:bg-white/5 dark:hover:border-sky-400/40">
         <input
           v-model="removeTrackPrefix"
           type="checkbox"
           class="mt-1 h-5 w-5 rounded border-slate-300 text-[#EC4141] focus:ring-[#EC4141]"
         />
-        <div>
-          <div class="text-sm font-semibold text-slate-900 dark:text-white">去除序号前缀</div>
-          <p class="mt-1 text-xs leading-6 text-slate-600 dark:text-white/60">
-            适合从下载站或网盘整理出来的曲目文件，能减少后续标签识别时的干扰。
+        <div class="min-w-0">
+          <div class="text-lg font-semibold text-slate-900 dark:text-white">去除序号前缀</div>
+          <p class="mt-2 text-sm leading-7 text-slate-600 dark:text-white/60">
+            <span class="font-medium text-sky-700 dark:text-sky-300">01.song.flac → song.flac</span>
           </p>
         </div>
       </label>
-    </section>
 
-    <button
-      @click="handleScan"
-      :disabled="!targetPath || isScanning"
-      class="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white/10 dark:hover:bg-white/20"
-    >
-      <svg v-if="isScanning" class="h-5 w-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-      </svg>
-      {{ isScanning ? '扫描中...' : hasScanned ? '重新扫描' : '扫描文件' }}
-    </button>
+      <div
+        class="rounded-[24px] border px-4 py-3 text-sm"
+        :class="
+          isScanning
+            ? 'border-sky-200 bg-sky-50/80 text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300'
+            : hasScanned
+            ? 'border-emerald-200 bg-emerald-50/80 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
+            : 'border-slate-200 bg-white/70 text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-white/60'
+        "
+      >
+        {{
+          isScanning
+            ? '正在自动扫描当前文件夹...'
+            : hasScanned
+            ? `扫描完成，共发现 ${previewItems.length} 条改名结果。`
+            : '等待扫描结果...'
+        }}
+      </div>
+    </section>
 
     <div class="flex gap-3 border-t border-slate-100 pt-4 dark:border-white/5">
       <button
@@ -183,16 +196,21 @@ const handleApply = async () => {
         跳过此步骤
       </button>
       <button
-        v-if="hasScanned"
         @click="handleApply"
-        :disabled="isApplying"
+        :disabled="isApplying || isScanning"
         class="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#EC4141] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#d63a3a] disabled:cursor-not-allowed disabled:opacity-50"
       >
         <svg v-if="isApplying" class="h-5 w-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
-        {{ validItems.length > 0 ? `应用并继续 (${validItems.length})` : '继续下一步' }}
+        {{
+          isScanning
+            ? '正在扫描...'
+            : validItems.length > 0
+            ? `应用预处理并继续 (${validItems.length})`
+            : '继续下一步'
+        }}
       </button>
     </div>
   </div>
