@@ -168,24 +168,7 @@ const handleApply = async () => {
         </div>
       </label>
 
-      <div
-        class="rounded-[24px] border px-4 py-3 text-sm"
-        :class="
-          isScanning
-            ? 'border-sky-200 bg-sky-50/80 text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300'
-            : hasScanned
-            ? 'border-emerald-200 bg-emerald-50/80 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
-            : 'border-slate-200 bg-white/70 text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-white/60'
-        "
-      >
-        {{
-          isScanning
-            ? '正在自动扫描当前文件夹...'
-            : hasScanned
-            ? `扫描完成，共发现 ${previewItems.length} 条改名结果。`
-            : '等待扫描结果...'
-        }}
-      </div>
+
     </section>
 
     <div class="flex gap-3 border-t border-slate-100 pt-4 dark:border-white/5">

@@ -494,8 +494,8 @@ const restart = () => {
               <div>
                 <h3 class="text-lg font-semibold text-slate-900 dark:text-white">实时预览</h3>
               </div>
-              <div class="rounded-full bg-sky-100 px-3 py-1 text-xs font-medium text-sky-700 dark:bg-sky-500/10 dark:text-sky-300">
-                {{ preprocessDisplayItems.length }} 项
+              <div class="text-sm font-medium text-slate-600 dark:text-white/60">
+                已扫描 {{ preprocessDisplayItems.length }} 首歌曲，发生变化 {{ preprocessChangedCount }} 首。
               </div>
             </div>
 
@@ -547,9 +547,6 @@ const restart = () => {
                 </div>
               </div>
 
-              <p class="mt-3 text-sm text-slate-600 dark:text-white/60">
-                已扫描 {{ preprocessDisplayItems.length }} 首歌曲，发生变化 {{ preprocessChangedCount }} 首。
-              </p>
             </div>
           </template>
 

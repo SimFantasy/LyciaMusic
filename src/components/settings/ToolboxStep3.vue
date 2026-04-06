@@ -156,17 +156,7 @@ const handleApply = async () => {
 
 <template>
   <div class="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-    <section class="rounded-3xl border border-emerald-200/80 bg-emerald-50/80 p-5 dark:border-emerald-500/20 dark:bg-emerald-500/10">
-      <div class="flex items-start gap-4">
-        <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500 text-xl text-white shadow-sm">3</div>
-        <div>
-          <h3 class="text-lg font-semibold text-emerald-950 dark:text-emerald-200">重命名：按标签生成规范文件名</h3>
-          <p class="mt-2 text-sm leading-7 text-emerald-800/80 dark:text-emerald-300">
-            左侧设置模板，右侧会实时显示重命名预览。确认后再批量应用。
-          </p>
-        </div>
-      </div>
-    </section>
+
 
     <section class="space-y-4 rounded-3xl border border-slate-200/70 bg-slate-50/75 p-5 dark:border-white/10 dark:bg-white/5">
       <label class="text-sm font-semibold text-slate-900 dark:text-white">命名模板</label>

@@ -32,7 +32,7 @@ const tabs = [
           :key="tab.id"
           class="relative flex w-full cursor-pointer items-center rounded-md px-4 py-2.5 text-left text-sm transition-all duration-300 active:scale-[0.97]"
           :class="activeTab === tab.id ? 'translate-x-1 bg-black/10 font-semibold text-black shadow-sm dark:bg-white/10 dark:text-white' : 'font-medium text-gray-800 hover:translate-x-1 hover:bg-black/5 hover:text-black dark:text-gray-200 dark:hover:bg-white/5 dark:hover:text-white'"
-          @click="activeTab = tab.id as typeof activeTab.value"
+          @click="activeTab = tab.id as any"
         >
           <div
             v-if="activeTab === tab.id"
@@ -44,7 +44,7 @@ const tabs = [
     </aside>
 
     <main class="custom-scrollbar relative h-full min-w-0 flex-1 overflow-y-auto px-10 py-10 xl:px-16">
-      <div class="mx-auto w-full max-w-5xl pb-16">
+      <div class="w-full pb-16">
         <SettingsGeneral v-if="activeTab === 'general'" />
         <SettingsTheme v-else-if="activeTab === 'theme'" />
         <SettingsSidebar v-else-if="activeTab === 'sidebar'" />
