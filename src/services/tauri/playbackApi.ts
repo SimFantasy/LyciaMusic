@@ -12,6 +12,8 @@ export const playbackApi = {
   getPlaybackProgress: (): Promise<number> => tauriInvoke('get_playback_progress'),
   recordPlay: (songPath: string, duration: number) =>
     tauriInvoke('record_play', { songPath, duration }),
+  getSongCoverThumbnail: (path: string): Promise<string> =>
+    tauriInvoke('get_song_cover_thumbnail', { path }),
   getSongCover: (path: string): Promise<string> => tauriInvoke('get_song_cover', { path }),
   playAudio: (options: PlayAudioOptions): Promise<void> => tauriInvoke('play_audio', options),
   updatePlaybackMetadata: (options: UpdatePlaybackMetadataOptions): Promise<void> =>

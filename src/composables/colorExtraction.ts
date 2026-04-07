@@ -35,6 +35,43 @@ const FALLBACK_PALETTE = [
 const CANVAS_SIZE = 56;
 const SAMPLE_STEP = 2;
 const DEFAULT_COUNT = 4;
+const PALETTE_CACHE_LIMIT = 128;
+const paletteCache = new Map<string, string[]>();
+
+function buildPaletteCacheKey(imageUrl: string, count: number, options: ExtractColorOptions): string {
+  return JSON.stringify({
+    imageUrl,
+    count,
+    colorBoost: options.colorBoost ?? 56,
+    depth: options.depth ?? 58,
+  });
+}
+
+function getCachedPalette(cacheKey: string): string[] | undefined {
+  const cached = paletteCache.get(cacheKey);
+  if (!cached) {
+    return undefined;
+  }
+
+  paletteCache.delete(cacheKey);
+  paletteCache.set(cacheKey, cached);
+  return [...cached];
+}
+
+function setCachedPalette(cacheKey: string, palette: string[]) {
+  if (paletteCache.has(cacheKey)) {
+    paletteCache.delete(cacheKey);
+  }
+
+  paletteCache.set(cacheKey, [...palette]);
+  while (paletteCache.size > PALETTE_CACHE_LIMIT) {
+    const oldestKey = paletteCache.keys().next().value as string | undefined;
+    if (!oldestKey) {
+      break;
+    }
+    paletteCache.delete(oldestKey);
+  }
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -217,6 +254,12 @@ export async function extractDominantColors(
   count: number = DEFAULT_COUNT,
   options: ExtractColorOptions = {},
 ): Promise<string[]> {
+  const cacheKey = buildPaletteCacheKey(imageUrl, count, options);
+  const cachedPalette = getCachedPalette(cacheKey);
+  if (cachedPalette) {
+    return cachedPalette;
+  }
+
   return new Promise(resolve => {
     const colorBoost = options.colorBoost ?? 56;
     const depth = options.depth ?? 58;
@@ -228,7 +271,9 @@ export async function extractDominantColors(
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d', { willReadFrequently: true });
       if (!context) {
-        resolve(FALLBACK_PALETTE.slice(0, count));
+        const fallback = FALLBACK_PALETTE.slice(0, count);
+        setCachedPalette(cacheKey, fallback);
+        resolve(fallback);
         return;
       }
 
@@ -287,7 +332,9 @@ export async function extractDominantColors(
         .sort((a, b) => b.score - a.score);
 
       if (candidates.length === 0) {
-        resolve(FALLBACK_PALETTE.slice(0, count));
+        const fallback = FALLBACK_PALETTE.slice(0, count);
+        setCachedPalette(cacheKey, fallback);
+        resolve(fallback);
         return;
       }
 
@@ -299,11 +346,15 @@ export async function extractDominantColors(
         polished.push(createDerivedAccent(anchor, polished.length, colorBoost, depth));
       }
 
-      resolve(polished.slice(0, count));
+      const palette = polished.slice(0, count);
+      setCachedPalette(cacheKey, palette);
+      resolve(palette);
     };
 
     image.onerror = () => {
-      resolve(FALLBACK_PALETTE.slice(0, count));
+      const fallback = FALLBACK_PALETTE.slice(0, count);
+      setCachedPalette(cacheKey, fallback);
+      resolve(fallback);
     };
   });
 }

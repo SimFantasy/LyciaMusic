@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { useCoverCache } from '../../composables/useCoverCache';
 import { usePlaybackController } from '../../features/playback/usePlaybackController';
 import FooterContextMenu from "../overlays/FooterContextMenu.vue";
@@ -9,10 +8,10 @@ const props = defineProps<{
   isExpanded?: boolean;
 }>();
 
-const { 
-  currentSong, currentCover, isPlaying, dominantColors
+const {
+  currentSong, isPlaying, dominantColors
 } = usePlaybackController();
-const { loadCover } = useCoverCache();
+const { loadCover, loadFullCover } = useCoverCache();
 
 const showContextMenu = ref(false);
 const contextMenuX = ref(0);
@@ -30,26 +29,11 @@ const handleContextMenu = (e: MouseEvent) => {
 const bigCoverUrl = ref('');
 const localCoverUrl = ref('');
 const bigCoverLoaded = ref(false);
-const bigCoverCache = new Map<string, string>();
 const bigCoverPath = ref('');
 const localCoverPath = ref('');
 const reflectionCoverUrl = ref('');
-let coverRequestId = 0;
-let reflectionRequestId = 0;
-
-const normalizeCoverUrl = (path: string) => {
-  if (!path) return '';
-  if (
-    path.startsWith('http://')
-    || path.startsWith('https://')
-    || path.startsWith('data:')
-    || path.startsWith('asset:')
-    || path.startsWith('tauri:')
-  ) {
-    return path;
-  }
-  return convertFileSrc(path);
-};
+let thumbRequestId = 0;
+let fullCoverRequestId = 0;
 
 const currentBigCoverUrl = computed(() =>
   bigCoverPath.value === currentSongPath.value ? bigCoverUrl.value : ''
@@ -58,21 +42,8 @@ const currentLocalCoverUrl = computed(() =>
   localCoverPath.value === currentSongPath.value ? localCoverUrl.value : ''
 );
 
-const preloadImage = (src: string) => new Promise<boolean>((resolve) => {
-  if (!src) {
-    resolve(false);
-    return;
-  }
-
-  const image = new Image();
-  image.decoding = 'async';
-  image.onload = () => resolve(true);
-  image.onerror = () => resolve(false);
-  image.src = src;
-});
-
 watch(currentSongPath, async (path) => {
-  const requestId = ++coverRequestId;
+  const requestId = ++thumbRequestId;
   bigCoverLoaded.value = false;
 
   if (!path) {
@@ -83,61 +54,71 @@ watch(currentSongPath, async (path) => {
     reflectionCoverUrl.value = '';
     return;
   }
-
-  const cachedBigCoverUrl = bigCoverCache.get(path) || '';
-  bigCoverUrl.value = cachedBigCoverUrl;
-  bigCoverPath.value = cachedBigCoverUrl ? path : '';
+  bigCoverUrl.value = '';
+  bigCoverPath.value = '';
 
   try {
     const cachedThumbUrl = await loadCover(path);
-    if (requestId !== coverRequestId || path !== currentSongPath.value) return;
+    if (requestId !== thumbRequestId || path !== currentSongPath.value) return;
     localCoverUrl.value = cachedThumbUrl || '';
     localCoverPath.value = path;
   } catch {
-    if (requestId !== coverRequestId || path !== currentSongPath.value) return;
+    if (requestId !== thumbRequestId || path !== currentSongPath.value) return;
     localCoverUrl.value = '';
     localCoverPath.value = path;
   }
 }, { immediate: true });
 
-watch(() => currentCover.value, (cover) => {
-  const path = currentSongPath.value;
-  if (!path) {
+watch([currentSongPath, () => props.isExpanded], async ([path, isExpanded]) => {
+  bigCoverLoaded.value = false;
+
+  if (!path || !isExpanded) {
     bigCoverUrl.value = '';
     bigCoverPath.value = '';
-    bigCoverLoaded.value = false;
     return;
   }
 
-  const resolvedUrl = normalizeCoverUrl(cover);
-  bigCoverCache.set(path, resolvedUrl);
-  bigCoverUrl.value = resolvedUrl;
-  bigCoverPath.value = path;
-  bigCoverLoaded.value = false;
+  const requestId = ++fullCoverRequestId;
+
+  try {
+    const fullCoverUrl = await loadFullCover(path);
+    if (requestId !== fullCoverRequestId || path !== currentSongPath.value || !props.isExpanded) return;
+
+    bigCoverUrl.value = fullCoverUrl || '';
+    bigCoverPath.value = fullCoverUrl ? path : '';
+  } catch {
+    if (requestId !== fullCoverRequestId || path !== currentSongPath.value || !props.isExpanded) return;
+
+    bigCoverUrl.value = '';
+    bigCoverPath.value = '';
+  }
 }, { immediate: true });
 
-watch([currentSongPath, currentLocalCoverUrl, currentBigCoverUrl], async ([path, localUrl, bigUrl]) => {
-  const requestId = ++reflectionRequestId;
+watch(() => props.isExpanded, (isExpanded) => {
+  if (isExpanded) {
+    return;
+  }
 
+  bigCoverLoaded.value = false;
+  reflectionCoverUrl.value = '';
+});
+
+watch([currentSongPath, currentLocalCoverUrl], ([path, localUrl]) => {
   if (!path) {
     reflectionCoverUrl.value = '';
     return;
   }
 
-  // Reflection does not benefit from full-size art. Prefer the current song's
-  // thumbnail so the source changes at most once and the node never hard-remounts.
-  const nextReflectionUrl = localUrl || bigUrl || '';
-  if (!nextReflectionUrl) {
+  if (!props.isExpanded) {
     reflectionCoverUrl.value = '';
     return;
   }
 
+  const nextReflectionUrl = localUrl || '';
   if (nextReflectionUrl === reflectionCoverUrl.value) {
     return;
   }
 
-  const loaded = await preloadImage(nextReflectionUrl);
-  if (!loaded || requestId !== reflectionRequestId || path !== currentSongPath.value) return;
   reflectionCoverUrl.value = nextReflectionUrl;
 }, { immediate: true });
 

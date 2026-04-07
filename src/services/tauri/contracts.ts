@@ -93,6 +93,7 @@ export interface TauriCommandMap {
   set_volume: { payload: { volume: number }; response: void };
   get_playback_progress: { payload: undefined; response: number };
   record_play: { payload: { songPath: string; duration: number }; response: void };
+  get_song_cover_thumbnail: { payload: { path: string }; response: string };
   get_song_cover: { payload: { path: string }; response: string };
   play_audio: { payload: PlayAudioOptions; response: void };
   update_playback_metadata: { payload: UpdatePlaybackMetadataOptions; response: void };

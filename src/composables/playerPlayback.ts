@@ -141,6 +141,7 @@ export const createPlayerPlayback = ({
 
     isPlaying.value = true;
     isSongLoaded.value = false;
+    currentCover.value = '';
     stopPlaybackRuntime();
     reanchorPlaybackClock(0);
     accumulatedTime = 0;
@@ -164,7 +165,7 @@ export const createPlayerPlayback = ({
       loadLyrics();
       startPlaybackRuntime();
 
-      void playbackApi.getSongCover(song.path)
+      void playbackApi.getSongCoverThumbnail(song.path)
         .then(async cover => {
           if (requestId !== playRequestId || currentSong.value?.path !== song.path) {
             return;

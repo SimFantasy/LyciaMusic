@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { usePlayer } from '../../composables/player';
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { useCoverCache } from '../../composables/useCoverCache';
 
 const props = defineProps<{
   bgOpacity?: number;
 }>();
 
 const { dominantColors, currentSong } = usePlayer();
+const { loadCover } = useCoverCache();
 
 const viewportArea = ref(
   typeof window !== 'undefined' ? window.innerWidth * window.innerHeight : 0
@@ -20,7 +21,6 @@ const updateViewportArea = () => {
 
 const thumbCoverUrl = ref('');
 let coverRequestId = 0;
-const thumbCoverCache = new Map<string, string>();
 
 watch(
   () => currentSong.value?.path,
@@ -31,21 +31,12 @@ watch(
       return;
     }
 
-    if (thumbCoverCache.has(path)) {
-      thumbCoverUrl.value = thumbCoverCache.get(path) || '';
-      return;
-    }
-
     try {
-      const thumbPath = await invoke<string>('get_song_cover_thumbnail', { path });
+      const resolved = await loadCover(path);
       if (requestId !== coverRequestId) return;
-
-      const resolved = thumbPath ? convertFileSrc(thumbPath) : '';
-      thumbCoverCache.set(path, resolved);
-      thumbCoverUrl.value = resolved;
+      thumbCoverUrl.value = resolved || '';
     } catch {
       if (requestId !== coverRequestId) return;
-      thumbCoverCache.set(path, '');
       thumbCoverUrl.value = '';
     }
   },
