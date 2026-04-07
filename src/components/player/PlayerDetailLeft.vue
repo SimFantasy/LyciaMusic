@@ -54,8 +54,12 @@ watch(currentSongPath, async (path) => {
     reflectionCoverUrl.value = '';
     return;
   }
+
+  localCoverUrl.value = '';
+  localCoverPath.value = '';
   bigCoverUrl.value = '';
   bigCoverPath.value = '';
+  reflectionCoverUrl.value = '';
 
   try {
     const cachedThumbUrl = await loadCover(path);

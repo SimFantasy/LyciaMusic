@@ -26,8 +26,9 @@ watch(
   () => currentSong.value?.path,
   async (path) => {
     const requestId = ++coverRequestId;
+    thumbCoverUrl.value = '';
+
     if (!path) {
-      thumbCoverUrl.value = '';
       return;
     }
 

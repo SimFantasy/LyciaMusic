@@ -3,22 +3,17 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 
 type CoverKind = 'thumbnail' | 'full';
 
-const THUMBNAIL_CACHE_LIMIT = 240;
-const FULL_COVER_CACHE_LIMIT = 24;
+const THUMBNAIL_CACHE_LIMIT = 96;
 const PRELOAD_CONCURRENCY = 4;
 
 const thumbnailCache = reactive(new Map<string, string>());
-const fullCoverCache = reactive(new Map<string, string>());
 const loadingSet = reactive(new Set<string>());
 const inFlightRequests = new Map<string, Promise<string>>();
 const preloadQueue: string[] = [];
 const queuedPaths = new Set<string>();
 
 const getCacheForKind = (kind: CoverKind) =>
-  kind === 'full' ? fullCoverCache : thumbnailCache;
-
-const getLimitForKind = (kind: CoverKind) =>
-  kind === 'full' ? FULL_COVER_CACHE_LIMIT : THUMBNAIL_CACHE_LIMIT;
+  kind === 'full' ? null : thumbnailCache;
 
 const buildCacheKey = (path: string, kind: CoverKind) => `${kind}:${path}`;
 
@@ -41,6 +36,10 @@ const pruneCache = (cache: Map<string, string>, limit: number) => {
 
 const getCachedCover = (path: string, kind: CoverKind): string | undefined => {
   const cache = getCacheForKind(kind);
+  if (!cache) {
+    return undefined;
+  }
+
   const cachedValue = cache.get(path);
   if (cachedValue === undefined) {
     return undefined;
@@ -52,8 +51,12 @@ const getCachedCover = (path: string, kind: CoverKind): string | undefined => {
 
 const setCachedCover = (path: string, kind: CoverKind, value: string) => {
   const cache = getCacheForKind(kind);
+  if (!cache) {
+    return;
+  }
+
   touchCacheEntry(cache, path, value);
-  pruneCache(cache, getLimitForKind(kind));
+  pruneCache(cache, THUMBNAIL_CACHE_LIMIT);
 };
 
 const loadCoverInternal = (path: string, kind: CoverKind): Promise<string> => {
@@ -69,10 +72,14 @@ const loadCoverInternal = (path: string, kind: CoverKind): Promise<string> => {
       const command = kind === 'full' ? 'get_song_cover' : 'get_song_cover_thumbnail';
       const coverPath = await invoke<string>(command, { path });
       const finalUrl = coverPath ? convertFileSrc(coverPath) : '';
-      setCachedCover(path, kind, finalUrl);
+      if (kind === 'thumbnail') {
+        setCachedCover(path, kind, finalUrl);
+      }
       return finalUrl;
     } catch {
-      setCachedCover(path, kind, '');
+      if (kind === 'thumbnail') {
+        setCachedCover(path, kind, '');
+      }
       return '';
     } finally {
       loadingSet.delete(requestKey);
@@ -145,7 +152,6 @@ export function useCoverCache() {
 
   return {
     coverCache: thumbnailCache,
-    fullCoverCache,
     loadingSet,
     loadCover,
     loadFullCover,
