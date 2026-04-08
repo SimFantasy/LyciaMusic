@@ -86,7 +86,8 @@ export const createPlayerQueue = ({
 
   const nextSong = () => {
     if (tempQueue.value.length > 0) {
-      const next = tempQueue.value.shift();
+      const [next, ...remainingQueue] = tempQueue.value;
+      tempQueue.value = remainingQueue;
       if (next) {
         playSong(next);
         return;
@@ -162,13 +163,13 @@ export const createPlayerQueue = ({
   };
 
   const addSongToQueue = (song: Song) => {
-    playQueue.value.push(song);
+    playQueue.value = [...playQueue.value, song];
     showToast('已添加到播放队列', 'success');
   };
 
   const addSongsToQueue = (songs: Song[]) => {
     if (songs.length === 0) return;
-    playQueue.value.push(...songs);
+    playQueue.value = [...playQueue.value, ...songs];
     showToast(`已添加 ${songs.length} 首歌曲到播放队列`, 'success');
   };
 
@@ -178,7 +179,7 @@ export const createPlayerQueue = ({
   };
 
   const playNext = (song: Song) => {
-    tempQueue.value.unshift(song);
+    tempQueue.value = [song, ...tempQueue.value];
   };
 
   return {

@@ -122,7 +122,25 @@ export const createPlayerFileManager = ({
   const playbackStore = usePlaybackStore();
   const settingsStore = useSettingsStore();
   const { canonicalSongs, libraryHierarchy, sourceSongs, watchedFolders } = storeToRefs(libraryStore);
-  const { favoritePaths, playlists } = storeToRefs(collectionsStore);
+  const { favoritePaths, playlists, recentSongs } = storeToRefs(collectionsStore);
+  const { currentSong, playQueue, tempQueue } = storeToRefs(playbackStore);
+
+  const removeSongPathFromList = (songs: Song[], path: string) =>
+    songs.filter(song => song.path !== path);
+
+  const replaceSongPathInList = (songs: Song[], oldPath: string, newPath: string) => {
+    let changed = false;
+    const nextSongs = songs.map(song => {
+      if (song.path !== oldPath) {
+        return song;
+      }
+
+      changed = true;
+      return { ...song, path: newPath };
+    });
+
+    return changed ? nextSongs : songs;
+  };
 
   const deleteFolder = async (path: string) => {
     await fileApi.deleteFolder(path);
@@ -143,10 +161,7 @@ export const createPlayerFileManager = ({
 
     await fileApi.moveFileToFolder(sourcePath, targetFolderPath);
 
-    const songIndex = sourceSongs.value.findIndex(song => song.path === sourcePath);
-    if (songIndex !== -1) {
-      sourceSongs.value.splice(songIndex, 1);
-    }
+    sourceSongs.value = removeSongPathFromList(sourceSongs.value, sourcePath);
 
     decrementNodeCount(libraryHierarchy.value, sourceFolderPath);
 
@@ -193,12 +208,8 @@ export const createPlayerFileManager = ({
 
     const movedCount = await fileApi.batchMoveMusicFiles(paths, targetFolder);
 
-    paths.forEach(oldPath => {
-      const songIndex = sourceSongs.value.findIndex(song => song.path === oldPath);
-      if (songIndex !== -1) {
-        sourceSongs.value.splice(songIndex, 1);
-      }
-    });
+    const movedPaths = new Set(paths);
+    sourceSongs.value = sourceSongs.value.filter(song => !movedPaths.has(song.path));
 
     for (const [sourceFolder, entry] of sourceFolderMap) {
       for (let index = 0; index < entry.count; index += 1) {
@@ -273,18 +284,21 @@ export const createPlayerFileManager = ({
       await fileApi.moveMusicFile(song.path, newPath);
 
       const oldPath = song.path;
-      const patchPath = (songs: Song[]) => {
-        const targetSong = songs.find(item => item.path === oldPath);
-        if (targetSong) {
-          targetSong.path = newPath;
-        }
-      };
+      sourceSongs.value = replaceSongPathInList(sourceSongs.value, oldPath, newPath);
+      canonicalSongs.value = replaceSongPathInList(canonicalSongs.value, oldPath, newPath);
+      playQueue.value = replaceSongPathInList(playQueue.value, oldPath, newPath);
+      tempQueue.value = replaceSongPathInList(tempQueue.value, oldPath, newPath);
+      recentSongs.value = recentSongs.value.map(item =>
+        item.song.path === oldPath
+          ? { ...item, song: { ...item.song, path: newPath } }
+          : item
+      );
 
-      patchPath(sourceSongs.value);
-      patchPath(canonicalSongs.value);
-
-      if (playbackStore.currentSong?.path === oldPath) {
-        playbackStore.currentSong.path = newPath;
+      if (currentSong.value?.path === oldPath) {
+        currentSong.value = {
+          ...currentSong.value,
+          path: newPath,
+        };
       }
 
       playlists.value.forEach(playlist => {
@@ -296,7 +310,7 @@ export const createPlayerFileManager = ({
 
       const favoriteIndex = favoritePaths.value.indexOf(oldPath);
       if (favoriteIndex !== -1) {
-        favoritePaths.value[favoriteIndex] = newPath;
+        favoritePaths.value = favoritePaths.value.map(path => (path === oldPath ? newPath : path));
       }
 
       return true;

@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+import { ref, shallowRef } from 'vue';
 import { defineStore } from 'pinia';
 
 import type {
@@ -17,9 +17,9 @@ import type {
 
 export const useLibraryStore = defineStore('library', () => {
   // Canonical library catalog data indexed from library_folders.
-  const canonicalSongs = ref<Song[]>([]);
+  const canonicalSongs = shallowRef<Song[]>([]);
   // File-system-backed source snapshot used by folder browsing and file operations.
-  const sourceSongs = ref<Song[]>([]);
+  const sourceSongs = shallowRef<Song[]>([]);
   const libraryFolders = ref<LibraryFolder[]>([]);
   // Directory hierarchy derived from the current library roots.
   const libraryHierarchy = ref<FolderNode[]>([]);

@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+import { ref, shallowRef } from 'vue';
 import { defineStore } from 'pinia';
 
 import type { Song } from '../../types';
@@ -9,8 +9,8 @@ export const usePlaybackStore = defineStore('playback', () => {
   const currentTime = ref(0);
   const playMode = ref(0);
   const isSongLoaded = ref(false);
-  const playQueue = ref<Song[]>([]);
-  const tempQueue = ref<Song[]>([]);
+  const playQueue = shallowRef<Song[]>([]);
+  const tempQueue = shallowRef<Song[]>([]);
   const currentSong = ref<Song | null>(null);
   const currentCover = ref('');
 

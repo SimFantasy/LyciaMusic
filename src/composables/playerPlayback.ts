@@ -134,7 +134,7 @@ export const createPlayerPlayback = ({
         if (playQueue.value.length === 0) {
           playQueue.value = [song];
         } else {
-          playQueue.value.push(song);
+          playQueue.value = [...playQueue.value, song];
         }
       }
     }
