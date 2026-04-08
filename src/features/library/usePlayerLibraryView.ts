@@ -8,6 +8,7 @@ import { useLibraryCatalogSelectors } from './useLibraryCatalogSelectors';
 import { useLibraryCollectionSelectors } from './useLibraryCollectionSelectors';
 import { useLibraryCurrentViewSongs } from './useLibraryCurrentViewSongs';
 import { useLibraryFolderSelectors } from './useLibraryFolderSelectors';
+import type { Song } from '../../types';
 
 export type { AlbumListItem, ArtistListItem } from './playerLibraryViewShared';
 
@@ -52,6 +53,20 @@ export function usePlayerLibraryView() {
   );
 
   const isFolderMode = computed(() => currentViewMode.value === 'folder');
+  const songLookup = computed(() => {
+    const lookup = new Map<string, Song>();
+
+    canonicalSongs.value.forEach(song => {
+      lookup.set(song.path, song);
+    });
+    sourceSongs.value.forEach(song => {
+      if (!lookup.has(song.path)) {
+        lookup.set(song.path, song);
+      }
+    });
+
+    return lookup;
+  });
 
   const catalogSelectors = useLibraryCatalogSelectors({
     canonicalSongs,
@@ -75,6 +90,7 @@ export function usePlayerLibraryView() {
     favoritePaths,
     playlists,
     recentSongs,
+    songLookup,
   });
 
   const { currentViewSongs } = useLibraryCurrentViewSongs({
@@ -82,6 +98,7 @@ export function usePlayerLibraryView() {
     sourceSongs,
     playlists,
     recentSongs,
+    songLookup,
     favoriteSongList: collectionSelectors.favoriteSongList,
     currentFolderSongs: folderSelectors.currentFolderSongs,
     currentViewMode,

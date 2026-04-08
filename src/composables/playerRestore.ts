@@ -43,18 +43,15 @@ export const createPlayerRestore = ({
 
   const restoreRecentHistory = async () => {
     const legacyHistory = readStoredHistory(keys.legacyPlayerHistory);
-    const legacyHistorySongs = legacyHistory.map(item => item.song);
 
     try {
-      const records = await historyApi.getRecentHistory(1000);
+      const records = await historyApi.getRecentHistory(200);
       if (records.length > 0) {
-        const lookup = createSongLookup(legacyHistorySongs);
         collectionsStore.setRecentSongs(records
-          .map(record => {
-            const song = lookup.get(record.songPath);
-            return song ? { song, playedAt: record.playedAt } : null;
-          })
-          .filter((item): item is HistoryItem => !!item));
+          .map(record => ({
+            path: record.songPath,
+            playedAt: record.playedAt,
+          })));
 
         if (collectionsStore.recentSongs.length > 0) {
           playerStorage.remove(keys.legacyPlayerHistory);
@@ -70,14 +67,10 @@ export const createPlayerRestore = ({
       return;
     }
 
-    const lookup = createSongLookup(legacyHistorySongs);
-    collectionsStore.setRecentSongs(legacyHistory.map(item => ({
-      song: lookup.get(item.song.path) ?? item.song,
-      playedAt: item.playedAt,
-    })));
+    collectionsStore.setRecentSongs(legacyHistory.slice(0, 200));
 
     const importedEntries = legacyHistory.map(item => ({
-      songPath: item.song.path,
+      songPath: item.path,
       playedAt: Math.floor(item.playedAt / 1000),
     }));
 

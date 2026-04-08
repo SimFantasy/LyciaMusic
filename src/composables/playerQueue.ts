@@ -22,6 +22,7 @@ export const createPlayerQueue = ({
   stopPlaybackRuntime,
   showToast,
 }: CreatePlayerQueueDeps) => {
+  const SHUFFLE_HISTORY_LIMIT = 256;
   const libraryStore = useLibraryStore();
   const playbackStore = usePlaybackStore();
   const { currentSong, isPlaying, playMode, playQueue, tempQueue } = storeToRefs(playbackStore);
@@ -31,6 +32,13 @@ export const createPlayerQueue = ({
   const resetShuffleState = () => {
     shuffleHistory.length = 0;
     shuffleFuture.length = 0;
+  };
+
+  const pushBounded = (target: string[], path: string) => {
+    target.push(path);
+    if (target.length > SHUFFLE_HISTORY_LIMIT) {
+      target.splice(0, target.length - SHUFFLE_HISTORY_LIMIT);
+    }
   };
 
   const handleBeforePlay = (song: Song, options: QueuePlaySongOptions = {}) => {
@@ -44,7 +52,7 @@ export const createPlayerQueue = ({
       previousSong &&
       previousSong.path !== song.path
     ) {
-      shuffleHistory.push(previousSong.path);
+      pushBounded(shuffleHistory, previousSong.path);
       if (shouldClearShuffleFuture) {
         shuffleFuture.length = 0;
       }
@@ -125,7 +133,7 @@ export const createPlayerQueue = ({
       const previousSong = findSongByPath(previousPath, navigationList);
       if (previousSong) {
         if (currentSong.value) {
-          shuffleFuture.push(currentSong.value.path);
+          pushBounded(shuffleFuture, currentSong.value.path);
         }
         playSong(previousSong, { updateShuffleHistory: false, clearShuffleFuture: false });
         return;

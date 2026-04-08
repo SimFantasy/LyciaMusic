@@ -250,6 +250,9 @@ export const createPlayerLifecycle = ({
     volume,
   } = storeToRefs(playbackStore);
   const { dominantColors } = storeToRefs(uiStore);
+  const scheduleStatePersistence = () => {
+    schedulePersistedState();
+  };
 
   onMounted(async () => {
     await bootstrapLibrary();
@@ -308,24 +311,16 @@ export const createPlayerLifecycle = ({
       playerStorage.writeNumber(playerStorageKeys.playMode, value);
     });
 
-    watch(
-      [
-        () => sourceSongs.value.map(song => song.path),
-        watchedFolders,
-        favoritePaths,
-        playlists,
-        settings,
-        () => playQueue.value.map(song => song.path),
-        artistCustomOrder,
-        albumCustomOrder,
-        folderCustomOrder,
-        localCustomOrder,
-      ],
-      () => {
-        schedulePersistedState();
-      },
-      { deep: true }
-    );
+    watch(sourceSongs, scheduleStatePersistence);
+    watch(playQueue, scheduleStatePersistence);
+    watch(watchedFolders, scheduleStatePersistence);
+    watch(favoritePaths, scheduleStatePersistence, { deep: true });
+    watch(playlists, scheduleStatePersistence, { deep: true });
+    watch(settings, scheduleStatePersistence, { deep: true });
+    watch(artistCustomOrder, scheduleStatePersistence, { deep: true });
+    watch(albumCustomOrder, scheduleStatePersistence, { deep: true });
+    watch(folderCustomOrder, scheduleStatePersistence, { deep: true });
+    watch(localCustomOrder, scheduleStatePersistence, { deep: true });
 
     watch(artistSortMode, value => {
       playerStorage.setString(playerStorageKeys.artistSortMode, value);

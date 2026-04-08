@@ -16,6 +16,7 @@ interface UseLibraryCurrentViewSongsOptions {
   sourceSongs: Ref<Song[]>;
   playlists: Ref<Playlist[]>;
   recentSongs: Ref<HistoryItem[]>;
+  songLookup: ComputedRef<Map<string, Song>>;
   favoriteSongList: ComputedRef<Song[]>;
   currentFolderSongs: ComputedRef<Song[]>;
   currentViewMode: Ref<string>;
@@ -50,6 +51,7 @@ export function useLibraryCurrentViewSongs({
   sourceSongs,
   playlists,
   recentSongs,
+  songLookup,
   favoriteSongList,
   currentFolderSongs,
   currentViewMode,
@@ -64,6 +66,11 @@ export function useLibraryCurrentViewSongs({
   localCustomOrder,
   playlistSortMode,
 }: UseLibraryCurrentViewSongsOptions) {
+  const resolveRecentSongs = () =>
+    recentSongs.value
+      .map(item => songLookup.value.get(item.path))
+      .filter((song): song is Song => !!song);
+
   const currentViewSongs = computed(() => {
     if (searchQuery.value.trim()) {
       const query = searchQuery.value.toLowerCase();
@@ -76,7 +83,7 @@ export function useLibraryCurrentViewSongs({
       }
 
       if (currentViewMode.value === 'recent') {
-        return recentSongs.value.map(item => item.song).filter(song => song.name.toLowerCase().includes(query));
+        return resolveRecentSongs().filter(song => song.name.toLowerCase().includes(query));
       }
 
       if (currentViewMode.value === 'all') {
@@ -145,7 +152,7 @@ export function useLibraryCurrentViewSongs({
     }
 
     if (currentViewMode.value === 'recent') {
-      const songs = [...recentSongs.value.map(item => item.song)];
+      const songs = [...resolveRecentSongs()];
       sortSongsByLocalMode(songs, localSortMode.value);
       return songs;
     }

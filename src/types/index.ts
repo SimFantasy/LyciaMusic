@@ -28,7 +28,7 @@ export interface Song {
 }
 
 export interface HistoryItem {
-  song: Song;
+  path: string;
   playedAt: number;
 }
 

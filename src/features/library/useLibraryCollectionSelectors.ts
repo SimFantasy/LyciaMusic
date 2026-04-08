@@ -1,4 +1,4 @@
-import { computed, type Ref } from 'vue';
+import { computed, type ComputedRef, type Ref } from 'vue';
 
 import type { HistoryItem, Playlist, Song } from '../../types';
 import { compareByAlphabetIndex } from '../../utils/alphabetIndex';
@@ -22,6 +22,7 @@ interface UseLibraryCollectionSelectorsOptions {
   favoritePaths: Ref<string[]>;
   playlists: Ref<Playlist[]>;
   recentSongs: Ref<HistoryItem[]>;
+  songLookup: ComputedRef<Map<string, Song>>;
 }
 
 export function useLibraryCollectionSelectors({
@@ -29,6 +30,7 @@ export function useLibraryCollectionSelectors({
   favoritePaths,
   playlists,
   recentSongs,
+  songLookup,
 }: UseLibraryCollectionSelectorsOptions) {
   const favoriteSongList = computed(() =>
     canonicalSongs.value.filter(song => favoritePaths.value.includes(song.path)),
@@ -84,14 +86,19 @@ export function useLibraryCollectionSelectors({
     const map = new Map<string, { key: string; name: string; artist: string; playedAt: number; firstSongPath: string }>();
 
     recentSongs.value.forEach(item => {
-      const key = getSongAlbumKey(item.song);
+      const song = songLookup.value.get(item.path);
+      if (!song) {
+        return;
+      }
+
+      const key = getSongAlbumKey(song);
       if (!map.has(key) || item.playedAt > map.get(key)!.playedAt) {
         map.set(key, {
           key,
-          name: item.song.album || 'Unknown',
-          artist: item.song.album_artist || item.song.artist || 'Unknown',
+          name: song.album || 'Unknown',
+          artist: song.album_artist || song.artist || 'Unknown',
           playedAt: item.playedAt,
-          firstSongPath: item.song.path,
+          firstSongPath: song.path,
         });
       }
     });
@@ -108,7 +115,7 @@ export function useLibraryCollectionSelectors({
       const playlistSongPaths = new Set(playlist.songPaths);
 
       for (const historyItem of recentSongs.value) {
-        if (!playlistSongPaths.has(historyItem.song.path)) {
+        if (!playlistSongPaths.has(historyItem.path)) {
           continue;
         }
 

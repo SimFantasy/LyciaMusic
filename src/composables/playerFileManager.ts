@@ -289,8 +289,8 @@ export const createPlayerFileManager = ({
       playQueue.value = replaceSongPathInList(playQueue.value, oldPath, newPath);
       tempQueue.value = replaceSongPathInList(tempQueue.value, oldPath, newPath);
       recentSongs.value = recentSongs.value.map(item =>
-        item.song.path === oldPath
-          ? { ...item, song: { ...item.song, path: newPath } }
+        item.path === oldPath
+          ? { ...item, path: newPath }
           : item
       );
 

@@ -1,7 +1,6 @@
 import { storeToRefs } from 'pinia';
-import type { HistoryItem, Song } from '../types';
+import type { Song } from '../types';
 
-import { useCollectionsStore } from '../features/collections/store';
 import { useLibraryStore } from '../features/library/store';
 import { usePlaybackStore } from '../features/playback/store';
 
@@ -14,11 +13,9 @@ interface CreatePlayerLibraryBatchDeps {
 export const createPlayerLibraryBatch = ({
   createSongLookup,
 }: CreatePlayerLibraryBatchDeps) => {
-  const collectionsStore = useCollectionsStore();
   const libraryStore = useLibraryStore();
   const playbackStore = usePlaybackStore();
   const { sourceSongs, canonicalSongs } = storeToRefs(libraryStore);
-  const { recentSongs } = storeToRefs(collectionsStore);
   const { playQueue, currentSong } = storeToRefs(playbackStore);
   let libraryScanBatchFlushTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingLibraryScanSongs = new Map<string, Song>();
@@ -30,7 +27,6 @@ export const createPlayerLibraryBatch = ({
       ...fallbackSongs,
       ...sourceSongs.value,
       ...playQueue.value,
-      ...recentSongs.value.map(item => item.song),
       ...(currentSong.value ? [currentSong.value] : []),
     ]);
 
@@ -40,12 +36,6 @@ export const createPlayerLibraryBatch = ({
     playQueue.value = playQueue.value
       .map(song => lookup.get(song.path) ?? song)
       .filter((song): song is Song => !!song);
-    recentSongs.value = recentSongs.value
-      .map(item => {
-        const song = lookup.get(item.song.path) ?? item.song;
-        return song ? { ...item, song } : null;
-      })
-      .filter((item): item is HistoryItem => !!item);
 
     if (currentSong.value?.path) {
       currentSong.value = lookup.get(currentSong.value.path) ?? currentSong.value;

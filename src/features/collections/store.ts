@@ -11,6 +11,7 @@ const formatPlaylistDate = () => {
 };
 
 export const useCollectionsStore = defineStore('collections', () => {
+  const RECENT_SONG_LIMIT = 200;
   const favoritePaths = ref<string[]>([]);
   const playlists = ref<Playlist[]>([]);
   const recentSongs = ref<HistoryItem[]>([]);
@@ -151,11 +152,11 @@ export const useCollectionsStore = defineStore('collections', () => {
   };
 
   const addRecentSong = (song: Song) => {
-    recentSongs.value = recentSongs.value.filter(item => item.song.path !== song.path);
-    recentSongs.value.unshift({ song, playedAt: Date.now() });
+    recentSongs.value = recentSongs.value.filter(item => item.path !== song.path);
+    recentSongs.value.unshift({ path: song.path, playedAt: Date.now() });
 
-    if (recentSongs.value.length > 1000) {
-      recentSongs.value = recentSongs.value.slice(0, 1000);
+    if (recentSongs.value.length > RECENT_SONG_LIMIT) {
+      recentSongs.value = recentSongs.value.slice(0, RECENT_SONG_LIMIT);
     }
   };
 
@@ -165,7 +166,7 @@ export const useCollectionsStore = defineStore('collections', () => {
     }
 
     const blocked = new Set(songPaths);
-    recentSongs.value = recentSongs.value.filter(item => !blocked.has(item.song.path));
+    recentSongs.value = recentSongs.value.filter(item => !blocked.has(item.path));
   };
 
   const clearRecentSongs = () => {

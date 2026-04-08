@@ -129,7 +129,7 @@ export const createPlayerPlayback = ({
     if (!preserveQueue) {
       const displaySongList = getDisplaySongList();
       if (displaySongList.some(item => item.path === song.path)) {
-        playQueue.value = [...displaySongList];
+        playQueue.value = displaySongList;
       } else if (!playQueue.value.some(item => item.path === song.path)) {
         if (playQueue.value.length === 0) {
           playQueue.value = [song];

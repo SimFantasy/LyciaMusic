@@ -32,13 +32,27 @@ export const playerStorageKeys = {
 const isSong = (value: unknown): value is Song =>
   !!value && typeof value === 'object' && typeof (value as Song).path === 'string';
 
-const isHistoryItem = (value: unknown): value is HistoryItem => {
+const normalizeHistoryItem = (value: unknown): HistoryItem | null => {
   if (!value || typeof value !== 'object') {
-    return false;
+    return null;
   }
 
-  const item = value as HistoryItem;
-  return isSong(item.song) && typeof item.playedAt === 'number';
+  const item = value as HistoryItem & { song?: Song };
+  if (typeof item.path === 'string' && typeof item.playedAt === 'number') {
+    return {
+      path: item.path,
+      playedAt: item.playedAt,
+    };
+  }
+
+  if (isSong(item.song) && typeof item.playedAt === 'number') {
+    return {
+      path: item.song.path,
+      playedAt: item.playedAt,
+    };
+  }
+
+  return null;
 };
 
 export const playerStorage = {
@@ -75,7 +89,9 @@ export const playerStorage = {
       return [];
     }
 
-    return parsed.filter(isHistoryItem);
+    return parsed
+      .map(normalizeHistoryItem)
+      .filter((item): item is HistoryItem => !!item);
   },
 
   readSettings<T extends AppSettings>(key = playerStorageKeys.settings): T | null {

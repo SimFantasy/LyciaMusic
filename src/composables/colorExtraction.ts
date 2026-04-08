@@ -38,6 +38,10 @@ const DEFAULT_COUNT = 4;
 const PALETTE_CACHE_LIMIT = 128;
 const paletteCache = new Map<string, string[]>();
 
+function createFallbackPalette(count: number): string[] {
+  return FALLBACK_PALETTE.slice(0, count);
+}
+
 function buildPaletteCacheKey(imageUrl: string, count: number, options: ExtractColorOptions): string {
   return JSON.stringify({
     imageUrl,
@@ -264,97 +268,119 @@ export async function extractDominantColors(
     const colorBoost = options.colorBoost ?? 56;
     const depth = options.depth ?? 58;
     const image = new Image();
-    image.crossOrigin = 'Anonymous';
-    image.src = imageUrl;
+    let canvas: HTMLCanvasElement | null = null;
+    let settled = false;
 
-    image.onload = () => {
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d', { willReadFrequently: true });
-      if (!context) {
-        const fallback = FALLBACK_PALETTE.slice(0, count);
-        setCachedPalette(cacheKey, fallback);
-        resolve(fallback);
+    const cleanup = () => {
+      image.onload = null;
+      image.onerror = null;
+      image.src = '';
+
+      if (canvas) {
+        canvas.width = 0;
+        canvas.height = 0;
+        canvas = null;
+      }
+    };
+
+    const finish = (palette: string[]) => {
+      if (settled) {
         return;
       }
 
-      canvas.width = CANVAS_SIZE;
-      canvas.height = CANVAS_SIZE;
-      context.drawImage(image, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
-
-      const imageData = context.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE).data;
-      const buckets = new Map<string, BucketAccumulator>();
-
-      for (let y = 0; y < CANVAS_SIZE; y += SAMPLE_STEP) {
-        for (let x = 0; x < CANVAS_SIZE; x += SAMPLE_STEP) {
-          const offset = (y * CANVAS_SIZE + x) * 4;
-          const alpha = imageData[offset + 3];
-          if (alpha < 160) {
-            continue;
-          }
-
-          const red = imageData[offset];
-          const green = imageData[offset + 1];
-          const blue = imageData[offset + 2];
-          const hsl = rgbToHsl(red, green, blue);
-
-          if (hsl.l < 0.02 || hsl.l > 0.98) {
-            continue;
-          }
-
-          const key = getBucketKey(hsl);
-          const bucket = buckets.get(key) ?? {
-            count: 0,
-            rSum: 0,
-            gSum: 0,
-            bSum: 0,
-            sSum: 0,
-            lSum: 0,
-            hxSum: 0,
-            hySum: 0,
-          };
-
-          bucket.count += 1;
-          bucket.rSum += red;
-          bucket.gSum += green;
-          bucket.bSum += blue;
-          bucket.sSum += hsl.s;
-          bucket.lSum += hsl.l;
-          bucket.hxSum += Math.cos((hsl.h * Math.PI) / 180);
-          bucket.hySum += Math.sin((hsl.h * Math.PI) / 180);
-
-          buckets.set(key, bucket);
-        }
-      }
-
-      const candidates = [...buckets.values()]
-        .map(createCandidate)
-        .filter(candidate => candidate.count > 3)
-        .sort((a, b) => b.score - a.score);
-
-      if (candidates.length === 0) {
-        const fallback = FALLBACK_PALETTE.slice(0, count);
-        setCachedPalette(cacheKey, fallback);
-        resolve(fallback);
-        return;
-      }
-
-      const selected = selectPalette(candidates, count);
-      const polished = selected.map((candidate, index) => polishColor(candidate, index, colorBoost, depth));
-      const anchor = selected[0] ?? { h: 220, s: 0.35, l: 0.38 };
-
-      while (polished.length < count) {
-        polished.push(createDerivedAccent(anchor, polished.length, colorBoost, depth));
-      }
-
-      const palette = polished.slice(0, count);
+      settled = true;
       setCachedPalette(cacheKey, palette);
+      cleanup();
       resolve(palette);
     };
 
-    image.onerror = () => {
-      const fallback = FALLBACK_PALETTE.slice(0, count);
-      setCachedPalette(cacheKey, fallback);
-      resolve(fallback);
+    image.onload = () => {
+      try {
+        canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        if (!context) {
+          finish(createFallbackPalette(count));
+          return;
+        }
+
+        canvas.width = CANVAS_SIZE;
+        canvas.height = CANVAS_SIZE;
+        context.drawImage(image, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+        const imageData = context.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE).data;
+        const buckets = new Map<string, BucketAccumulator>();
+
+        for (let y = 0; y < CANVAS_SIZE; y += SAMPLE_STEP) {
+          for (let x = 0; x < CANVAS_SIZE; x += SAMPLE_STEP) {
+            const offset = (y * CANVAS_SIZE + x) * 4;
+            const alpha = imageData[offset + 3];
+            if (alpha < 160) {
+              continue;
+            }
+
+            const red = imageData[offset];
+            const green = imageData[offset + 1];
+            const blue = imageData[offset + 2];
+            const hsl = rgbToHsl(red, green, blue);
+
+            if (hsl.l < 0.02 || hsl.l > 0.98) {
+              continue;
+            }
+
+            const key = getBucketKey(hsl);
+            const bucket = buckets.get(key) ?? {
+              count: 0,
+              rSum: 0,
+              gSum: 0,
+              bSum: 0,
+              sSum: 0,
+              lSum: 0,
+              hxSum: 0,
+              hySum: 0,
+            };
+
+            bucket.count += 1;
+            bucket.rSum += red;
+            bucket.gSum += green;
+            bucket.bSum += blue;
+            bucket.sSum += hsl.s;
+            bucket.lSum += hsl.l;
+            bucket.hxSum += Math.cos((hsl.h * Math.PI) / 180);
+            bucket.hySum += Math.sin((hsl.h * Math.PI) / 180);
+
+            buckets.set(key, bucket);
+          }
+        }
+
+        const candidates = [...buckets.values()]
+          .map(createCandidate)
+          .filter(candidate => candidate.count > 3)
+          .sort((a, b) => b.score - a.score);
+
+        if (candidates.length === 0) {
+          finish(createFallbackPalette(count));
+          return;
+        }
+
+        const selected = selectPalette(candidates, count);
+        const polished = selected.map((candidate, index) => polishColor(candidate, index, colorBoost, depth));
+        const anchor = selected[0] ?? { h: 220, s: 0.35, l: 0.38 };
+
+        while (polished.length < count) {
+          polished.push(createDerivedAccent(anchor, polished.length, colorBoost, depth));
+        }
+
+        finish(polished.slice(0, count));
+      } catch {
+        finish(createFallbackPalette(count));
+      }
     };
+
+    image.onerror = () => {
+      finish(createFallbackPalette(count));
+    };
+
+    image.crossOrigin = 'Anonymous';
+    image.src = imageUrl;
   });
 }

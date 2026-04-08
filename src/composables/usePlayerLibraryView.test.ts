@@ -107,4 +107,28 @@ describe('player library view', () => {
     expect(favArtistList.value.map(item => item.name)).toContain('Target Artist');
     expect(favArtistList.value.find(item => item.name === 'Target Artist')?.count).toBe(2);
   });
+
+  it('resolves recent songs from path-backed history entries', () => {
+    const libraryStore = useLibraryStore();
+    const collectionsStore = useCollectionsStore();
+    const navigationStore = useNavigationStore();
+    const alpha = makeSong({ path: '/music/alpha.flac', title: 'Alpha', added_at: 3 });
+    const beta = makeSong({ path: '/music/beta.flac', title: 'Beta', added_at: 2 });
+
+    libraryStore.librarySongs = [alpha, beta];
+    collectionsStore.recentSongs = [
+      { path: beta.path, playedAt: 2 },
+      { path: '/music/missing.flac', playedAt: 3 },
+      { path: alpha.path, playedAt: 1 },
+    ];
+    navigationStore.currentViewMode = 'recent';
+    libraryStore.localSortMode = 'title';
+
+    const { displaySongList } = usePlayerLibraryView();
+
+    expect(displaySongList.value.map(song => song.path)).toEqual([
+      alpha.path,
+      beta.path,
+    ]);
+  });
 });

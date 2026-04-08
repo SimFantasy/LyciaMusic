@@ -109,4 +109,41 @@ describe('player queue domain', () => {
 
     expect(played).toEqual(['/music/first.flac']);
   });
+
+  it('caps shuffle history to the most recent 256 entries', () => {
+    const played: string[] = [];
+    const playbackStore = usePlaybackStore();
+    const libraryStore = useLibraryStore();
+    const songs = Array.from({ length: 300 }, (_, index) =>
+      makeSong({
+        path: `/music/${index}.flac`,
+        title: `Song ${index}`,
+      }),
+    );
+    const playerQueue = createPlayerQueue({
+      playSong: (song) => {
+        played.push(song.path);
+        playbackStore.currentSong = song;
+      },
+      stopPlaybackRuntime: vi.fn(),
+      showToast: vi.fn(),
+    });
+
+    libraryStore.songList = songs;
+    playbackStore.playMode = 2;
+    playbackStore.currentSong = songs[0];
+
+    for (let index = 1; index < songs.length; index += 1) {
+      playerQueue.handleBeforePlay(songs[index]);
+      playbackStore.currentSong = songs[index];
+    }
+
+    for (let index = 0; index < 256; index += 1) {
+      playerQueue.prevSong();
+    }
+
+    expect(played).toHaveLength(256);
+    expect(played[0]).toBe('/music/298.flac');
+    expect(played[255]).toBe('/music/43.flac');
+  });
 });
