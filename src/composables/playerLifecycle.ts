@@ -411,6 +411,11 @@ export const createPlayerLifecycle = ({
         await playbackApi.setVolume(volume.value / 100);
       }
 
+      const storedPlayMode = playerStorage.readNumber(playerStorageKeys.playMode);
+      if (storedPlayMode !== null && [0, 1, 2].includes(storedPlayMode)) {
+        playMode.value = storedPlayMode;
+      }
+
       await restoreOutputDevice();
 
       libraryStore.setWatchedFolders(
