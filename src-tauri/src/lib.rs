@@ -10,6 +10,7 @@ mod toolbox;
 mod window_boundary;
 mod window_material;
 mod window_theme;
+mod window_z_order;
 
 use app_runtime::{consume_pending_open_paths, handle_single_instance, setup_app};
 use database::clear_all_app_data;
@@ -36,6 +37,7 @@ use toolbox::{apply_rename, open_external_program, preview_rename, refresh_folde
 use window_boundary::set_mini_boundary_enabled;
 use window_material::get_window_material_capabilities;
 use window_theme::set_dark_mode_for_window;
+use window_z_order::{refresh_current_window_topmost, start_topmost_guard, stop_topmost_guard};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -103,6 +105,9 @@ pub fn run() {
             get_window_material_capabilities,
             get_foreground_fullscreen_state,
             set_dark_mode_for_window,
+            refresh_current_window_topmost,
+            start_topmost_guard,
+            stop_topmost_guard,
             consume_pending_open_paths,
             get_system_fonts
         ])

@@ -11,4 +11,10 @@ export const windowApi = {
     tauriInvoke('get_window_material_capabilities') as Promise<WindowMaterialCapabilities>,
   getForegroundFullscreenState: () =>
     tauriInvoke('get_foreground_fullscreen_state') as Promise<ForegroundFullscreenState>,
+  refreshCurrentWindowTopmost: (enabled: boolean) =>
+    tauriInvoke('refresh_current_window_topmost', { enabled }),
+  startTopmostGuard: () =>
+    tauriInvoke('start_topmost_guard'),
+  stopTopmostGuard: () =>
+    tauriInvoke('stop_topmost_guard'),
 };

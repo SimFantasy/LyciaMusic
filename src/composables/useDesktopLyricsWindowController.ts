@@ -113,6 +113,18 @@ export function useDesktopLyricsWindowController(options: {
     await appWindow.setFocusable(!shouldIgnoreCursor);
   }
 
+  async function applyAlwaysOnTopState(enabled: boolean) {
+    await appWindow.setAlwaysOnTop(enabled);
+    await windowApi.refreshCurrentWindowTopmost(enabled);
+
+    if (enabled) {
+      await windowApi.startTopmostGuard();
+      return;
+    }
+
+    await windowApi.stopTopmostGuard();
+  }
+
   function clearHoverDimTimer() {
     if (hoverDimTimer) {
       clearTimeout(hoverDimTimer);
@@ -279,6 +291,7 @@ export function useDesktopLyricsWindowController(options: {
     unlistenCloseRequested?.();
     unlistenMoved?.();
     unlistenResized?.();
+    void windowApi.stopTopmostGuard();
 
     if (dragShadowTimer) {
       clearTimeout(dragShadowTimer);
@@ -305,6 +318,14 @@ export function useDesktopLyricsWindowController(options: {
         isSystemHidden.value = false;
       }
     },
+  );
+
+  watch(
+    () => settings.value.isAlwaysOnTop,
+    (enabled) => {
+      void applyAlwaysOnTopState(enabled);
+    },
+    { immediate: true },
   );
 
   return {

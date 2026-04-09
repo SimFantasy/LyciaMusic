@@ -121,6 +121,12 @@ export interface TauriCommandMap {
     payload: undefined;
     response: ForegroundFullscreenState;
   };
+  refresh_current_window_topmost: {
+    payload: { enabled: boolean };
+    response: void;
+  };
+  start_topmost_guard: { payload: undefined; response: void };
+  stop_topmost_guard: { payload: undefined; response: void };
   clear_all_app_data: { payload: undefined; response: void };
   open_external_program: {
     payload: { path: string; args: string[] };

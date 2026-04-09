@@ -44,7 +44,7 @@ tauri-plugin-single-instance = "2"
 rayon = "1.10"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_UI_Shell", "Win32_System_Registry", "Win32_System_SystemInformation"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_UI_Shell", "Win32_UI_Accessibility", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Threading"] }
 
 [profile.dev.package."*"]
 opt-level = 3
