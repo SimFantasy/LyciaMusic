@@ -131,4 +131,37 @@ describe('player library view', () => {
       beta.path,
     ]);
   });
+
+  it('sorts local music by file modified time in both directions', () => {
+    const libraryStore = useLibraryStore();
+    const navigationStore = useNavigationStore();
+    const oldSong = makeSong({
+      path: '/music/old.flac',
+      title: 'Old',
+      file_modified_at: 10,
+    });
+    const newSong = makeSong({
+      path: '/music/new.flac',
+      title: 'New',
+      file_modified_at: 20,
+    });
+
+    libraryStore.librarySongs = [oldSong, newSong];
+    navigationStore.currentViewMode = 'all';
+    libraryStore.localSortMode = 'file_modified_at';
+
+    const { displaySongList } = usePlayerLibraryView();
+
+    expect(displaySongList.value.map(song => song.path)).toEqual([
+      newSong.path,
+      oldSong.path,
+    ]);
+
+    libraryStore.localSortMode = 'file_modified_at_asc';
+
+    expect(displaySongList.value.map(song => song.path)).toEqual([
+      oldSong.path,
+      newSong.path,
+    ]);
+  });
 });

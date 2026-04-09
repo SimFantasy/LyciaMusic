@@ -4,7 +4,7 @@ import { localStore } from './localStore';
 export type ArtistSortMode = 'count' | 'name' | 'custom';
 export type AlbumSortMode = 'count' | 'name' | 'artist' | 'custom';
 export type FolderSortMode = 'title' | 'name' | 'artist' | 'added_at' | 'added_at_asc' | 'custom';
-export type LocalSortMode = 'title' | 'name' | 'artist' | 'added_at' | 'added_at_asc' | 'custom';
+export type LocalSortMode = 'title' | 'artist' | 'added_at' | 'added_at_asc' | 'file_modified_at' | 'file_modified_at_asc' | 'custom';
 export type PlaylistSortMode = 'title' | 'name' | 'artist' | 'added_at' | 'added_at_asc' | 'custom';
 
 export const playerStorageKeys = {

@@ -126,8 +126,10 @@ const restoreSortSettings = ({
   }
 
   const storedLocalSort = playerStorage.getString(playerStorageKeys.localSortMode);
-  if (storedLocalSort && ['title', 'name', 'artist', 'added_at', 'custom'].includes(storedLocalSort)) {
+  if (storedLocalSort && ['title', 'artist', 'added_at', 'added_at_asc', 'file_modified_at', 'file_modified_at_asc', 'custom'].includes(storedLocalSort)) {
     localSortMode.value = storedLocalSort as LocalSortMode;
+  } else if (storedLocalSort === 'name') {
+    localSortMode.value = 'title';
   } else if (storedLocalSort === 'default') {
     localSortMode.value = 'title';
   }

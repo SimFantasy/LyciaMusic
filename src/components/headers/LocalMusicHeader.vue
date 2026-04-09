@@ -25,9 +25,9 @@ const {
 
 const sortLabelMap = {
   title: '\u6b4c\u66f2\u540d',
-  name: '\u6587\u4ef6\u540d',
   artist: '\u6b4c\u624b',
-  added_at: '下载时间',
+  added_at: '\u6dfb\u52a0\u65f6\u95f4',
+  file_modified_at: '\u4fee\u6539\u65f6\u95f4',
   custom: '\u81ea\u5b9a\u4e49',
 } as const;
 
@@ -165,11 +165,13 @@ const handleEnterBatchMode = () => {
               : { left: sortMenuX + 'px', top: sortMenuY + 'px' }"
           >
             <div
-              v-for="mode in (['title', 'name', 'artist', 'added_at', 'custom'] as const)"
+              v-for="mode in (['title', 'artist', 'added_at', 'file_modified_at', 'custom'] as const)"
               :key="mode"
               @click="
                 if (mode === 'added_at') {
                   setLocalSortMode(localSortMode === 'added_at' ? 'added_at_asc' : 'added_at');
+                } else if (mode === 'file_modified_at') {
+                  setLocalSortMode(localSortMode === 'file_modified_at' ? 'file_modified_at_asc' : 'file_modified_at');
                 } else {
                   setLocalSortMode(mode);
                 }
@@ -180,7 +182,7 @@ const handleEnterBatchMode = () => {
             >
               <span>{{ sortLabelMap[mode] }}</span>
               <div v-if="(localSortMode || '').startsWith(mode)" class="flex items-center gap-1.5">
-                <svg v-if="mode === 'added_at'" xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform duration-200" :class="{ 'rotate-180': localSortMode === 'added_at_asc' }" viewBox="0 0 20 20" fill="currentColor">
+                <svg v-if="mode === 'added_at' || mode === 'file_modified_at'" xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform duration-200" :class="{ 'rotate-180': localSortMode === 'added_at_asc' || localSortMode === 'file_modified_at_asc' }" viewBox="0 0 20 20" fill="currentColor">
                   <path fill-rule="evenodd" d="M14.707 12.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l2.293-2.293a1 1 0 011.414 0z" clip-rule="evenodd" />
                 </svg>
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
