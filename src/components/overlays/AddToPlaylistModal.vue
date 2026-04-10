@@ -1,7 +1,7 @@
 //负责显示“添加到歌单”的弹窗。
 <script setup lang="ts">
 import { useLibraryCollections } from '../../features/collections/useLibraryCollections';
-import { ref, watch } from 'vue';
+import { onUnmounted, ref, watch } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import ModernInputModal from '../common/ModernInputModal.vue';
@@ -15,12 +15,32 @@ const emit = defineEmits(['close', 'add']);
 
 const { playlists, createPlaylist } = useLibraryCollections();
 const playlistCoverCache = ref<Map<string, string>>(new Map());
+let clearTimer: number | null = null;
+
+const clearCoverCache = () => {
+  playlistCoverCache.value.clear();
+};
+
+const cancelClearTimer = () => {
+  if (clearTimer !== null) {
+    window.clearTimeout(clearTimer);
+    clearTimer = null;
+  }
+};
+
+const scheduleClear = () => {
+  cancelClearTimer();
+  clearTimer = window.setTimeout(() => {
+    clearCoverCache();
+    clearTimer = null;
+  }, 15000);
+};
 
 const loadPlaylistCover = async (id: string, path: string) => {
   if (!path || playlistCoverCache.value.has(id)) return;
   try {
     const filePath = await invoke<string>('get_song_cover_thumbnail', { path });
-    if (filePath) {
+    if (filePath && props.visible) {
        playlistCoverCache.value.set(id, convertFileSrc(filePath));
     }
   } catch {}
@@ -28,8 +48,17 @@ const loadPlaylistCover = async (id: string, path: string) => {
 
 watch(() => props.visible, (val) => {
   if (val) {
-    playlists.value.forEach(pl => { if (pl.songPaths.length > 0) loadPlaylistCover(pl.id, pl.songPaths[0]); });
+    cancelClearTimer();
+    playlists.value.forEach(pl => { if (pl.songPaths.length > 0) void loadPlaylistCover(pl.id, pl.songPaths[0]); });
+    return;
   }
+
+  scheduleClear();
+});
+
+onUnmounted(() => {
+  cancelClearTimer();
+  clearCoverCache();
 });
 
 const showCreateModal = ref(false);

@@ -1,10 +1,7 @@
-<script lang="ts">
-const headerCoverCache = new Map<string, string>();
-</script>
-
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { artistHeaderCache } from '../../caches/imageCaches';
 
 const props = defineProps<{
   artistName: string;
@@ -32,8 +29,9 @@ watch(() => props.songs, async (newSongs) => {
   if (newSongs && newSongs.length > 0) {
     const firstSongPath = newSongs[0].path;
     if (firstSongPath) {
-      if (headerCoverCache.has(props.artistName)) {
-        coverUrl.value = headerCoverCache.get(props.artistName) || '';
+      const cachedCover = artistHeaderCache.get(props.artistName);
+      if (cachedCover !== undefined) {
+        coverUrl.value = cachedCover;
         isLoading.value = false;
         return;
       }
@@ -47,14 +45,14 @@ watch(() => props.songs, async (newSongs) => {
         if (filePath) {
           const url = toCoverAssetUrl(filePath);
           coverUrl.value = url;
-          headerCoverCache.set(props.artistName, url);
+          artistHeaderCache.set(props.artistName, url);
         } else {
           coverUrl.value = '';
-          headerCoverCache.set(props.artistName, '');
+          artistHeaderCache.set(props.artistName, '');
         }
       } catch (e) {
         coverUrl.value = '';
-        headerCoverCache.set(props.artistName, '');
+        artistHeaderCache.set(props.artistName, '');
       } finally {
         isLoading.value = false;
       }

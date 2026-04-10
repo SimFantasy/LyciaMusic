@@ -1,4 +1,5 @@
 import { onUnmounted, ref, watch, type Ref } from 'vue';
+import { sidebarPlaylistCoverCache } from '../caches/imageCaches';
 
 import type { Playlist } from '../types';
 
@@ -11,46 +12,49 @@ export function useSidebarPlaylistCovers({
   playlists,
   loadCover,
 }: UseSidebarPlaylistCoversOptions) {
-  const playlistCoverCache = ref<Map<string, string>>(new Map());
   const playlistRealFirstSongMap = new Map<string, string>();
+  const playlistCoverCacheVersion = ref(0);
   let playlistCoverRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   let playlistCoverRefreshIdleId: number | null = null;
 
   const updateCoverIfChanged = async (playlistId: string, firstSongPath: string) => {
     if (
       playlistRealFirstSongMap.get(playlistId) === firstSongPath &&
-      playlistCoverCache.value.has(playlistId)
+      sidebarPlaylistCoverCache.has(playlistId)
     ) {
-      return;
+      return false;
     }
 
     playlistRealFirstSongMap.set(playlistId, firstSongPath);
     try {
       const assetUrl = await loadCover(firstSongPath);
       if (assetUrl) {
-        playlistCoverCache.value.set(playlistId, assetUrl);
+        sidebarPlaylistCoverCache.set(playlistId, assetUrl);
+        return true;
       } else {
-        playlistCoverCache.value.delete(playlistId);
+        return sidebarPlaylistCoverCache.delete(playlistId);
       }
     } catch {
-      playlistCoverCache.value.delete(playlistId);
+      return sidebarPlaylistCoverCache.delete(playlistId);
     }
   };
 
   const calculatePlaylistCovers = async () => {
-    await Promise.all(
+    const changes = await Promise.all(
       playlists.value.map(async playlist => {
         if (playlist.songPaths.length > 0) {
-          await updateCoverIfChanged(playlist.id, playlist.songPaths[0]);
-          return;
+          return updateCoverIfChanged(playlist.id, playlist.songPaths[0]);
         }
 
-        if (playlistCoverCache.value.has(playlist.id)) {
-          playlistCoverCache.value.delete(playlist.id);
-          playlistRealFirstSongMap.delete(playlist.id);
-        }
+        const removedCover = sidebarPlaylistCoverCache.delete(playlist.id);
+        const removedSongPath = playlistRealFirstSongMap.delete(playlist.id);
+        return removedCover || removedSongPath;
       }),
     );
+
+    if (changes.some(Boolean)) {
+      playlistCoverCacheVersion.value += 1;
+    }
   };
 
   const schedulePlaylistCoverRefresh = () => {
@@ -97,6 +101,7 @@ export function useSidebarPlaylistCovers({
   });
 
   return {
-    playlistCoverCache,
+    playlistCoverCache: sidebarPlaylistCoverCache,
+    playlistCoverCacheVersion,
   };
 }

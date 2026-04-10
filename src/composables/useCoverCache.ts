@@ -6,6 +6,7 @@ type CoverKind = 'thumbnail' | 'full';
 const THUMBNAIL_CACHE_LIMIT = 96;
 const PRELOAD_CONCURRENCY = 4;
 
+// Small in-memory LRU for thumbnail URLs. The actual image files live on disk.
 const thumbnailCache = reactive(new Map<string, string>());
 const loadingSet = reactive(new Set<string>());
 const inFlightRequests = new Map<string, Promise<string>>();
@@ -111,6 +112,14 @@ const scheduleNextPreload = () => {
 };
 
 export function useCoverCache() {
+  const isCoverLoading = (path: string | undefined, kind: CoverKind = 'thumbnail') => {
+    if (!path) {
+      return false;
+    }
+
+    return loadingSet.has(buildCacheKey(path, kind));
+  };
+
   const loadCover = async (path: string | undefined): Promise<string | undefined> => {
     if (!path) {
       return undefined;
@@ -153,6 +162,7 @@ export function useCoverCache() {
   return {
     coverCache: thumbnailCache,
     loadingSet,
+    isCoverLoading,
     loadCover,
     loadFullCover,
     preloadCovers,

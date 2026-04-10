@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'Artists' });
 
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch, watchEffect } from 'vue';
 import { useRouter } from 'vue-router';
 import { dragSession } from '../composables/dragState';
 import { useCoverCache } from '../composables/useCoverCache';
@@ -19,6 +19,7 @@ const isSearchActive = computed(() => searchQuery.value.trim().length > 0);
 const showSortMenu = ref(false);
 const dragOverName = ref<string | null>(null);
 const containerRef = ref<HTMLElement | null>(null);
+const displayedCoverUrls = reactive(new Map<string, string>());
 
 const handleArtistClick = (artistName: string) => {
   void openHomeArtist(artistName);
@@ -29,7 +30,7 @@ const handleSortChange = (mode: 'count' | 'name' | 'custom') => {
   showSortMenu.value = false;
 };
 
-const { coverCache, loadingSet, preloadCovers } = useCoverCache();
+const { coverCache, isCoverLoading, preloadCovers } = useCoverCache();
 
 const artistSections = computed(() => {
   const sections: Array<{
@@ -59,10 +60,32 @@ watch(
   () => filteredArtistList.value,
   (newList) => {
     const paths = newList.map((artist) => artist.firstSongPath).filter(Boolean);
+
+    const activePaths = new Set(paths);
+    for (const existingPath of displayedCoverUrls.keys()) {
+      if (!activePaths.has(existingPath)) {
+        displayedCoverUrls.delete(existingPath);
+      }
+    }
+
     preloadCovers(paths);
   },
   { immediate: true },
 );
+
+watchEffect(() => {
+  for (const artist of filteredArtistList.value) {
+    const path = artist.firstSongPath;
+    if (!path) {
+      continue;
+    }
+
+    const resolvedCoverUrl = coverCache.get(path);
+    if (resolvedCoverUrl) {
+      displayedCoverUrls.set(path, resolvedCoverUrl);
+    }
+  }
+});
 
 useListScrollMemory('artists-view', containerRef);
 
@@ -238,8 +261,8 @@ onUnmounted(() => {
                 :class="{ 'ring-2 ring-[#EC4141] ring-offset-2 ring-offset-gray-50 dark:ring-offset-[#222222] rounded-full': dragSession.active && dragSession.type === 'artist' && dragOverName === item.artist.name && dragSession.data?.name !== item.artist.name }"
               >
                 <div class="w-full h-full rounded-full overflow-hidden shadow-sm group-hover:shadow transition-shadow duration-300 relative bg-gray-100 dark:bg-white/5 flex items-center justify-center">
-                  <div v-if="loadingSet.has(item.artist.firstSongPath)" class="w-full h-full bg-gray-200 dark:bg-white/10 animate-pulse"></div>
-                  <img v-else-if="coverCache.get(item.artist.firstSongPath)" :src="coverCache.get(item.artist.firstSongPath)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="item.artist.name">
+                  <div v-if="isCoverLoading(item.artist.firstSongPath)" class="w-full h-full bg-gray-200 dark:bg-white/10 animate-pulse"></div>
+                  <img v-else-if="displayedCoverUrls.get(item.artist.firstSongPath)" :src="displayedCoverUrls.get(item.artist.firstSongPath)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="item.artist.name">
                   <div v-else class="w-full h-full flex items-center justify-center text-lg md:text-xl font-bold text-white bg-gradient-to-br animate-in fade-in duration-300" :class="getGradientForArtist(item.artist.name)">
                     {{ item.artist.name.charAt(0).toUpperCase() }}
                   </div>
@@ -274,8 +297,8 @@ onUnmounted(() => {
             :class="{ 'ring-2 ring-[#EC4141] ring-offset-2 ring-offset-gray-50 dark:ring-offset-[#222222] rounded-full': dragSession.active && dragSession.type === 'artist' && dragOverName === artist.name && dragSession.data?.name !== artist.name }"
           >
             <div class="w-full h-full rounded-full overflow-hidden shadow-sm group-hover:shadow transition-shadow duration-300 relative bg-gray-100 dark:bg-white/5 flex items-center justify-center">
-              <div v-if="loadingSet.has(artist.firstSongPath)" class="w-full h-full bg-gray-200 dark:bg-white/10 animate-pulse"></div>
-              <img v-else-if="coverCache.get(artist.firstSongPath)" :src="coverCache.get(artist.firstSongPath)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="artist.name">
+              <div v-if="isCoverLoading(artist.firstSongPath)" class="w-full h-full bg-gray-200 dark:bg-white/10 animate-pulse"></div>
+              <img v-else-if="displayedCoverUrls.get(artist.firstSongPath)" :src="displayedCoverUrls.get(artist.firstSongPath)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="artist.name">
               <div v-else class="w-full h-full flex items-center justify-center text-lg md:text-xl font-bold text-white bg-gradient-to-br animate-in fade-in duration-300" :class="getGradientForArtist(artist.name)">
                 {{ artist.name.charAt(0).toUpperCase() }}
               </div>

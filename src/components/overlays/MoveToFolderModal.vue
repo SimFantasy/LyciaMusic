@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 
 import { usePlayerLibraryView } from '../../features/library/usePlayerLibraryView';
@@ -23,6 +23,26 @@ type MoveFolderOption = {
 const { folderList, libraryHierarchy } = usePlayerLibraryView();
 const { activeRootPath, currentViewMode } = usePlayerViewState();
 const folderCoverCache = ref<Map<string, string>>(new Map());
+let clearTimer: number | null = null;
+
+const clearCoverCache = () => {
+  folderCoverCache.value.clear();
+};
+
+const cancelClearTimer = () => {
+  if (clearTimer !== null) {
+    window.clearTimeout(clearTimer);
+    clearTimer = null;
+  }
+};
+
+const scheduleClear = () => {
+  cancelClearTimer();
+  clearTimer = window.setTimeout(() => {
+    clearCoverCache();
+    clearTimer = null;
+  }, 15000);
+};
 
 const flattenFolderTree = (node: FolderNode, result: MoveFolderOption[]) => {
   result.push({
@@ -58,7 +78,7 @@ const loadFolderCover = async (path: string, firstSongPath: string) => {
 
   try {
     const coverPath = await invoke<string>('get_song_cover_thumbnail', { path: firstSongPath });
-    if (coverPath) {
+    if (coverPath && props.visible) {
       folderCoverCache.value.set(path, convertFileSrc(coverPath));
     }
   } catch {
@@ -67,12 +87,22 @@ const loadFolderCover = async (path: string, firstSongPath: string) => {
 };
 
 watch(() => props.visible, val => {
-  if (!val) return;
-  availableFolders.value.forEach(folder => {
-    if (folder.firstSongPath) {
-      void loadFolderCover(folder.path, folder.firstSongPath);
-    }
-  });
+  if (val) {
+    cancelClearTimer();
+    availableFolders.value.forEach(folder => {
+      if (folder.firstSongPath) {
+        void loadFolderCover(folder.path, folder.firstSongPath);
+      }
+    });
+    return;
+  }
+
+  scheduleClear();
+});
+
+onUnmounted(() => {
+  cancelClearTimer();
+  clearCoverCache();
 });
 </script>
 

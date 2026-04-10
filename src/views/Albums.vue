@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'Albums' });
 
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch, watchEffect } from 'vue';
 import { useRouter } from 'vue-router';
 import { dragSession } from '../composables/dragState';
 import { useCoverCache } from '../composables/useCoverCache';
@@ -19,6 +19,7 @@ const isSearchActive = computed(() => searchQuery.value.trim().length > 0);
 const showSortMenu = ref(false);
 const dragOverKey = ref<string | null>(null);
 const containerRef = ref<HTMLElement | null>(null);
+const displayedCoverUrls = reactive(new Map<string, string>());
 
 const handleAlbumClick = (albumKey: string) => {
   void openHomeAlbum(albumKey);
@@ -29,7 +30,7 @@ const handleSortChange = (mode: 'count' | 'name' | 'artist' | 'custom') => {
   showSortMenu.value = false;
 };
 
-const { coverCache, loadingSet, preloadCovers } = useCoverCache();
+const { coverCache, isCoverLoading, preloadCovers } = useCoverCache();
 
 const albumSections = computed(() => {
   const sections: Array<{
@@ -59,10 +60,32 @@ watch(
   () => filteredAlbumList.value,
   (newList) => {
     const paths = newList.map((album) => album.firstSongPath).filter(Boolean);
+
+    const activePaths = new Set(paths);
+    for (const existingPath of displayedCoverUrls.keys()) {
+      if (!activePaths.has(existingPath)) {
+        displayedCoverUrls.delete(existingPath);
+      }
+    }
+
     preloadCovers(paths);
   },
   { immediate: true },
 );
+
+watchEffect(() => {
+  for (const album of filteredAlbumList.value) {
+    const path = album.firstSongPath;
+    if (!path) {
+      continue;
+    }
+
+    const resolvedCoverUrl = coverCache.get(path);
+    if (resolvedCoverUrl) {
+      displayedCoverUrls.set(path, resolvedCoverUrl);
+    }
+  }
+});
 
 useListScrollMemory('albums-view', containerRef);
 
@@ -231,15 +254,15 @@ onUnmounted(() => {
 
                 <div class="absolute inset-0 z-10 bg-white dark:bg-gray-800 rounded-md shadow-md border border-gray-100 dark:border-white/10 p-1 flex items-center justify-center overflow-hidden group-hover:shadow-xl transition-shadow duration-300">
                   <div
-                    v-if="coverCache.get(item.album.firstSongPath)"
+                    v-if="displayedCoverUrls.get(item.album.firstSongPath)"
                     class="w-full h-full bg-cover bg-center rounded-sm"
-                    :style="{ backgroundImage: `url(${coverCache.get(item.album.firstSongPath)})` }"
+                    :style="{ backgroundImage: `url(${displayedCoverUrls.get(item.album.firstSongPath)})` }"
                   ></div>
 
                   <div
                     v-else
                     class="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-white/5 dark:to-white/10 rounded-sm flex items-center justify-center text-4xl font-bold text-gray-300 dark:text-gray-600 shadow-inner"
-                    :class="{ 'animate-pulse': loadingSet.has(item.album.firstSongPath) }"
+                    :class="{ 'animate-pulse': isCoverLoading(item.album.firstSongPath) }"
                   >
                     {{ item.album.name ? item.album.name.substring(0, 1).toUpperCase() : 'A' }}
                   </div>
@@ -283,15 +306,15 @@ onUnmounted(() => {
 
             <div class="absolute inset-0 z-10 bg-white dark:bg-gray-800 rounded-md shadow-md border border-gray-100 dark:border-white/10 p-1 flex items-center justify-center overflow-hidden group-hover:shadow-xl transition-shadow duration-300">
               <div
-                v-if="coverCache.get(album.firstSongPath)"
+                v-if="displayedCoverUrls.get(album.firstSongPath)"
                 class="w-full h-full bg-cover bg-center rounded-sm"
-                :style="{ backgroundImage: `url(${coverCache.get(album.firstSongPath)})` }"
+                :style="{ backgroundImage: `url(${displayedCoverUrls.get(album.firstSongPath)})` }"
               ></div>
 
               <div
                 v-else
                 class="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-white/5 dark:to-white/10 rounded-sm flex items-center justify-center text-4xl font-bold text-gray-300 dark:text-gray-600 shadow-inner"
-                :class="{ 'animate-pulse': loadingSet.has(album.firstSongPath) }"
+                :class="{ 'animate-pulse': isCoverLoading(album.firstSongPath) }"
               >
                 {{ album.name ? album.name.substring(0, 1).toUpperCase() : 'A' }}
               </div>

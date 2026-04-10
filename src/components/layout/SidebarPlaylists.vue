@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 
 import type { Playlist } from '../../types';
+import type { MemoryCache } from '../../utils/MemoryCache';
 
 interface DragState {
   active: boolean;
@@ -14,7 +15,8 @@ interface Props {
   isOpen: boolean;
   playlists: Playlist[];
   selectedPlaylistIds: Set<string>;
-  playlistCoverCache: Map<string, string>;
+  playlistCoverCache: MemoryCache<string, string>;
+  playlistCoverCacheVersion: number;
   dragState: DragState;
   dragOverId: string | null;
   dragPosition: 'top' | 'bottom' | null;
@@ -36,6 +38,11 @@ const isOpenModel = computed({
   get: () => props.isOpen,
   set: (value: boolean) => emit('update:isOpen', value),
 });
+
+const getPlaylistCover = (playlistId: string) => {
+  void props.playlistCoverCacheVersion;
+  return props.playlistCoverCache.get(playlistId);
+};
 </script>
 
 <template>
@@ -71,7 +78,7 @@ const isOpenModel = computed({
             ]"
           >
             <div class="w-9 h-9 rounded bg-gray-200/50 border border-gray-100/50 shrink-0 overflow-hidden mr-3 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
-              <img v-if="playlistCoverCache.get(list.id)" :src="playlistCoverCache.get(list.id)" class="w-full h-full object-cover" alt="Cover" />
+              <img v-if="getPlaylistCover(list.id)" :src="getPlaylistCover(list.id)" class="w-full h-full object-cover" alt="Cover" />
               <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 dark:text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
             </div>
             <div class="flex-1 min-w-0 flex flex-col justify-center">

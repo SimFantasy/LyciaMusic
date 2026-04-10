@@ -1,6 +1,5 @@
 import { nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, type Ref } from 'vue';
-
-const listScrollMemory = new Map<string, number>();
+import { listScrollCache } from '../caches/imageCaches';
 
 export function useListScrollMemory(key: string, containerRef: Ref<HTMLElement | null>) {
   const saveScrollPosition = () => {
@@ -8,7 +7,7 @@ export function useListScrollMemory(key: string, containerRef: Ref<HTMLElement |
       return;
     }
 
-    listScrollMemory.set(key, containerRef.value.scrollTop);
+    listScrollCache.set(key, containerRef.value.scrollTop);
   };
 
   const restoreScrollPosition = async () => {
@@ -18,7 +17,7 @@ export function useListScrollMemory(key: string, containerRef: Ref<HTMLElement |
       return;
     }
 
-    const savedTop = listScrollMemory.get(key);
+    const savedTop = listScrollCache.get(key);
     if (savedTop === undefined) {
       return;
     }

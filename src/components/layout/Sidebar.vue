@@ -122,7 +122,7 @@ const {
   reorderPlaylists,
 });
 
-const { playlistCoverCache } = useSidebarPlaylistCovers({
+const { playlistCoverCache, playlistCoverCacheVersion } = useSidebarPlaylistCovers({
   playlists,
   loadCover,
 });
@@ -192,6 +192,7 @@ const handleOpenStatisticsView = () => {
         :playlists="playlists"
         :selectedPlaylistIds="selectedPlaylistIds"
         :playlistCoverCache="playlistCoverCache"
+        :playlistCoverCacheVersion="playlistCoverCacheVersion"
         :dragState="dragSession"
         :dragOverId="dragOverId"
         :dragPosition="dragPosition"
