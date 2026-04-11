@@ -2,8 +2,7 @@
 import { useLibraryBrowse } from '../../features/library/useLibraryBrowse';
 import { usePlayerViewState } from '../../composables/usePlayerViewState';
 import { ref, watch, onUnmounted, nextTick } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { useCoverCache } from '../../composables/useCoverCache';
 
 const { favTab } = usePlayerViewState();
 const { favArtistList, favAlbumList } = useLibraryBrowse();
@@ -12,16 +11,13 @@ const emit = defineEmits<{
   (e: 'enterDetail', type: 'artist' | 'album', name: string): void
 }>();
 
-const imageCache = ref<Map<string, string>>(new Map());
+const { coverCache, loadCover } = useCoverCache();
 
-const loadCover = async (path: string) => {
-  if (imageCache.value.has(path)) return;
+const ensureCoverLoaded = async (path: string) => {
+  if (!path || coverCache.get(path)) return;
   try {
-    const filePath = await invoke<string>('get_song_cover_thumbnail', { path });
-    if (filePath) {
-      imageCache.value.set(path, convertFileSrc(filePath));
-    }
-  } catch (e) {}
+    await loadCover(path);
+  } catch {}
 };
 
 const itemRefs = ref<HTMLElement[]>([]);
@@ -36,7 +32,7 @@ const initObserver = () => {
         const target = entry.target as HTMLElement;
         const path = target.dataset.path;
         if (path) {
-          loadCover(path);
+          void ensureCoverLoaded(path);
           observer?.unobserve(target);
         }
       }
@@ -74,8 +70,8 @@ onUnmounted(() => {
                  group-hover:shadow-xl transition-all duration-300 ease-out group-hover:scale-[1.03]"
         >
           <img
-            v-if="imageCache.get(artist.firstSongPath)"
-            :src="imageCache.get(artist.firstSongPath)"
+            v-if="coverCache.get(artist.firstSongPath)"
+            :src="coverCache.get(artist.firstSongPath)"
             class="w-full h-full object-cover"
             alt="Artist"
           />
@@ -113,8 +109,8 @@ onUnmounted(() => {
                  group-hover:shadow-xl transition-all duration-300 ease-out group-hover:scale-[1.03]"
         >
           <img
-            v-if="imageCache.get(album.firstSongPath)"
-            :src="imageCache.get(album.firstSongPath)"
+            v-if="coverCache.get(album.firstSongPath)"
+            :src="coverCache.get(album.firstSongPath)"
             class="w-full h-full object-cover"
             alt="Album"
           />

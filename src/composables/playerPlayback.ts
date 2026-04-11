@@ -2,6 +2,7 @@ import { storeToRefs } from 'pinia';
 import type { Song } from '../types';
 import { playbackApi } from '../services/tauri/playbackApi';
 import { usePlaybackStore } from '../features/playback/store';
+import { useCoverCache } from './useCoverCache';
 
 interface PlaySongOptions {
   updateShuffleHistory?: boolean;
@@ -40,8 +41,10 @@ export const createPlayerPlayback = ({
   onBeforePlay,
 }: CreatePlayerPlaybackDeps) => {
   const playbackStore = usePlaybackStore();
+  const { loadCover, loadFullCover } = useCoverCache();
   const {
     currentCover,
+    currentCoverFull,
     currentSong,
     currentTime,
     isPlaying,
@@ -142,6 +145,7 @@ export const createPlayerPlayback = ({
     isPlaying.value = true;
     isSongLoaded.value = false;
     currentCover.value = '';
+    currentCoverFull.value = '';
     stopPlaybackRuntime();
     reanchorPlaybackClock(0);
     accumulatedTime = 0;
@@ -165,22 +169,34 @@ export const createPlayerPlayback = ({
       loadLyrics();
       startPlaybackRuntime();
 
-      void playbackApi.getSongCoverThumbnail(song.path)
+      void loadCover(song.path)
         .then(async cover => {
           if (requestId !== playRequestId || currentSong.value?.path !== song.path) {
             return;
           }
 
-          currentCover.value = cover;
+          const normalizedCover = cover || '';
+          currentCover.value = normalizedCover;
+          currentCoverFull.value = normalizedCover;
 
           await playbackApi.updatePlaybackMetadata({
             title: song.name,
             artist: song.artist || 'Unknown Artist',
             album: song.album || 'Unknown Album',
-            cover,
+            cover: normalizedCover,
             duration: Math.floor(song.duration),
             isPlaying: isPlaying.value,
           }).catch(() => {});
+
+          void loadFullCover(song.path)
+            .then(fullCover => {
+              if (requestId !== playRequestId || currentSong.value?.path !== song.path) {
+                return;
+              }
+
+              currentCoverFull.value = fullCover || normalizedCover;
+            })
+            .catch(() => {});
         })
         .catch(() => {});
     } catch {

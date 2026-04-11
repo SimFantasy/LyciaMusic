@@ -13,7 +13,6 @@ export const useUiStore = defineStore('ui', () => {
   const showAddToPlaylistModal = ref(false);
   const playlistAddTargetSongs = ref<string[]>([]);
   const dominantColors = ref<string[]>([...defaultDominantColors]);
-  const playlistCover = ref('');
 
   return {
     showPlaylist,
@@ -25,6 +24,5 @@ export const useUiStore = defineStore('ui', () => {
     showAddToPlaylistModal,
     playlistAddTargetSongs,
     dominantColors,
-    playlistCover,
   };
 });

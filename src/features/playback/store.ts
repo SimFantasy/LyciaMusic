@@ -13,6 +13,7 @@ export const usePlaybackStore = defineStore('playback', () => {
   const tempQueue = shallowRef<Song[]>([]);
   const currentSong = ref<Song | null>(null);
   const currentCover = ref('');
+  const currentCoverFull = ref('');
 
   const resetPlaybackState = () => {
     isPlaying.value = false;
@@ -22,6 +23,7 @@ export const usePlaybackStore = defineStore('playback', () => {
     tempQueue.value = [];
     currentSong.value = null;
     currentCover.value = '';
+    currentCoverFull.value = '';
   };
 
   return {
@@ -34,6 +36,7 @@ export const usePlaybackStore = defineStore('playback', () => {
     tempQueue,
     currentSong,
     currentCover,
+    currentCoverFull,
     resetPlaybackState,
   };
 });

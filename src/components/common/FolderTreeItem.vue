@@ -82,9 +82,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 
 import { dragSession } from '../../composables/dragState';
+import { useCoverCache } from '../../composables/useCoverCache';
 import type { FolderNode } from '../../types';
 
 const props = defineProps<{
@@ -127,23 +127,28 @@ const handleContextMenu = (event: MouseEvent) => {
 };
 
 const coverUrl = ref('');
+const { loadCover: loadThumbnailCover } = useCoverCache();
+let coverRequestId = 0;
 
-const loadCover = async () => {
+const loadFolderCover = async () => {
+  const requestId = ++coverRequestId;
   if (!props.node.cover_song_path) {
     coverUrl.value = '';
     return;
   }
 
   try {
-    const filePath = await invoke<string>('get_song_cover_thumbnail', { path: props.node.cover_song_path });
-    coverUrl.value = filePath ? convertFileSrc(filePath) : '';
+    const resolvedCover = await loadThumbnailCover(props.node.cover_song_path);
+    if (requestId !== coverRequestId) return;
+    coverUrl.value = resolvedCover || '';
   } catch {
+    if (requestId !== coverRequestId) return;
     coverUrl.value = '';
   }
 };
 
-onMounted(loadCover);
-watch(() => props.node.cover_song_path, loadCover);
+onMounted(loadFolderCover);
+watch(() => props.node.cover_song_path, loadFolderCover);
 
 const beforeEnter = (element: Element) => {
   const htmlElement = element as HTMLElement;

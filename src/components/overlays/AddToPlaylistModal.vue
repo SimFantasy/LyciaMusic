@@ -2,9 +2,8 @@
 <script setup lang="ts">
 import { useLibraryCollections } from '../../features/collections/useLibraryCollections';
 import { onUnmounted, ref, watch } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import ModernInputModal from '../common/ModernInputModal.vue';
+import { useCoverCache } from '../../composables/useCoverCache';
 
 const props = defineProps<{
   visible: boolean,
@@ -16,6 +15,7 @@ const emit = defineEmits(['close', 'add']);
 const { playlists, createPlaylist } = useLibraryCollections();
 const playlistCoverCache = ref<Map<string, string>>(new Map());
 let clearTimer: number | null = null;
+const { loadCover } = useCoverCache();
 
 const clearCoverCache = () => {
   playlistCoverCache.value.clear();
@@ -39,9 +39,9 @@ const scheduleClear = () => {
 const loadPlaylistCover = async (id: string, path: string) => {
   if (!path || playlistCoverCache.value.has(id)) return;
   try {
-    const filePath = await invoke<string>('get_song_cover_thumbnail', { path });
-    if (filePath && props.visible) {
-       playlistCoverCache.value.set(id, convertFileSrc(filePath));
+    const coverUrl = await loadCover(path);
+    if (coverUrl && props.visible) {
+       playlistCoverCache.value.set(id, coverUrl);
     }
   } catch {}
 };

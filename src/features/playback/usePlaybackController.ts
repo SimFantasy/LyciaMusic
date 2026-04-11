@@ -18,6 +18,7 @@ export function usePlaybackController() {
   return {
     currentSong: playbackRefs.currentSong,
     currentCover: playbackRefs.currentCover,
+    currentCoverFull: playbackRefs.currentCoverFull,
     isPlaying: playbackRefs.isPlaying,
     volume: playbackRefs.volume,
     currentTime: playbackRefs.currentTime,

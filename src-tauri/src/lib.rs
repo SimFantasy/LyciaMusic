@@ -22,6 +22,7 @@ use music::{
     get_song_cover, get_song_cover_thumbnail, get_song_lyrics, is_directory, move_file_to_folder,
     move_music_file, parse_audio_files, remove_library_folder, remove_sidebar_folder,
     scan_folder_as_playlists, scan_library, scan_music_folder, show_in_folder,
+    clear_cover_cache,
 };
 use player::{
     get_current_output_device, get_output_devices, get_playback_progress, pause_audio, play_audio,
@@ -54,6 +55,7 @@ pub fn run() {
             scan_folder_as_playlists,
             get_song_cover_thumbnail,
             get_song_cover,
+            clear_cover_cache,
             get_song_lyrics,
             batch_move_music_files,
             move_music_file,

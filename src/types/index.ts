@@ -14,7 +14,6 @@ export interface Song {
   duration: number;
   genre?: string;
   year?: string;
-  cover?: string;
   // Audio quality fields (v1.1.1)
   bitrate?: number;
   sample_rate?: number;

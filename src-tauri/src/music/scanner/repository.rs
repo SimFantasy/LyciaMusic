@@ -129,7 +129,6 @@ fn apply_insert_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                 is_various_artists_album,
                 collapse_artist_credits,
                 duration,
-                cover_path,
                 bitrate,
                 sample_rate,
                 bit_depth,
@@ -140,7 +139,7 @@ fn apply_insert_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                 added_at,
                 file_modified_at
              )
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
              ON CONFLICT(path) DO UPDATE SET
                 title = excluded.title,
                 artist = excluded.artist,
@@ -152,7 +151,6 @@ fn apply_insert_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                 is_various_artists_album = excluded.is_various_artists_album,
                 collapse_artist_credits = excluded.collapse_artist_credits,
                 duration = excluded.duration,
-                cover_path = COALESCE(songs.cover_path, excluded.cover_path),
                 bitrate = excluded.bitrate,
                 sample_rate = excluded.sample_rate,
                 bit_depth = excluded.bit_depth,
@@ -184,7 +182,6 @@ fn apply_insert_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                     if song.is_various_artists_album { 1 } else { 0 },
                     if song.collapse_artist_credits { 1 } else { 0 },
                     song.duration as i64,
-                    &song.cover,
                     song.bitrate as i64,
                     song.sample_rate as i64,
                     song.bit_depth.map(|value| value as i64),

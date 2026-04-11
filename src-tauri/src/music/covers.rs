@@ -2,6 +2,7 @@
 
 use super::tags::{find_embedded_picture, read_tagged_file_from_path};
 use super::types::ImageConcurrencyLimit;
+use super::utils::normalize_path;
 use image::{DynamicImage, ImageFormat};
 use lofty::picture::MimeType;
 use sha2::{Digest, Sha256};
@@ -65,32 +66,46 @@ pub fn run_cache_cleanup(app: &AppHandle) {
     });
 }
 
+fn remove_cache_dir_contents(cache_dir: &Path) -> Result<(), String> {
+    if !cache_dir.exists() {
+        return Ok(());
+    }
+
+    let read_dir = fs::read_dir(cache_dir).map_err(|error| error.to_string())?;
+    for entry in read_dir {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let path = entry.path();
+        if path.is_file() {
+            fs::remove_file(&path).map_err(|error| error.to_string())?;
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn clear_cover_cache(app: AppHandle) -> Result<(), String> {
+    let cache_dir = get_cover_cache_dir(&app);
+    remove_cache_dir_contents(&cache_dir)
+}
+
 fn generate_source_hash(path: &Path) -> String {
     let mut hasher = Sha256::new();
+    let normalized_path = normalize_path(&path.to_string_lossy());
+    hasher.update(normalized_path.as_bytes());
 
     if let Ok(metadata) = fs::metadata(path) {
         let len = metadata.len();
-        let mtime_secs = metadata
+        let mtime_nanos = metadata
             .modified()
             .unwrap_or(SystemTime::now())
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
-            .as_secs();
+            .as_nanos();
 
         hasher.update(len.to_be_bytes());
-        hasher.update(mtime_secs.to_be_bytes());
-    } else {
-        hasher.update(
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs()
-                .to_be_bytes(),
-        );
+        hasher.update(mtime_nanos.to_be_bytes());
     }
-
-    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
-    hasher.update(file_name.as_bytes());
 
     hex::encode(hasher.finalize())
 }
@@ -102,6 +117,10 @@ fn generate_content_hash(bytes: &[u8]) -> String {
 }
 
 fn is_cached_cover_valid(path: &Path) -> bool {
+    fs::metadata(path).map(|metadata| metadata.is_file() && metadata.len() > 0).unwrap_or(false)
+}
+
+fn is_cache_image_decodable(path: &Path) -> bool {
     image::open(path).is_ok()
 }
 
@@ -129,7 +148,7 @@ fn persist_bytes_atomically(bytes: &[u8], cache_path: &Path) -> Option<String> {
     drop(writer);
 
     if cache_path.exists() {
-        if is_cached_cover_valid(cache_path) {
+        if is_cache_image_decodable(cache_path) {
             let _ = fs::remove_file(&temp_path);
             return Some(cache_path.to_string_lossy().into_owned());
         }
@@ -138,7 +157,7 @@ fn persist_bytes_atomically(bytes: &[u8], cache_path: &Path) -> Option<String> {
 
     if fs::rename(&temp_path, cache_path).is_err() {
         let _ = fs::remove_file(&temp_path);
-        if is_cached_cover_valid(cache_path) {
+        if is_cache_image_decodable(cache_path) {
             return Some(cache_path.to_string_lossy().into_owned());
         }
         return None;
@@ -163,7 +182,7 @@ fn persist_image_atomically(
     drop(writer);
 
     if cache_path.exists() {
-        if is_cached_cover_valid(cache_path) {
+        if is_cache_image_decodable(cache_path) {
             let _ = fs::remove_file(&temp_path);
             return Some(cache_path.to_string_lossy().into_owned());
         }
@@ -172,7 +191,7 @@ fn persist_image_atomically(
 
     if fs::rename(&temp_path, cache_path).is_err() {
         let _ = fs::remove_file(&temp_path);
-        if is_cached_cover_valid(cache_path) {
+        if is_cache_image_decodable(cache_path) {
             return Some(cache_path.to_string_lossy().into_owned());
         }
         return None;
@@ -241,7 +260,7 @@ fn persist_alias_target(alias_path: &Path, target_path: &Path) -> Option<()> {
 fn cleanup_invalid_full_cover_variants(cache_dir: &Path, stem: &str) {
     for ext in FULL_COVER_CACHE_EXTENSIONS {
         let candidate = cache_dir.join(format!("{stem}.{ext}"));
-        if candidate.exists() && !is_cached_cover_valid(&candidate) {
+        if candidate.exists() && !is_cache_image_decodable(&candidate) {
             let _ = fs::remove_file(candidate);
         }
     }

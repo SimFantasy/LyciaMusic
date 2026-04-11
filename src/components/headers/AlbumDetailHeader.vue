@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { albumHeaderCache } from '../../caches/imageCaches';
+import { useCoverCache } from '../../composables/useCoverCache';
 
 const props = defineProps<{
   albumName: string;
@@ -23,9 +23,13 @@ const emit = defineEmits([
 const coverUrl = ref('');
 const isLoading = ref(false);
 const artistName = computed(() => props.albumArtist || '未知歌手');
-const toCoverAssetUrl = (filePath: string) => `${convertFileSrc(filePath)}?v=${Date.now()}`;
+const albumCacheKey = computed(() => `${props.albumName}::${props.albumArtist || '未知歌手'}`);
+const { loadCover, loadFullCover } = useCoverCache();
+let coverRequestId = 0;
 
 watch(() => props.songs, async (newSongs) => {
+  const requestId = ++coverRequestId;
+
   if (!newSongs || newSongs.length === 0) {
     coverUrl.value = '';
     return;
@@ -37,7 +41,7 @@ watch(() => props.songs, async (newSongs) => {
     return;
   }
 
-  const cachedCover = albumHeaderCache.get(props.albumName);
+  const cachedCover = albumHeaderCache.get(albumCacheKey.value);
   if (cachedCover !== undefined) {
     coverUrl.value = cachedCover;
     isLoading.value = false;
@@ -46,24 +50,28 @@ watch(() => props.songs, async (newSongs) => {
 
   isLoading.value = true;
   try {
-    let filePath = await invoke<string>('get_song_cover', { path: firstSongPath });
-    if (!filePath) {
-      filePath = await invoke<string>('get_song_cover_thumbnail', { path: firstSongPath });
+    let resolvedCover = await loadFullCover(firstSongPath);
+    if (requestId !== coverRequestId) return;
+    if (!resolvedCover) {
+      resolvedCover = await loadCover(firstSongPath);
+      if (requestId !== coverRequestId) return;
     }
 
-    if (filePath) {
-      const url = toCoverAssetUrl(filePath);
-      coverUrl.value = url;
-      albumHeaderCache.set(props.albumName, url);
+    if (resolvedCover) {
+      coverUrl.value = resolvedCover;
+      albumHeaderCache.set(albumCacheKey.value, resolvedCover);
     } else {
       coverUrl.value = '';
-      albumHeaderCache.set(props.albumName, '');
+      albumHeaderCache.set(albumCacheKey.value, '');
     }
   } catch {
+    if (requestId !== coverRequestId) return;
     coverUrl.value = '';
-    albumHeaderCache.set(props.albumName, '');
+    albumHeaderCache.set(albumCacheKey.value, '');
   } finally {
-    isLoading.value = false;
+    if (requestId === coverRequestId) {
+      isLoading.value = false;
+    }
   }
 }, { immediate: true });
 

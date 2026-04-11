@@ -1,10 +1,10 @@
 import type { HistoryItem, Song } from '../types';
 import { playerStorage } from '../services/storage/playerStorage';
 import { historyApi } from '../services/tauri/historyApi';
-import { playbackApi } from '../services/tauri/playbackApi';
 import { useCollectionsStore } from '../features/collections/store';
 import { useLibraryStore } from '../features/library/store';
 import { usePlaybackStore } from '../features/playback/store';
+import { useCoverCache } from './useCoverCache';
 
 interface PlayerRestoreKeys {
   playerPlaylistPaths: string;
@@ -40,6 +40,7 @@ export const createPlayerRestore = ({
   const collectionsStore = useCollectionsStore();
   const libraryStore = useLibraryStore();
   const playbackStore = usePlaybackStore();
+  const { loadCover, loadFullCover } = useCoverCache();
 
   const restoreRecentHistory = async () => {
     const legacyHistory = readStoredHistory(keys.legacyPlayerHistory);
@@ -112,9 +113,14 @@ export const createPlayerRestore = ({
     }
 
     if (playbackStore.currentSong?.path) {
-      playbackApi.getSongCover(playbackStore.currentSong.path)
+      loadCover(playbackStore.currentSong.path)
         .then(cover => {
-          playbackStore.currentCover = cover;
+          playbackStore.currentCover = cover || '';
+        })
+        .catch(() => {});
+      loadFullCover(playbackStore.currentSong.path)
+        .then(cover => {
+          playbackStore.currentCoverFull = cover || playbackStore.currentCover;
         })
         .catch(() => {});
       playbackStore.isSongLoaded = false;

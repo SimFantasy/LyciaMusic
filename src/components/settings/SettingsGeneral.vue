@@ -4,6 +4,9 @@ import { listen } from '@tauri-apps/api/event';
 import { useSettings } from '../../features/settings/useSettings';
 import { usePlayer } from '../../composables/player';
 import { useToast } from '../../composables/toast';
+import { useCoverCache } from '../../composables/useCoverCache';
+import { clearPaletteCache } from '../../composables/colorExtraction';
+import { clearImageCaches } from '../../caches/imageCaches';
 import { appApi } from '../../services/tauri/appApi';
 import type { AudioDevice, AudioOutputStatus } from '../../services/tauri/contracts';
 import { playbackApi } from '../../services/tauri/playbackApi';
@@ -33,7 +36,9 @@ const dropdownStyle = ref({});
 const showLyricsSyncOffsetPanel = ref(false);
 const showClearAllDataConfirm = ref(false);
 const isClearingAllData = ref(false);
+const isClearingCache = ref(false);
 let unlistenOutputStatus: (() => void) | null = null;
+const { clearCoverCaches } = useCoverCache();
 
 const isLibraryScanActive = computed(
   () => !!libraryScanProgress.value && !libraryScanProgress.value.done
@@ -103,6 +108,27 @@ const handleClearAllData = async () => {
     showToast('清除所有数据失败，请重试', 'error');
     showClearAllDataConfirm.value = false;
     isClearingAllData.value = false;
+  }
+};
+
+const handleClearCaches = async () => {
+  if (isClearingCache.value) {
+    return;
+  }
+
+  isClearingCache.value = true;
+
+  try {
+    await appApi.clearCoverCache();
+    clearCoverCaches();
+    clearImageCaches();
+    clearPaletteCache();
+    showToast('封面缓存已清除', 'success');
+  } catch (error) {
+    console.error('Failed to clear cover caches:', error);
+    showToast('清除缓存失败，请重试', 'error');
+  } finally {
+    isClearingCache.value = false;
   }
 };
 
@@ -406,9 +432,19 @@ onUnmounted(() => {
          <div class="p-4 flex items-center justify-between hover:bg-white/40 dark:hover:bg-white/10 transition-colors">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">清除缓存</div>
-            <div class="text-xs text-gray-600 dark:text-white/60 mt-0.5">释放封面与歌词缓存</div>
+            <div class="text-xs text-gray-600 dark:text-white/60 mt-0.5">释放封面与界面取色缓存</div>
           </div>
-          <button class="text-xs px-3 py-1.5 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-gray-600 dark:text-gray-300 hover:text-red-500 hover:border-red-500 transition">立即清除</button>
+          <button
+            type="button"
+            :disabled="isClearingCache"
+            @click="handleClearCaches"
+            class="text-xs px-3 py-1.5 border rounded transition"
+            :class="isClearingCache
+              ? 'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/50 cursor-not-allowed'
+              : 'bg-white dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:text-red-500 hover:border-red-500'"
+          >
+            {{ isClearingCache ? '清除中...' : '立即清除' }}
+          </button>
         </div>
       </div>
     </section>

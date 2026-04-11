@@ -5,13 +5,17 @@ type CoverKind = 'thumbnail' | 'full';
 type PreloadPriority = 'priority' | 'background';
 
 const THUMBNAIL_CACHE_LIMIT = 96;
+const FULL_COVER_CACHE_LIMIT = 12;
 const PRELOAD_CONCURRENCY = 4;
 const BACKGROUND_PRELOAD_CONCURRENCY = 1;
+const FAILURE_RETRY_MS = 10_000;
 
 // Small in-memory LRU for thumbnail URLs. The actual image files live on disk.
 const thumbnailCache = reactive(new Map<string, string>());
+const fullCoverCache = reactive(new Map<string, string>());
 const loadingSet = reactive(new Set<string>());
 const inFlightRequests = new Map<string, Promise<string>>();
+const recentFailureCache = new Map<string, number>();
 const priorityPreloadQueue: string[] = [];
 const backgroundPreloadQueue: string[] = [];
 const queuedPathPriority = new Map<string, PreloadPriority>();
@@ -19,7 +23,7 @@ let backgroundPreloadTimer: ReturnType<typeof setTimeout> | null = null;
 let backgroundPreloadIdleId: number | null = null;
 
 const getCacheForKind = (kind: CoverKind) =>
-  kind === 'full' ? null : thumbnailCache;
+  kind === 'full' ? fullCoverCache : thumbnailCache;
 
 const buildCacheKey = (path: string, kind: CoverKind) => `${kind}:${path}`;
 const isThumbnailRequestKey = (requestKey: string) => requestKey.startsWith('thumbnail:');
@@ -63,11 +67,32 @@ const setCachedCover = (path: string, kind: CoverKind, value: string) => {
   }
 
   touchCacheEntry(cache, path, value);
-  pruneCache(cache, THUMBNAIL_CACHE_LIMIT);
+  pruneCache(cache, kind === 'full' ? FULL_COVER_CACHE_LIMIT : THUMBNAIL_CACHE_LIMIT);
+};
+
+const getFailureCacheKey = (path: string, kind: CoverKind) => buildCacheKey(path, kind);
+
+const hasRecentFailure = (path: string, kind: CoverKind) => {
+  const cacheKey = getFailureCacheKey(path, kind);
+  const expiresAt = recentFailureCache.get(cacheKey);
+  if (!expiresAt) {
+    return false;
+  }
+
+  if (expiresAt <= Date.now()) {
+    recentFailureCache.delete(cacheKey);
+    return false;
+  }
+
+  return true;
 };
 
 const loadCoverInternal = (path: string, kind: CoverKind): Promise<string> => {
   const requestKey = buildCacheKey(path, kind);
+  if (hasRecentFailure(path, kind)) {
+    return Promise.resolve('');
+  }
+
   const existingRequest = inFlightRequests.get(requestKey);
   if (existingRequest) {
     return existingRequest;
@@ -79,14 +104,13 @@ const loadCoverInternal = (path: string, kind: CoverKind): Promise<string> => {
       const command = kind === 'full' ? 'get_song_cover' : 'get_song_cover_thumbnail';
       const coverPath = await invoke<string>(command, { path });
       const finalUrl = coverPath ? convertFileSrc(coverPath) : '';
-      if (kind === 'thumbnail') {
+      recentFailureCache.delete(requestKey);
+      if (finalUrl) {
         setCachedCover(path, kind, finalUrl);
       }
       return finalUrl;
     } catch {
-      if (kind === 'thumbnail') {
-        setCachedCover(path, kind, '');
-      }
+      recentFailureCache.set(requestKey, Date.now() + FAILURE_RETRY_MS);
       return '';
     } finally {
       loadingSet.delete(requestKey);
@@ -280,13 +304,27 @@ export function useCoverCache() {
     scheduleBackgroundPreload();
   };
 
+  const clearCoverCaches = () => {
+    thumbnailCache.clear();
+    fullCoverCache.clear();
+    loadingSet.clear();
+    inFlightRequests.clear();
+    recentFailureCache.clear();
+    priorityPreloadQueue.length = 0;
+    backgroundPreloadQueue.length = 0;
+    queuedPathPriority.clear();
+    cancelBackgroundPreload();
+  };
+
   return {
     coverCache: thumbnailCache,
+    fullCoverCache,
     loadingSet,
     isCoverLoading,
     loadCover,
     loadFullCover,
     preloadCovers,
     preloadPriorityCovers: (paths: string[]) => preloadCovers(paths, 'priority'),
+    clearCoverCaches,
   };
 }

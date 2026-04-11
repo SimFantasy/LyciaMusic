@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue';
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 
 import { usePlayerLibraryView } from '../../features/library/usePlayerLibraryView';
 import { usePlayerViewState } from '../../composables/usePlayerViewState';
+import { useCoverCache } from '../../composables/useCoverCache';
 import type { FolderNode } from '../../types';
 
 const props = defineProps<{
@@ -24,6 +24,7 @@ const { folderList, libraryHierarchy } = usePlayerLibraryView();
 const { activeRootPath, currentViewMode } = usePlayerViewState();
 const folderCoverCache = ref<Map<string, string>>(new Map());
 let clearTimer: number | null = null;
+const { loadCover } = useCoverCache();
 
 const clearCoverCache = () => {
   folderCoverCache.value.clear();
@@ -77,9 +78,9 @@ const loadFolderCover = async (path: string, firstSongPath: string) => {
   if (!firstSongPath || folderCoverCache.value.has(path)) return;
 
   try {
-    const coverPath = await invoke<string>('get_song_cover_thumbnail', { path: firstSongPath });
-    if (coverPath && props.visible) {
-      folderCoverCache.value.set(path, convertFileSrc(coverPath));
+    const coverUrl = await loadCover(firstSongPath);
+    if (coverUrl && props.visible) {
+      folderCoverCache.value.set(path, coverUrl);
     }
   } catch {
     folderCoverCache.value.delete(path);

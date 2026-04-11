@@ -4,7 +4,6 @@ import { createPinia, setActivePinia } from 'pinia';
 vi.mock('../services/tauri/playbackApi', () => ({
   playbackApi: {
     playAudio: vi.fn().mockResolvedValue(undefined),
-    getSongCoverThumbnail: vi.fn().mockResolvedValue(''),
     updatePlaybackMetadata: vi.fn().mockResolvedValue(undefined),
     getPlaybackProgress: vi.fn().mockResolvedValue(0),
     pauseAudio: vi.fn().mockResolvedValue(undefined),
@@ -12,6 +11,13 @@ vi.mock('../services/tauri/playbackApi', () => ({
     seekAudio: vi.fn().mockResolvedValue(undefined),
     recordPlay: vi.fn().mockResolvedValue(undefined),
   },
+}));
+
+vi.mock('./useCoverCache', () => ({
+  useCoverCache: () => ({
+    loadCover: vi.fn().mockResolvedValue(''),
+    loadFullCover: vi.fn().mockResolvedValue(''),
+  }),
 }));
 
 import type { Song } from '../types';

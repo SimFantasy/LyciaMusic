@@ -95,6 +95,7 @@ export interface TauriCommandMap {
   record_play: { payload: { songPath: string; duration: number }; response: void };
   get_song_cover_thumbnail: { payload: { path: string }; response: string };
   get_song_cover: { payload: { path: string }; response: string };
+  clear_cover_cache: { payload: undefined; response: void };
   play_audio: { payload: PlayAudioOptions; response: void };
   update_playback_metadata: { payload: UpdatePlaybackMetadataOptions; response: void };
   pause_audio: { payload: undefined; response: void };

@@ -21,7 +21,6 @@ pub struct Song {
     pub is_various_artists_album: bool,
     pub collapse_artist_credits: bool,
     pub duration: u32,
-    pub cover: Option<String>,
     pub bitrate: u32,
     pub sample_rate: u32,
     pub bit_depth: Option<u8>,

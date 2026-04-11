@@ -62,7 +62,7 @@ pub(super) fn load_db_snapshot_for_folder(
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, path, title, artist, artist_names, effective_artist_names, album, album_artist, album_key, is_various_artists_album, collapse_artist_credits, duration, cover_path, bitrate, sample_rate, bit_depth, format, container, codec, file_size, added_at, file_modified_at
+            "SELECT id, path, title, artist, artist_names, effective_artist_names, album, album_artist, album_key, is_various_artists_album, collapse_artist_credits, duration, bitrate, sample_rate, bit_depth, format, container, codec, file_size, added_at, file_modified_at
              FROM songs
              WHERE path = ?1
                 OR path LIKE ?2 ESCAPE '^'
@@ -76,12 +76,12 @@ pub(super) fn load_db_snapshot_for_folder(
             |row| {
                 let path: String = row.get(1)?;
                 let duration = clamp_i64_to_u32(row.get::<_, Option<i64>>(11)?.unwrap_or(0));
-                let bitrate = clamp_i64_to_u32(row.get::<_, Option<i64>>(13)?.unwrap_or(0));
-                let sample_rate = clamp_i64_to_u32(row.get::<_, Option<i64>>(14)?.unwrap_or(0));
-                let bit_depth = i64_to_u8_opt(row.get::<_, Option<i64>>(15)?);
-                let file_size_i64 = row.get::<_, Option<i64>>(19)?.unwrap_or(0).max(0);
-                let added_at_i64 = row.get::<_, Option<i64>>(20)?;
-                let file_modified_at_i64 = row.get::<_, Option<i64>>(21)?;
+                let bitrate = clamp_i64_to_u32(row.get::<_, Option<i64>>(12)?.unwrap_or(0));
+                let sample_rate = clamp_i64_to_u32(row.get::<_, Option<i64>>(13)?.unwrap_or(0));
+                let bit_depth = i64_to_u8_opt(row.get::<_, Option<i64>>(14)?);
+                let file_size_i64 = row.get::<_, Option<i64>>(18)?.unwrap_or(0).max(0);
+                let added_at_i64 = row.get::<_, Option<i64>>(19)?;
+                let file_modified_at_i64 = row.get::<_, Option<i64>>(20)?;
                 let artist_names = deserialize_string_list(row.get::<_, Option<String>>(4)?);
                 let effective_artist_names =
                     deserialize_string_list(row.get::<_, Option<String>>(5)?);
@@ -110,13 +110,12 @@ pub(super) fn load_db_snapshot_for_folder(
                             is_various_artists_album: i64_to_bool(row.get::<_, Option<i64>>(9)?),
                             collapse_artist_credits: i64_to_bool(row.get::<_, Option<i64>>(10)?),
                             duration,
-                            cover: row.get::<_, Option<String>>(12)?,
                             bitrate,
                             sample_rate,
                             bit_depth,
-                            format: row.get::<_, Option<String>>(16)?.unwrap_or_default(),
-                            container: row.get::<_, Option<String>>(17)?,
-                            codec: row.get::<_, Option<String>>(18)?,
+                            format: row.get::<_, Option<String>>(15)?.unwrap_or_default(),
+                            container: row.get::<_, Option<String>>(16)?,
+                            codec: row.get::<_, Option<String>>(17)?,
                             file_size: file_size_i64 as u64,
                             added_at: i64_to_u64_opt(added_at_i64),
                             file_modified_at: i64_to_u64_opt(file_modified_at_i64),

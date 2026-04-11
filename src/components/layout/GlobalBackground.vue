@@ -5,7 +5,7 @@ import { usePlayer } from '../../composables/player';
 import { useThemeSettings } from '../../composables/useThemeSettings';
 import { useWindowMaterial } from '../../composables/windowMaterial';
 
-const { currentCover, dominantColors, showPlayerDetail } = usePlayer();
+const { currentCover, currentCoverFull, dominantColors, showPlayerDetail } = usePlayer();
 const { theme, isDarkTheme } = useThemeSettings();
 const { activeWindowMaterial } = useWindowMaterial();
 
@@ -63,7 +63,7 @@ const activeBackgroundInfo = computed(() => {
 
   if (currentTheme.dynamicBgType === 'blur') {
     return {
-      src: currentCover.value,
+      src: currentCoverFull.value || currentCover.value,
       blur: 40,
       opacity: 0.75,
       scale: 1.25,

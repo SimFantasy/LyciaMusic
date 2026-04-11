@@ -32,6 +32,15 @@ export const albumViewportCoverSnapshotCache = new MemoryCache<string, ViewportC
   ttlMs: 10 * 60 * 1000,
 });
 
+export function clearImageCaches() {
+  artistHeaderCache.clear();
+  albumHeaderCache.clear();
+  sidebarPlaylistCoverCache.clear();
+  listScrollCache.clear();
+  artistViewportCoverSnapshotCache.clear();
+  albumViewportCoverSnapshotCache.clear();
+}
+
 export const songTableViewportCoverSnapshotCache = new MemoryCache<string, ViewportCoverSnapshot>({
   maxEntries: 12,
   ttlMs: 10 * 60 * 1000,

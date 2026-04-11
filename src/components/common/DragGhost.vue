@@ -1,22 +1,26 @@
 <script setup lang="ts">
 import { dragSession } from '../../composables/dragState';
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { useCoverCache } from '../../composables/useCoverCache';
 
 const ghostX = ref(0);
 const ghostY = ref(0);
 const ghostCover = ref('');
+const { loadCover } = useCoverCache();
+let ghostRequestId = 0;
 
 // 🟢 监听拖拽状态和类型
 watch([() => dragSession.active, () => dragSession.type], async ([active, type]) => {
+  const requestId = ++ghostRequestId;
   if (active) {
     // 1. 歌曲类型
     if (type === 'song' && dragSession.songs.length > 0) {
       try {
-        const path = await invoke<string>('get_song_cover_thumbnail', { path: dragSession.songs[0].path });
-        ghostCover.value = path ? convertFileSrc(path) : '';
-      } catch (e) {
+        const coverUrl = await loadCover(dragSession.songs[0].path);
+        if (requestId !== ghostRequestId) return;
+        ghostCover.value = coverUrl || '';
+      } catch {
+        if (requestId !== ghostRequestId) return;
         ghostCover.value = '';
       }
     } 
@@ -31,6 +35,8 @@ watch([() => dragSession.active, () => dragSession.type], async ([active, type])
     else {
        ghostCover.value = '';
     }
+  } else {
+    ghostCover.value = '';
   }
 });
 

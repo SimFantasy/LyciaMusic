@@ -1,4 +1,3 @@
-import { watch } from 'vue';
 import { storeToRefs } from 'pinia';
 
 import { useLyrics } from './lyrics';
@@ -25,7 +24,6 @@ import { usePlaybackActions } from '../features/playback/usePlaybackActions';
 import { usePlayerLibraryView } from '../features/library/usePlayerLibraryView';
 import { useWindowActions } from './useWindowActions';
 import { playerStorage } from '../services/storage/playerStorage';
-import { playbackApi } from '../services/tauri/playbackApi';
 import { useCollectionsStore } from '../features/collections/store';
 import { useLibraryStore } from '../features/library/store';
 import { useNavigationStore } from '../shared/stores/navigation';
@@ -165,9 +163,7 @@ function createPlayerCore() {
     localSortMode,
     localCustomOrder,
   } = libraryRefs;
-  const { currentViewMode, favTab, favDetailFilter } = navigationRefs;
   const { currentSong, playMode } = playbackRefs;
-  const { playlistCover } = uiRefs;
 
   const libraryView = usePlayerLibraryView();
   const {
@@ -354,27 +350,6 @@ function createPlayerCore() {
       playerQueue.handleBeforePlay(song, options);
     },
   });
-
-  watch(currentViewSongs, async newList => {
-    if (
-      currentViewMode.value === 'favorites' &&
-      (favTab.value === 'artists' || favTab.value === 'albums') &&
-      !favDetailFilter.value
-    ) {
-      return;
-    }
-
-    if (newList.length === 0) {
-      playlistCover.value = '';
-      return;
-    }
-
-    try {
-      playlistCover.value = await playbackApi.getSongCover(newList[0].path);
-    } catch {
-      playlistCover.value = '';
-    }
-  }, { immediate: true });
 
   librarySync = useLibrarySync({
     fetchLibraryFolders,

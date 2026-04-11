@@ -38,6 +38,10 @@ const DEFAULT_COUNT = 4;
 const PALETTE_CACHE_LIMIT = 128;
 const paletteCache = new Map<string, string[]>();
 
+export function clearPaletteCache() {
+  paletteCache.clear();
+}
+
 function createFallbackPalette(count: number): string[] {
   return FALLBACK_PALETTE.slice(0, count);
 }

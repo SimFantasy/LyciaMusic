@@ -3,7 +3,7 @@ import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import { usePlayer } from '../../composables/player';
 import { useLyrics } from '../../composables/lyrics';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { useCoverCache } from '../../composables/useCoverCache';
 
 const {
   currentSong,
@@ -27,20 +27,26 @@ const {
 const { currentLyricLine } = useLyrics();
 const appWindow = getCurrentWindow();
 const localCoverUrl = ref('');
+const { loadCover } = useCoverCache();
+let coverRequestId = 0;
 
 const queue = computed(() => {
   return playQueue.value.length > 0 ? playQueue.value : songList.value;
 });
 
 watch(currentSong, async (newSong) => {
+  const requestId = ++coverRequestId;
   if (newSong && newSong.path) {
     try {
-      const path = await invoke<string>('get_song_cover_thumbnail', { path: newSong.path });
-      localCoverUrl.value = path ? convertFileSrc(path) : '';
+      const coverUrl = await loadCover(newSong.path);
+      if (requestId !== coverRequestId) return;
+      localCoverUrl.value = coverUrl || '';
     } catch {
+      if (requestId !== coverRequestId) return;
       localCoverUrl.value = '';
     }
   } else {
+    if (requestId !== coverRequestId) return;
     localCoverUrl.value = '';
   }
 }, { immediate: true });

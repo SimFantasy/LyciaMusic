@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import type { Song } from '../../types';
 import { usePlayerViewState } from '../../composables/usePlayerViewState';
 import { useLibraryCollections } from '../../features/collections/useLibraryCollections';
+import { useCoverCache } from '../../composables/useCoverCache';
 
 const { playlistSortMode, setPlaylistSortMode, currentViewMode, filterCondition } = usePlayerViewState();
 const { playlists } = useLibraryCollections();
@@ -59,38 +58,54 @@ const emit = defineEmits([
 ]);
 
 const headerCover = ref('');
+let coverRequestId = 0;
+const { loadCover, loadFullCover } = useCoverCache();
 
 const updateHeaderCover = async () => {
+  const requestId = ++coverRequestId;
+
   if (currentViewMode.value === 'playlist') {
       const pl = playlists.value.find(p => p.id === filterCondition.value);
       if (pl && pl.songPaths.length > 0) {
         const firstSongPath = pl.songPaths[0];
         try {
-          const filePath = await invoke<string>('get_song_cover', { path: firstSongPath });
-          if (filePath && filePath.length > 0) {
-            headerCover.value = convertFileSrc(filePath);
-          } else {
-            headerCover.value = '';
+          const fullCover = await loadFullCover(firstSongPath);
+          if (requestId !== coverRequestId) return;
+          if (fullCover) {
+            headerCover.value = fullCover;
+            return;
           }
-        } catch (e) {
+
+          const thumbnailCover = await loadCover(firstSongPath);
+          if (requestId !== coverRequestId) return;
+          headerCover.value = thumbnailCover || '';
+        } catch {
+          if (requestId !== coverRequestId) return;
           headerCover.value = '';
         }
       } else {
+        if (requestId !== coverRequestId) return;
         headerCover.value = '';
       }
   } else if (props.songs.length > 0) {
     const firstSongPath = props.songs[0].path;
     try {
-      const filePath = await invoke<string>('get_song_cover', { path: firstSongPath });
-      if (filePath && filePath.length > 0) {
-        headerCover.value = convertFileSrc(filePath);
-      } else {
-        headerCover.value = '';
+      const fullCover = await loadFullCover(firstSongPath);
+      if (requestId !== coverRequestId) return;
+      if (fullCover) {
+        headerCover.value = fullCover;
+        return;
       }
-    } catch (e) {
+
+      const thumbnailCover = await loadCover(firstSongPath);
+      if (requestId !== coverRequestId) return;
+      headerCover.value = thumbnailCover || '';
+    } catch {
+      if (requestId !== coverRequestId) return;
       headerCover.value = '';
     }
   } else {
+    if (requestId !== coverRequestId) return;
     headerCover.value = '';
   }
 };

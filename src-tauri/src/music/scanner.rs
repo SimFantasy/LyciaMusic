@@ -213,7 +213,6 @@ mod tests {
             is_various_artists_album: false,
             collapse_artist_credits: false,
             duration: 180,
-            cover: None,
             bitrate: 320,
             sample_rate: 48_000,
             bit_depth: Some(24),

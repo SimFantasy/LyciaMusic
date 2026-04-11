@@ -46,14 +46,12 @@ describe('playback and ui stores', () => {
     uiStore.playlistAddTargetSongs = ['/music/demo.flac'];
     uiStore.dominantColors = ['#111111', '#222222', '#333333', '#444444'];
     uiStore.isMiniMode = true;
-    uiStore.playlistCover = '/covers/demo.jpg';
 
     expect(uiStore.showQueue).toBe(true);
     expect(uiStore.showAddToPlaylistModal).toBe(true);
     expect(uiStore.playlistAddTargetSongs).toEqual(['/music/demo.flac']);
     expect(uiStore.dominantColors).toEqual(['#111111', '#222222', '#333333', '#444444']);
     expect(uiStore.isMiniMode).toBe(true);
-    expect(uiStore.playlistCover).toBe('/covers/demo.jpg');
   });
 
   it('keeps playback and ui state scoped to their dedicated stores', () => {
