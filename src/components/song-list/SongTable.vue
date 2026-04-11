@@ -29,6 +29,7 @@ const props = defineProps<{
   songs: Song[];
   isBatchMode: boolean;
   selectedPaths: Set<string>;
+  memoryScopeKey: string;
 }>();
 
 const emit = defineEmits<{
@@ -43,7 +44,6 @@ const {
   localSortMode,
   folderSortMode,
   activeRootPath,
-  filterCondition,
   currentFolderFilter,
 } = usePlayerViewState();
 const {
@@ -92,10 +92,7 @@ const tableViewportKey = computed(() =>
   [
     'song-table',
     listRoutePath.value,
-    currentViewMode.value,
-    filterCondition.value || '',
-    currentFolderFilter.value || '',
-    activeRootPath.value || '',
+    props.memoryScopeKey,
     localSortMode.value,
     folderSortMode.value,
   ].join('::'),

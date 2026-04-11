@@ -107,6 +107,15 @@ const handleAddToPlaylist = (playlistId: string) => {
 
 const enterFavDetail = (type: 'artist' | 'album', name: string) => { router.push({ query: { type, name } }); };
 const isFavorites = computed(() => route.path === '/favorites');
+const songTableMemoryScopeKey = computed(() =>
+  [
+    route.path,
+    currentViewMode.value,
+    favTab.value || '',
+    favDetailFilter.value?.type || '',
+    favDetailFilter.value?.name || '',
+  ].join('::'),
+);
 
 // 监听 query 参数变化，控制详情页显隐
 watch(() => route.query, (query) => {
@@ -174,6 +183,7 @@ defineExpose({
           :songs="displaySongList"
           :isBatchMode="isBatchMode"
           :selectedPaths="selectedPaths"
+          :memoryScopeKey="songTableMemoryScopeKey"
           @play="playSong"
           @contextmenu="handleContextMenu"
         />

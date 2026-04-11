@@ -19,6 +19,7 @@
           :songs="localSongList"
           :isBatchMode="isBatchMode"
           :selectedPaths="selectedPaths"
+          memoryScopeKey="recent-view"
           @play="playSong"
           @contextmenu="handleContextMenu"
           @update:selectedPaths="selectedPaths = $event"

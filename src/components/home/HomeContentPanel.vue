@@ -24,6 +24,7 @@ interface Props {
   isManagementMode: boolean;
   artistActiveTab: 'songs' | 'albums' | 'details';
   localFilterCondition: string;
+  songTableMemoryScopeKey: string;
   localSongList: Song[];
   selectedCount: number;
   selectedAlbumSong: Song | null;
@@ -139,6 +140,7 @@ const handleTableDragStart = (...args: any[]) => {
           :songs="localSongList"
           :isBatchMode="isBatchMode"
           :selectedPaths="selectedPaths"
+          :memoryScopeKey="songTableMemoryScopeKey"
           class="min-h-0"
           @play="$emit('playSong', $event)"
           @contextmenu="handleSongContextMenu"

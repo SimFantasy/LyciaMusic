@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onActivated, onMounted, onUnmounted, ref, watch } from 'vue';
 
 import { usePlayer } from '../../composables/player';
 import { useToast } from '../../composables/toast';
 import { dragSession } from '../../composables/dragState';
+import { useListScrollMemory } from '../../composables/useListScrollMemory';
 import type { FolderNode } from '../../types';
 import FolderTreeItem from '../common/FolderTreeItem.vue';
 import ModernInputModal from '../common/ModernInputModal.vue';
@@ -39,6 +40,7 @@ const toast = useToast();
 
 const sidebarWidth = ref(240);
 const isResizing = ref(false);
+const treeContainerRef = ref<HTMLElement | null>(null);
 let resizeStartX = 0;
 let resizeStartWidth = 0;
 
@@ -65,6 +67,14 @@ const activeTreeNodes = computed(() => {
   const rootNode = folderTree.value.find(node => node.path === activeRootPath.value);
   return rootNode?.children ?? [];
 });
+
+const treeScrollMemoryKey = computed(() =>
+  ['master-panel-tree', activeRootPath.value || ''].join('::'),
+);
+
+const {
+  restoreScrollPosition: restoreTreeScrollPosition,
+} = useListScrollMemory(treeScrollMemoryKey, treeContainerRef);
 
 watch(
   () => folderTree.value,
@@ -97,6 +107,7 @@ watch(currentFolderFilter, async newPath => {
   }
 
   try {
+    await expandFolderPath(newPath);
     await refreshFolder(newPath);
   } catch (error) {
     console.error('Failed to load songs for folder:', error);
@@ -104,6 +115,36 @@ watch(currentFolderFilter, async newPath => {
 });
 
 const normalizePath = (path: string | null) => (path || '').replace(/\\/g, '/').replace(/\/+$/, '');
+
+const restoreFolderViewState = async () => {
+  if (folderTree.value.length === 0) {
+    await fetchFolderTree();
+  }
+
+  const restorePath = currentFolderFilter.value || activeRootPath.value || '';
+  if (!restorePath) {
+    return;
+  }
+
+  try {
+    await expandFolderPath(restorePath);
+    await nextTick();
+    await restoreTreeScrollPosition();
+    await nextTick();
+
+    const selectedElement = Array.from(
+      treeContainerRef.value?.querySelectorAll<HTMLElement>('[data-folder-path]') ?? [],
+    ).find(element => element.dataset.folderPath === currentFolderFilter.value);
+
+    selectedElement?.scrollIntoView({
+      block: 'nearest',
+      inline: 'nearest',
+      behavior: 'auto',
+    });
+  } catch (error) {
+    console.error('Failed to restore folder tree state:', error);
+  }
+};
 
 const handleTreeSelect = (node: FolderNode) => {
   currentFolderFilter.value = node.path;
@@ -367,7 +408,11 @@ const stopResize = () => {
 
 onMounted(async () => {
   window.addEventListener('custom-drop-trigger', handleDropEvent);
-  await fetchFolderTree();
+  await restoreFolderViewState();
+});
+
+onActivated(async () => {
+  await restoreFolderViewState();
 });
 
 onUnmounted(() => {
@@ -389,7 +434,7 @@ onUnmounted(() => {
 
     <div class="h-full overflow-y-auto custom-scrollbar">
       <div class="flex flex-col h-full bg-transparent">
-        <div class="flex-1 overflow-y-auto custom-scrollbar px-2 pb-4 space-y-0.5 mt-1">
+        <div ref="treeContainerRef" class="flex-1 overflow-y-auto custom-scrollbar px-2 pb-4 space-y-0.5 mt-1">
           <div v-if="activeTreeNodes.length > 0">
             <FolderTreeItem
               v-for="node in activeTreeNodes"

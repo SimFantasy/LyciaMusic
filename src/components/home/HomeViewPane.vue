@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { FolderNode, Song } from '../../types';
 import HomeContentPanel from './HomeContentPanel.vue';
 import HomeHeaderPanel from './HomeHeaderPanel.vue';
@@ -37,7 +38,7 @@ interface Props {
   setSongTableRef?: (instance: any | null) => void;
 }
 
-defineProps<Props>();
+const props = defineProps<Props>();
 
 const emit = defineEmits<{
   (event: 'update:isBatchMode', value: boolean): void;
@@ -71,6 +72,30 @@ const handleContentContextMenu = (nativeEvent: MouseEvent, song: Song) => {
 const handleTableDragStart = (...args: any[]) => {
   emit('tableDragStart', ...args);
 };
+
+const songTableMemoryScopeKey = computed(() =>
+  (() => {
+    switch (props.localViewMode) {
+      case 'folder':
+        return [
+          'folder',
+          props.currentFolderFilter || '',
+          props.activeRootPath || '',
+        ].join('::');
+      case 'artist':
+      case 'album':
+      case 'playlist':
+        return [
+          props.localViewMode,
+          props.localFilterCondition || '',
+        ].join('::');
+      case 'statistics':
+        return 'statistics';
+      default:
+        return 'all';
+    }
+  })(),
+);
 </script>
 
 <template>
@@ -110,6 +135,7 @@ const handleTableDragStart = (...args: any[]) => {
         :isManagementMode="isManagementMode"
         :artistActiveTab="artistActiveTab"
         :localFilterCondition="localFilterCondition"
+        :songTableMemoryScopeKey="songTableMemoryScopeKey"
         :localSongList="localSongList"
         :selectedCount="selectedCount"
         :selectedAlbumSong="selectedAlbumSong"
