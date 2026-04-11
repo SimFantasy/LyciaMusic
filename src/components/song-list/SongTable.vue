@@ -1,9 +1,9 @@
 ﻿<script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch, watchEffect } from 'vue';
+import { computed, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch, watchEffect } from 'vue';
 import { storeToRefs } from 'pinia';
 import { dragSession } from '../../composables/dragState';
 import type { Song } from '../../types';
-import { listScrollCache, songTableViewportCoverSnapshotCache } from '../../caches/imageCaches';
+import { songTableViewportCoverSnapshotCache } from '../../caches/imageCaches';
 import { useLibraryCollections } from '../../features/collections/useLibraryCollections';
 import { useSettings } from '../../features/settings/useSettings';
 import { useRoute, useRouter } from 'vue-router';
@@ -15,6 +15,7 @@ import { useLibraryRuntimeActions } from '../../features/library/useLibraryRunti
 import { usePlaybackController } from '../../features/playback/usePlaybackController';
 import { usePlayerLibraryView } from '../../features/library/usePlayerLibraryView';
 import { usePlayerViewState } from '../../composables/usePlayerViewState';
+import { useListScrollMemory } from '../../composables/useListScrollMemory';
 import { useSongTableAlphabetIndex } from '../../composables/useSongTableAlphabetIndex';
 import { useSongTableLibraryState } from '../../features/library/useSongTableLibraryState';
 import { useLibraryStore } from '../../features/library/store';
@@ -79,6 +80,8 @@ const tableViewportKey = computed(() =>
     filterCondition.value || '',
     currentFolderFilter.value || '',
     activeRootPath.value || '',
+    localSortMode.value,
+    folderSortMode.value,
   ].join('::'),
 );
 
@@ -94,36 +97,6 @@ const updateContainerHeight = () => {
   if (containerRef.value) {
     containerHeight.value = containerRef.value.clientHeight;
   }
-};
-
-const saveScrollPosition = (key = tableViewportKey.value) => {
-  if (!key || !containerRef.value) {
-    return;
-  }
-
-  listScrollCache.set(key, containerRef.value.scrollTop);
-};
-
-const restoreScrollPosition = async (key = tableViewportKey.value) => {
-  await nextTick();
-
-  if (!key || !containerRef.value) {
-    return;
-  }
-
-  const savedTop = listScrollCache.get(key);
-  if (savedTop === undefined) {
-    return;
-  }
-
-  requestAnimationFrame(() => {
-    if (!containerRef.value) {
-      return;
-    }
-
-    containerRef.value.scrollTop = savedTop;
-    scrollTop.value = savedTop;
-  });
 };
 
 const restoreViewportCoverSnapshot = (key = tableViewportKey.value) => {
@@ -186,6 +159,8 @@ const saveViewportCoverSnapshot = (key = tableViewportKey.value) => {
 
   songTableViewportCoverSnapshotCache.delete(key);
 };
+
+useListScrollMemory(tableViewportKey, containerRef);
 
 const virtualData = computed(() => {
   const songs = Array.isArray(props.songs) ? props.songs : [];
@@ -265,13 +240,11 @@ watch(
   tableViewportKey,
   (newKey, oldKey) => {
     if (oldKey && oldKey !== newKey) {
-      saveScrollPosition(oldKey);
       saveViewportCoverSnapshot(oldKey);
     }
 
     displayedCoverUrls.clear();
     restoreViewportCoverSnapshot(newKey);
-    void restoreScrollPosition(newKey);
   },
   { immediate: true },
 );
@@ -385,12 +358,9 @@ const handleArtistClick = (artistName: string) => {
 onMounted(() => {
   window.addEventListener('resize', updateContainerHeight);
   updateContainerHeight();
-  restoreViewportCoverSnapshot();
-  void restoreScrollPosition();
 });
 
 onBeforeUnmount(() => {
-  saveScrollPosition();
   saveViewportCoverSnapshot();
 });
 

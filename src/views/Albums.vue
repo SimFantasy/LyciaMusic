@@ -2,7 +2,7 @@
 defineOptions({ name: 'Albums' });
 
 import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch, watchEffect } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { albumViewportCoverSnapshotCache } from '../caches/imageCaches';
 import { dragSession } from '../composables/dragState';
 import { useCoverCache } from '../composables/useCoverCache';
@@ -14,6 +14,7 @@ import { getAlphabetIndexKey } from '../utils/alphabetIndex';
 
 const { filteredAlbumList, albumSortMode, updateAlbumOrder, searchQuery } = useLibraryBrowse();
 const router = useRouter();
+const route = useRoute();
 const { openHomeAlbum } = useHomeNavigation(router);
 const isSearchActive = computed(() => searchQuery.value.trim().length > 0);
 
@@ -195,7 +196,11 @@ watchEffect(() => {
   }
 });
 
-const { restoreScrollPosition } = useListScrollMemory('albums-view', containerRef);
+const scrollMemoryKey = computed(
+  () => ['albums-view', route.path, albumSortMode.value, searchQuery.value.trim()].join('::'),
+);
+
+const { restoreScrollPosition } = useListScrollMemory(scrollMemoryKey, containerRef);
 
 watch(
   [() => filteredAlbumList.value, albumSortMode],

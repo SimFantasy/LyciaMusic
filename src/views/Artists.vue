@@ -2,7 +2,7 @@
 defineOptions({ name: 'Artists' });
 
 import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch, watchEffect } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { artistViewportCoverSnapshotCache } from '../caches/imageCaches';
 import { dragSession } from '../composables/dragState';
 import { useCoverCache } from '../composables/useCoverCache';
@@ -14,6 +14,7 @@ import { getAlphabetIndexKey } from '../utils/alphabetIndex';
 
 const { filteredArtistList, artistSortMode, updateArtistOrder, searchQuery } = useLibraryBrowse();
 const router = useRouter();
+const route = useRoute();
 const { openHomeArtist } = useHomeNavigation(router);
 const isSearchActive = computed(() => searchQuery.value.trim().length > 0);
 
@@ -195,7 +196,11 @@ watchEffect(() => {
   }
 });
 
-const { restoreScrollPosition } = useListScrollMemory('artists-view', containerRef);
+const scrollMemoryKey = computed(
+  () => ['artists-view', route.path, artistSortMode.value, searchQuery.value.trim()].join('::'),
+);
+
+const { restoreScrollPosition } = useListScrollMemory(scrollMemoryKey, containerRef);
 
 watch(
   [() => filteredArtistList.value, artistSortMode],

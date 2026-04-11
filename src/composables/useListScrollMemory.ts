@@ -1,8 +1,44 @@
-import { nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, type Ref } from 'vue';
+import { nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, unref, watch, type Ref } from 'vue';
 import { listScrollCache } from '../caches/imageCaches';
 
-export function useListScrollMemory(key: string, containerRef: Ref<HTMLElement | null>) {
-  const saveScrollPosition = () => {
+const RESTORE_MAX_ATTEMPTS = 12;
+
+export function useListScrollMemory(
+  keySource: string | Ref<string>,
+  containerRef: Ref<HTMLElement | null>,
+) {
+  const resolveKey = () => unref(keySource);
+  let attachedElement: HTMLElement | null = null;
+
+  const handleContainerScroll = () => {
+    saveScrollPosition();
+  };
+
+  const detachScrollListener = () => {
+    if (!attachedElement) {
+      return;
+    }
+
+    attachedElement.removeEventListener('scroll', handleContainerScroll);
+    attachedElement = null;
+  };
+
+  const attachScrollListener = () => {
+    const element = containerRef.value;
+    if (!element || attachedElement === element) {
+      return;
+    }
+
+    detachScrollListener();
+    element.addEventListener('scroll', handleContainerScroll, { passive: true });
+    attachedElement = element;
+  };
+
+  const saveScrollPosition = (key = resolveKey()) => {
+    if (!key) {
+      return;
+    }
+
     if (!containerRef.value) {
       return;
     }
@@ -10,7 +46,11 @@ export function useListScrollMemory(key: string, containerRef: Ref<HTMLElement |
     listScrollCache.set(key, containerRef.value.scrollTop);
   };
 
-  const restoreScrollPosition = async () => {
+  const restoreScrollPosition = async (key = resolveKey()) => {
+    if (!key) {
+      return;
+    }
+
     await nextTick();
 
     if (!containerRef.value) {
@@ -22,18 +62,35 @@ export function useListScrollMemory(key: string, containerRef: Ref<HTMLElement |
       return;
     }
 
-    requestAnimationFrame(() => {
-      if (containerRef.value) {
-        containerRef.value.scrollTop = savedTop;
+    let attempts = 0;
+
+    const applyScrollPosition = () => {
+      const element = containerRef.value;
+      if (!element) {
+        return;
       }
-    });
+
+      element.scrollTop = savedTop;
+      element.dispatchEvent(new Event('scroll'));
+
+      if (Math.abs(element.scrollTop - savedTop) < 2 || attempts >= RESTORE_MAX_ATTEMPTS) {
+        return;
+      }
+
+      attempts += 1;
+      requestAnimationFrame(applyScrollPosition);
+    };
+
+    requestAnimationFrame(applyScrollPosition);
   };
 
   onMounted(() => {
+    attachScrollListener();
     void restoreScrollPosition();
   });
 
   onActivated(() => {
+    attachScrollListener();
     void restoreScrollPosition();
   });
 
@@ -43,7 +100,26 @@ export function useListScrollMemory(key: string, containerRef: Ref<HTMLElement |
 
   onBeforeUnmount(() => {
     saveScrollPosition();
+    detachScrollListener();
   });
+
+  watch(containerRef, () => {
+    attachScrollListener();
+  });
+
+  if (typeof keySource !== 'string') {
+    watch(keySource, (newKey, oldKey) => {
+      if (oldKey && oldKey !== newKey) {
+        saveScrollPosition(oldKey);
+      }
+
+      if (!newKey || newKey === oldKey) {
+        return;
+      }
+
+      void restoreScrollPosition(newKey);
+    });
+  }
 
   return {
     saveScrollPosition,
