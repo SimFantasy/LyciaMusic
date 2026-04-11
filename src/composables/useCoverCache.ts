@@ -1,5 +1,6 @@
 import { reactive } from 'vue';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { MemoryCache } from '../utils/MemoryCache';
 
 type CoverKind = 'thumbnail' | 'full';
 type PreloadPriority = 'priority' | 'background';
@@ -15,12 +16,16 @@ const thumbnailCache = reactive(new Map<string, string>());
 const fullCoverCache = reactive(new Map<string, string>());
 const loadingSet = reactive(new Set<string>());
 const inFlightRequests = new Map<string, Promise<string>>();
-const recentFailureCache = new Map<string, number>();
+const recentFailureCache = new MemoryCache<string, true>({
+  maxEntries: 256,
+  ttlMs: FAILURE_RETRY_MS,
+});
 const priorityPreloadQueue: string[] = [];
 const backgroundPreloadQueue: string[] = [];
 const queuedPathPriority = new Map<string, PreloadPriority>();
 let backgroundPreloadTimer: ReturnType<typeof setTimeout> | null = null;
 let backgroundPreloadIdleId: number | null = null;
+let hasRegisteredVisibilityCleanup = false;
 
 const getCacheForKind = (kind: CoverKind) =>
   kind === 'full' ? fullCoverCache : thumbnailCache;
@@ -74,17 +79,29 @@ const getFailureCacheKey = (path: string, kind: CoverKind) => buildCacheKey(path
 
 const hasRecentFailure = (path: string, kind: CoverKind) => {
   const cacheKey = getFailureCacheKey(path, kind);
-  const expiresAt = recentFailureCache.get(cacheKey);
-  if (!expiresAt) {
-    return false;
+  return recentFailureCache.has(cacheKey);
+};
+
+const trimTransientCoverState = () => {
+  fullCoverCache.clear();
+  priorityPreloadQueue.length = 0;
+  backgroundPreloadQueue.length = 0;
+  queuedPathPriority.clear();
+  cancelBackgroundPreload();
+  recentFailureCache.prune();
+};
+
+const registerVisibilityCleanup = () => {
+  if (hasRegisteredVisibilityCleanup || typeof document === 'undefined') {
+    return;
   }
 
-  if (expiresAt <= Date.now()) {
-    recentFailureCache.delete(cacheKey);
-    return false;
-  }
-
-  return true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      trimTransientCoverState();
+    }
+  });
+  hasRegisteredVisibilityCleanup = true;
 };
 
 const loadCoverInternal = (path: string, kind: CoverKind): Promise<string> => {
@@ -110,7 +127,7 @@ const loadCoverInternal = (path: string, kind: CoverKind): Promise<string> => {
       }
       return finalUrl;
     } catch {
-      recentFailureCache.set(requestKey, Date.now() + FAILURE_RETRY_MS);
+      recentFailureCache.set(requestKey, true);
       return '';
     } finally {
       loadingSet.delete(requestKey);
@@ -257,6 +274,8 @@ const enqueuePreload = (path: string, priority: PreloadPriority) => {
 };
 
 export function useCoverCache() {
+  registerVisibilityCleanup();
+
   const isCoverLoading = (path: string | undefined, kind: CoverKind = 'thumbnail') => {
     if (!path) {
       return false;

@@ -22,9 +22,16 @@ const showSortMenu = ref(false);
 const dragOverName = ref<string | null>(null);
 const containerRef = ref<HTMLElement | null>(null);
 const displayedCoverUrls = reactive(new Map<string, string>());
+const containerScrollTop = ref(0);
+const containerHeight = ref(720);
 let coverObserver: IntersectionObserver | null = null;
+let containerResizeObserver: ResizeObserver | null = null;
 const VIEWPORT_SNAPSHOT_KEY = 'artists-current';
 const VIEWPORT_SNAPSHOT_LIMIT = 72;
+const ARTIST_GRID_GAP_Y = 16;
+const ARTIST_ITEM_HEIGHT = 72;
+const ARTIST_ROW_SPAN = ARTIST_ITEM_HEIGHT + ARTIST_GRID_GAP_Y;
+const ARTIST_OVERSCAN_ROWS = 2;
 
 const handleArtistClick = (artistName: string) => {
   void openHomeArtist(artistName);
@@ -36,6 +43,36 @@ const handleSortChange = (mode: 'count' | 'name' | 'custom') => {
 };
 
 const { coverCache, isCoverLoading, preloadCovers, preloadPriorityCovers } = useCoverCache();
+
+const getArtistGridColumns = () => {
+  if (window.innerWidth >= 1536) {
+    return 5;
+  }
+
+  if (window.innerWidth >= 1280) {
+    return 4;
+  }
+
+  if (window.innerWidth >= 1024) {
+    return 3;
+  }
+
+  return 2;
+};
+
+const artistGridColumns = ref(getArtistGridColumns());
+
+const updateViewportMetrics = () => {
+  if (containerRef.value) {
+    containerHeight.value = containerRef.value.clientHeight;
+  }
+
+  artistGridColumns.value = getArtistGridColumns();
+};
+
+const handleContainerScroll = (event: Event) => {
+  containerScrollTop.value = (event.target as HTMLElement).scrollTop;
+};
 
 const getDisplayedCoverUrl = (path: string | undefined) => {
   if (!path) {
@@ -128,6 +165,38 @@ const artistSections = computed(() => {
   return sections;
 });
 
+const flatArtistVirtualState = computed(() => {
+  const totalRows = Math.ceil(filteredArtistList.value.length / artistGridColumns.value);
+  const startRow = Math.max(0, Math.floor(containerScrollTop.value / ARTIST_ROW_SPAN) - ARTIST_OVERSCAN_ROWS);
+  const endRow = Math.min(
+    totalRows,
+    Math.ceil((containerScrollTop.value + containerHeight.value) / ARTIST_ROW_SPAN) + ARTIST_OVERSCAN_ROWS,
+  );
+  const startIndex = startRow * artistGridColumns.value;
+  const endIndex = Math.min(filteredArtistList.value.length, endRow * artistGridColumns.value);
+
+  return {
+    items: filteredArtistList.value.slice(startIndex, endIndex).map((artist, offset) => ({
+      artist,
+      index: startIndex + offset,
+    })),
+    paddingTop: `${startRow * ARTIST_ROW_SPAN}px`,
+    paddingBottom: `${Math.max(0, (totalRows - endRow) * ARTIST_ROW_SPAN)}px`,
+  };
+});
+
+const visibleArtistCoverPaths = computed(() => {
+  if (artistSortMode.value === 'name') {
+    return filteredArtistList.value
+      .map(artist => artist.firstSongPath)
+      .filter((path): path is string => !!path);
+  }
+
+  return flatArtistVirtualState.value.items
+    .map(item => item.artist.firstSongPath)
+    .filter((path): path is string => !!path);
+});
+
 watch(
   () => filteredArtistList.value,
   (newList) => {
@@ -183,8 +252,7 @@ const initCoverObserver = async () => {
 };
 
 watchEffect(() => {
-  for (const artist of filteredArtistList.value) {
-    const path = artist.firstSongPath;
+  for (const path of visibleArtistCoverPaths.value) {
     if (!path) {
       continue;
     }
@@ -203,11 +271,11 @@ const scrollMemoryKey = computed(
 const { restoreScrollPosition } = useListScrollMemory(scrollMemoryKey, containerRef);
 
 watch(
-  [() => filteredArtistList.value, artistSortMode],
+  [visibleArtistCoverPaths, artistSortMode],
   () => {
     void initCoverObserver();
   },
-  { immediate: true },
+  { immediate: true, flush: 'post' },
 );
 
 const gradients = [
@@ -293,9 +361,17 @@ const closeMenu = (event: MouseEvent) => {
 };
 
 onMounted(() => {
+  updateViewportMetrics();
   window.addEventListener('mousemove', handleGlobalMouseMove);
   window.addEventListener('mouseup', handleGlobalMouseUp);
   window.addEventListener('click', closeMenu);
+  window.addEventListener('resize', updateViewportMetrics);
+  if (containerRef.value) {
+    containerResizeObserver = new ResizeObserver(() => {
+      updateViewportMetrics();
+    });
+    containerResizeObserver.observe(containerRef.value);
+  }
   void restoreScrollPosition().then(() => {
     requestAnimationFrame(() => {
       void initCoverObserver();
@@ -311,6 +387,11 @@ onUnmounted(() => {
   window.removeEventListener('mousemove', handleGlobalMouseMove);
   window.removeEventListener('mouseup', handleGlobalMouseUp);
   window.removeEventListener('click', closeMenu);
+  window.removeEventListener('resize', updateViewportMetrics);
+  if (containerResizeObserver) {
+    containerResizeObserver.disconnect();
+    containerResizeObserver = null;
+  }
   if (coverObserver) {
     coverObserver.disconnect();
     coverObserver = null;
@@ -368,7 +449,7 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <section ref="containerRef" class="flex-1 overflow-y-auto p-8 custom-scrollbar relative z-0">
+    <section ref="containerRef" class="flex-1 overflow-y-auto p-8 custom-scrollbar relative z-0" @scroll="handleContainerScroll">
       <div v-if="artistSortMode === 'name'" class="space-y-8">
         <section v-for="section in artistSections" :key="section.key" class="space-y-4">
           <div class="flex items-center gap-3">
@@ -415,28 +496,32 @@ onUnmounted(() => {
         </section>
       </div>
 
-      <div v-else class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-x-6 gap-y-4">
+      <div
+        v-else
+        class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-x-6 gap-y-4"
+        :style="{ paddingTop: flatArtistVirtualState.paddingTop, paddingBottom: flatArtistVirtualState.paddingBottom }"
+      >
         <div
-          v-for="(artist, index) in filteredArtistList"
-          :key="artist.name"
+          v-for="item in flatArtistVirtualState.items"
+          :key="item.artist.name"
           class="group cursor-pointer flex items-center gap-4 hover:bg-black/5 dark:hover:bg-white/5 p-2 rounded-lg transition-colors relative select-none"
           :class="[
-            dragSession.active && dragSession.type === 'artist' && dragSession.data?.name === artist.name ? 'opacity-50' : '',
+            dragSession.active && dragSession.type === 'artist' && dragSession.data?.name === item.artist.name ? 'opacity-50' : '',
           ]"
-          @mousedown="handleMouseDown($event, index, artist)"
-          @mousemove="handleItemMouseMove($event, artist.name)"
-          @click="handleArtistClick(artist.name)"
+          @mousedown="handleMouseDown($event, item.index, item.artist)"
+          @mousemove="handleItemMouseMove($event, item.artist.name)"
+          @click="handleArtistClick(item.artist.name)"
         >
           <div
             class="relative w-12 h-12 md:w-14 md:h-14 shrink-0"
-            :data-cover-path="artist.firstSongPath"
-            :class="{ 'ring-2 ring-[#EC4141] ring-offset-2 ring-offset-gray-50 dark:ring-offset-[#222222] rounded-full': dragSession.active && dragSession.type === 'artist' && dragOverName === artist.name && dragSession.data?.name !== artist.name }"
+            :data-cover-path="item.artist.firstSongPath"
+            :class="{ 'ring-2 ring-[#EC4141] ring-offset-2 ring-offset-gray-50 dark:ring-offset-[#222222] rounded-full': dragSession.active && dragSession.type === 'artist' && dragOverName === item.artist.name && dragSession.data?.name !== item.artist.name }"
           >
             <div class="w-full h-full rounded-full overflow-hidden shadow-sm group-hover:shadow transition-shadow duration-300 relative bg-gray-100 dark:bg-white/5 flex items-center justify-center">
-              <img v-if="getDisplayedCoverUrl(artist.firstSongPath)" :src="getDisplayedCoverUrl(artist.firstSongPath)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="artist.name">
-              <div v-else-if="isCoverLoading(artist.firstSongPath)" class="w-full h-full bg-gray-200 dark:bg-white/10 animate-pulse"></div>
-              <div v-else class="w-full h-full flex items-center justify-center text-lg md:text-xl font-bold text-white bg-gradient-to-br animate-in fade-in duration-300" :class="getGradientForArtist(artist.name)">
-                {{ artist.name.charAt(0).toUpperCase() }}
+              <img v-if="getDisplayedCoverUrl(item.artist.firstSongPath)" :src="getDisplayedCoverUrl(item.artist.firstSongPath)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="item.artist.name">
+              <div v-else-if="isCoverLoading(item.artist.firstSongPath)" class="w-full h-full bg-gray-200 dark:bg-white/10 animate-pulse"></div>
+              <div v-else class="w-full h-full flex items-center justify-center text-lg md:text-xl font-bold text-white bg-gradient-to-br animate-in fade-in duration-300" :class="getGradientForArtist(item.artist.name)">
+                {{ item.artist.name.charAt(0).toUpperCase() }}
               </div>
               <div class="absolute inset-0 bg-white/0 group-hover:bg-white/10 dark:bg-black/5 dark:group-hover:bg-transparent transition-colors duration-300"></div>
             </div>
@@ -444,7 +529,7 @@ onUnmounted(() => {
 
           <div class="flex-1 min-w-0">
             <h3 class="font-medium text-sm md:text-base text-gray-800 dark:text-gray-200 truncate w-full group-hover:text-[#EC4141] transition-colors leading-snug">
-              {{ artist.name }}
+              {{ item.artist.name }}
             </h3>
           </div>
         </div>

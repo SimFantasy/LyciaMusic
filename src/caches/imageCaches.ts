@@ -32,6 +32,21 @@ export const albumViewportCoverSnapshotCache = new MemoryCache<string, ViewportC
   ttlMs: 10 * 60 * 1000,
 });
 
+export const songTableViewportCoverSnapshotCache = new MemoryCache<string, ViewportCoverSnapshot>({
+  maxEntries: 12,
+  ttlMs: 10 * 60 * 1000,
+});
+
+export function pruneImageCaches() {
+  artistHeaderCache.prune();
+  albumHeaderCache.prune();
+  sidebarPlaylistCoverCache.prune();
+  listScrollCache.prune();
+  artistViewportCoverSnapshotCache.prune();
+  albumViewportCoverSnapshotCache.prune();
+  songTableViewportCoverSnapshotCache.prune();
+}
+
 export function clearImageCaches() {
   artistHeaderCache.clear();
   albumHeaderCache.clear();
@@ -39,9 +54,13 @@ export function clearImageCaches() {
   listScrollCache.clear();
   artistViewportCoverSnapshotCache.clear();
   albumViewportCoverSnapshotCache.clear();
+  songTableViewportCoverSnapshotCache.clear();
 }
 
-export const songTableViewportCoverSnapshotCache = new MemoryCache<string, ViewportCoverSnapshot>({
-  maxEntries: 12,
-  ttlMs: 10 * 60 * 1000,
-});
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      pruneImageCaches();
+    }
+  });
+}

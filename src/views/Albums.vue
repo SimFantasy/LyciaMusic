@@ -22,9 +22,17 @@ const showSortMenu = ref(false);
 const dragOverKey = ref<string | null>(null);
 const containerRef = ref<HTMLElement | null>(null);
 const displayedCoverUrls = reactive(new Map<string, string>());
+const containerScrollTop = ref(0);
+const containerHeight = ref(720);
+const containerWidth = ref(1200);
 let coverObserver: IntersectionObserver | null = null;
+let containerResizeObserver: ResizeObserver | null = null;
 const VIEWPORT_SNAPSHOT_KEY = 'albums-current';
 const VIEWPORT_SNAPSHOT_LIMIT = 72;
+const ALBUM_GRID_GAP_X = 24;
+const ALBUM_GRID_GAP_Y = 40;
+const ALBUM_CARD_EXTRA_HEIGHT = 108;
+const ALBUM_OVERSCAN_ROWS = 2;
 
 const handleAlbumClick = (albumKey: string) => {
   void openHomeAlbum(albumKey);
@@ -36,6 +44,52 @@ const handleSortChange = (mode: 'count' | 'name' | 'artist' | 'custom') => {
 };
 
 const { coverCache, isCoverLoading, preloadCovers, preloadPriorityCovers } = useCoverCache();
+
+const getAlbumGridColumns = () => {
+  if (window.innerWidth >= 1536) {
+    return 7;
+  }
+
+  if (window.innerWidth >= 1280) {
+    return 6;
+  }
+
+  if (window.innerWidth >= 1024) {
+    return 5;
+  }
+
+  if (window.innerWidth >= 768) {
+    return 4;
+  }
+
+  if (window.innerWidth >= 640) {
+    return 3;
+  }
+
+  return 2;
+};
+
+const albumGridColumns = ref(getAlbumGridColumns());
+
+const albumRowSpan = computed(() => {
+  const columns = albumGridColumns.value;
+  const width = Math.max(0, containerWidth.value - ALBUM_GRID_GAP_X * (columns - 1));
+  const itemWidth = columns > 0 ? width / columns : containerWidth.value;
+  return itemWidth + ALBUM_CARD_EXTRA_HEIGHT + ALBUM_GRID_GAP_Y;
+});
+
+const updateViewportMetrics = () => {
+  if (containerRef.value) {
+    containerHeight.value = containerRef.value.clientHeight;
+    containerWidth.value = containerRef.value.clientWidth;
+  }
+
+  albumGridColumns.value = getAlbumGridColumns();
+};
+
+const handleContainerScroll = (event: Event) => {
+  containerScrollTop.value = (event.target as HTMLElement).scrollTop;
+};
 
 const getDisplayedCoverUrl = (path: string | undefined) => {
   if (!path) {
@@ -128,6 +182,38 @@ const albumSections = computed(() => {
   return sections;
 });
 
+const flatAlbumVirtualState = computed(() => {
+  const totalRows = Math.ceil(filteredAlbumList.value.length / albumGridColumns.value);
+  const startRow = Math.max(0, Math.floor(containerScrollTop.value / albumRowSpan.value) - ALBUM_OVERSCAN_ROWS);
+  const endRow = Math.min(
+    totalRows,
+    Math.ceil((containerScrollTop.value + containerHeight.value) / albumRowSpan.value) + ALBUM_OVERSCAN_ROWS,
+  );
+  const startIndex = startRow * albumGridColumns.value;
+  const endIndex = Math.min(filteredAlbumList.value.length, endRow * albumGridColumns.value);
+
+  return {
+    items: filteredAlbumList.value.slice(startIndex, endIndex).map((album, offset) => ({
+      album,
+      index: startIndex + offset,
+    })),
+    paddingTop: `${startRow * albumRowSpan.value}px`,
+    paddingBottom: `${Math.max(0, (totalRows - endRow) * albumRowSpan.value)}px`,
+  };
+});
+
+const visibleAlbumCoverPaths = computed(() => {
+  if (albumSortMode.value === 'name') {
+    return filteredAlbumList.value
+      .map(album => album.firstSongPath)
+      .filter((path): path is string => !!path);
+  }
+
+  return flatAlbumVirtualState.value.items
+    .map(item => item.album.firstSongPath)
+    .filter((path): path is string => !!path);
+});
+
 watch(
   () => filteredAlbumList.value,
   (newList) => {
@@ -183,8 +269,7 @@ const initCoverObserver = async () => {
 };
 
 watchEffect(() => {
-  for (const album of filteredAlbumList.value) {
-    const path = album.firstSongPath;
+  for (const path of visibleAlbumCoverPaths.value) {
     if (!path) {
       continue;
     }
@@ -203,11 +288,11 @@ const scrollMemoryKey = computed(
 const { restoreScrollPosition } = useListScrollMemory(scrollMemoryKey, containerRef);
 
 watch(
-  [() => filteredAlbumList.value, albumSortMode],
+  [visibleAlbumCoverPaths, albumSortMode],
   () => {
     void initCoverObserver();
   },
-  { immediate: true },
+  { immediate: true, flush: 'post' },
 );
 
 let mouseDownInfo: { x: number; y: number; index: number; album: AlbumListItem } | null = null;
@@ -273,9 +358,17 @@ const closeMenu = (event: MouseEvent) => {
 };
 
 onMounted(() => {
+  updateViewportMetrics();
   window.addEventListener('mousemove', handleGlobalMouseMove);
   window.addEventListener('mouseup', handleGlobalMouseUp);
   window.addEventListener('click', closeMenu);
+  window.addEventListener('resize', updateViewportMetrics);
+  if (containerRef.value) {
+    containerResizeObserver = new ResizeObserver(() => {
+      updateViewportMetrics();
+    });
+    containerResizeObserver.observe(containerRef.value);
+  }
   void restoreScrollPosition().then(() => {
     requestAnimationFrame(() => {
       void initCoverObserver();
@@ -291,6 +384,11 @@ onUnmounted(() => {
   window.removeEventListener('mousemove', handleGlobalMouseMove);
   window.removeEventListener('mouseup', handleGlobalMouseUp);
   window.removeEventListener('click', closeMenu);
+  window.removeEventListener('resize', updateViewportMetrics);
+  if (containerResizeObserver) {
+    containerResizeObserver.disconnect();
+    containerResizeObserver = null;
+  }
   if (coverObserver) {
     coverObserver.disconnect();
     coverObserver = null;
@@ -356,7 +454,7 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <section ref="containerRef" class="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 custom-scrollbar relative z-0">
+    <section ref="containerRef" class="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 custom-scrollbar relative z-0" @scroll="handleContainerScroll">
       <div v-if="albumSortMode === 'name'" class="space-y-8">
         <section v-for="section in albumSections" :key="section.key" class="space-y-4">
           <div class="flex items-center gap-3">
@@ -418,20 +516,24 @@ onUnmounted(() => {
         </section>
       </div>
 
-      <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-x-6 gap-y-10">
+      <div
+        v-else
+        class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-x-6 gap-y-10"
+        :style="{ paddingTop: flatAlbumVirtualState.paddingTop, paddingBottom: flatAlbumVirtualState.paddingBottom }"
+      >
         <div
-          v-for="(album, index) in filteredAlbumList"
-          :key="album.key"
+          v-for="item in flatAlbumVirtualState.items"
+          :key="item.album.key"
           class="group cursor-pointer rounded-xl p-2 md:p-3 transition-all duration-300 flex flex-col relative select-none hover:bg-white/40 dark:hover:bg-white/5"
           :class="[
-            dragSession.active && dragSession.type === 'album' && dragSession.data?.key === album.key ? 'opacity-50' : '',
-            { 'ring-2 ring-[#EC4141] bg-red-50 dark:bg-red-900/20': dragSession.active && dragSession.type === 'album' && dragOverKey === album.key && dragSession.data?.key !== album.key },
+            dragSession.active && dragSession.type === 'album' && dragSession.data?.key === item.album.key ? 'opacity-50' : '',
+            { 'ring-2 ring-[#EC4141] bg-red-50 dark:bg-red-900/20': dragSession.active && dragSession.type === 'album' && dragOverKey === item.album.key && dragSession.data?.key !== item.album.key },
           ]"
-          @mousedown="handleMouseDown($event, index, album)"
-          @mousemove="handleItemMouseMove($event, album.key)"
-          @click="handleAlbumClick(album.key)"
+          @mousedown="handleMouseDown($event, item.index, item.album)"
+          @mousemove="handleItemMouseMove($event, item.album.key)"
+          @click="handleAlbumClick(item.album.key)"
         >
-          <div class="relative w-full aspect-square mb-3 mt-4" :data-cover-path="album.firstSongPath">
+          <div class="relative w-full aspect-square mb-3 mt-4" :data-cover-path="item.album.firstSongPath">
             <div class="absolute inset-x-2 top-0 bottom-1/2 bg-[#1c1c1c] rounded-t-full shadow-inner origin-bottom translate-y-[-10%] group-hover:translate-y-[-24%] transition-transform duration-500 ease-out z-0 flex items-center justify-center overflow-hidden border border-[#333]">
               <div class="absolute inset-0 rounded-t-full border border-white/5 scale-90"></div>
               <div class="absolute inset-0 rounded-t-full border border-white/5 scale-75"></div>
@@ -440,29 +542,29 @@ onUnmounted(() => {
 
             <div class="absolute inset-0 z-10 bg-white dark:bg-gray-800 rounded-md shadow-md border border-gray-100 dark:border-white/10 p-1 flex items-center justify-center overflow-hidden group-hover:shadow-xl transition-shadow duration-300">
               <div
-                v-if="getDisplayedCoverUrl(album.firstSongPath)"
+                v-if="getDisplayedCoverUrl(item.album.firstSongPath)"
                 class="w-full h-full bg-cover bg-center rounded-sm"
-                :style="{ backgroundImage: `url(${getDisplayedCoverUrl(album.firstSongPath)})` }"
+                :style="{ backgroundImage: `url(${getDisplayedCoverUrl(item.album.firstSongPath)})` }"
               ></div>
 
               <div
                 v-else
                 class="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-white/5 dark:to-white/10 rounded-sm flex items-center justify-center text-4xl font-bold text-gray-300 dark:text-gray-600 shadow-inner"
-                :class="{ 'animate-pulse': isCoverLoading(album.firstSongPath) }"
+                :class="{ 'animate-pulse': isCoverLoading(item.album.firstSongPath) }"
               >
-                {{ album.name ? album.name.substring(0, 1).toUpperCase() : 'A' }}
+                {{ item.album.name ? item.album.name.substring(0, 1).toUpperCase() : 'A' }}
               </div>
             </div>
           </div>
 
           <div class="flex flex-col items-start px-1 z-20">
             <h3 class="font-bold text-sm md:text-base text-gray-800 dark:text-gray-200 truncate w-full group-hover:text-[#EC4141] transition-colors leading-tight">
-              {{ album.name }}
+              {{ item.album.name }}
             </h3>
             <p class="text-xs text-gray-500 dark:text-gray-400 truncate w-full mt-1.5 flex items-center gap-1.5 opacity-80">
-              <span class="font-medium">{{ album.count }}首</span>
+              <span class="font-medium">{{ item.album.count }}首</span>
               <span class="w-0.5 h-0.5 rounded-full bg-gray-400"></span>
-              <span>{{ album.artist }}</span>
+              <span>{{ item.album.artist }}</span>
             </p>
           </div>
         </div>
