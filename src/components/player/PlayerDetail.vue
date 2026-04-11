@@ -20,7 +20,7 @@ const {
 
 const { parsedLyrics } = useLyrics();
 const { staggerPhase } = useSharedTransition();
-const { loadSongDetail } = useSongDetailCache();
+const { loadSongDetail, clearSongDetailCache } = useSongDetailCache();
 
 const TOP_CHROME_HIDE_DELAY = 2500;
 
@@ -76,6 +76,8 @@ watch(showPlayerDetail, (visible) => {
   }
 
   isTopChromeVisible.value = false;
+  currentSongDetail.value = null;
+  clearSongDetailCache();
 });
 
 watch([showPlayerDetail, () => currentSong.value?.path ?? ''], async ([visible, path]) => {

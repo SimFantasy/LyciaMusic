@@ -1,15 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { usePlayer } from '../../composables/player';
-import { useCoverCache } from '../../composables/useCoverCache';
 
 const props = defineProps<{
   bgOpacity?: number;
   active?: boolean;
 }>();
 
-const { dominantColors, currentSong } = usePlayer();
-const { loadCover } = useCoverCache();
+const { dominantColors, currentCover } = usePlayer();
 
 const viewportArea = ref(
   typeof window !== 'undefined' ? window.innerWidth * window.innerHeight : 0
@@ -20,30 +18,9 @@ const updateViewportArea = () => {
   viewportArea.value = window.innerWidth * window.innerHeight;
 };
 
-const thumbCoverUrl = ref('');
-let coverRequestId = 0;
-
-watch(
-  [() => props.active ?? true, () => currentSong.value?.path],
-  async ([active, path]) => {
-    const requestId = ++coverRequestId;
-
-    if (!active || !path) {
-      thumbCoverUrl.value = '';
-      return;
-    }
-
-    try {
-      const resolved = await loadCover(path);
-      if (requestId !== coverRequestId) return;
-      thumbCoverUrl.value = resolved || '';
-    } catch {
-      if (requestId !== coverRequestId) return;
-      thumbCoverUrl.value = '';
-    }
-  },
-  { immediate: true }
-);
+const thumbCoverUrl = computed(() => (
+  (props.active ?? true) ? currentCover.value : ''
+));
 
 onMounted(() => {
   window.addEventListener('resize', updateViewportArea);

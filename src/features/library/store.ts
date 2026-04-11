@@ -38,6 +38,63 @@ export const useLibraryStore = defineStore('library', () => {
   const songCatalogVersion = ref(0);
   const stringPool = new Map<string, string>();
   const arrayPool = new Map<string, string[]>();
+  const rebuildInternPools = () => {
+    const nextStringPool = new Map<string, string>();
+    const nextArrayPool = new Map<string, string[]>();
+
+    const registerString = (value: string | undefined) => {
+      if (!value) {
+        return value;
+      }
+
+      const existing = nextStringPool.get(value);
+      if (existing) {
+        return existing;
+      }
+
+      nextStringPool.set(value, value);
+      return value;
+    };
+
+    const registerStringArray = (values: string[] = []) => {
+      if (values.length === 0) {
+        return [];
+      }
+
+      const normalized = values.map(value => registerString(value) ?? '');
+      const key = normalized.join('\u0001');
+      const existing = nextArrayPool.get(key);
+      if (existing) {
+        return existing;
+      }
+
+      nextArrayPool.set(key, normalized);
+      return normalized;
+    };
+
+    for (const song of songPool.values()) {
+      song.name = registerString(song.name) ?? '';
+      song.title = registerString(song.title);
+      song.path = registerString(song.path) ?? '';
+      song.artist = registerString(song.artist) ?? '';
+      song.artist_names = registerStringArray(song.artist_names);
+      song.effective_artist_names = registerStringArray(song.effective_artist_names);
+      song.album = registerString(song.album) ?? '';
+      song.album_artist = registerString(song.album_artist) ?? '';
+      song.album_key = registerString(song.album_key) ?? '';
+      song.format = registerString(song.format);
+    }
+
+    stringPool.clear();
+    nextStringPool.forEach((value, key) => {
+      stringPool.set(key, value);
+    });
+
+    arrayPool.clear();
+    nextArrayPool.forEach((value, key) => {
+      arrayPool.set(key, value);
+    });
+  };
 
   const songKeys: Array<keyof LibrarySong> = [
     'id',
@@ -193,6 +250,7 @@ export const useLibraryStore = defineStore('library', () => {
     }
 
     if (removed) {
+      rebuildInternPools();
       songCatalogVersion.value += 1;
     }
   };

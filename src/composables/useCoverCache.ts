@@ -5,11 +5,11 @@ import { MemoryCache } from '../utils/MemoryCache';
 type CoverKind = 'thumbnail' | 'full';
 type PreloadPriority = 'priority' | 'background';
 
-const THUMBNAIL_CACHE_LIMIT = 96;
-const FULL_COVER_CACHE_LIMIT = 12;
-const THUMBNAIL_CACHE_TTL_MS = 10 * 60 * 1000;
-const FULL_COVER_CACHE_TTL_MS = 5 * 60 * 1000;
-const HIDDEN_THUMBNAIL_CACHE_LIMIT = 24;
+const THUMBNAIL_CACHE_LIMIT = 64;
+const FULL_COVER_CACHE_LIMIT = 4;
+const THUMBNAIL_CACHE_TTL_MS = 5 * 60 * 1000;
+const FULL_COVER_CACHE_TTL_MS = 2 * 60 * 1000;
+const HIDDEN_THUMBNAIL_CACHE_LIMIT = 12;
 const PRELOAD_CONCURRENCY = 4;
 const BACKGROUND_PRELOAD_CONCURRENCY = 1;
 const FAILURE_RETRY_MS = 10_000;
@@ -54,6 +54,20 @@ const deleteCacheEntry = (cache: Map<string, string>, expiry: Map<string, number
 const clearCacheEntries = (cache: Map<string, string>, expiry: Map<string, number>) => {
   cache.clear();
   expiry.clear();
+};
+
+const retainCacheEntries = (
+  cache: Map<string, string>,
+  expiry: Map<string, number>,
+  retainedPaths: Set<string>,
+) => {
+  for (const path of cache.keys()) {
+    if (retainedPaths.has(path)) {
+      continue;
+    }
+
+    deleteCacheEntry(cache, expiry, path);
+  }
 };
 
 const touchCacheEntry = (
@@ -446,6 +460,52 @@ export function useCoverCache() {
     scheduleBackgroundPreload();
   };
 
+  const retainCoverPaths = ({
+    thumbnailPaths = [],
+    fullPaths = [],
+  }: {
+    thumbnailPaths?: string[];
+    fullPaths?: string[];
+  }) => {
+    bumpCacheEpoch();
+
+    const retainedThumbnailPaths = new Set(thumbnailPaths.filter(Boolean));
+    const retainedFullPaths = new Set(fullPaths.filter(Boolean));
+
+    retainCacheEntries(thumbnailCache, thumbnailCacheExpiry, retainedThumbnailPaths);
+    retainCacheEntries(fullCoverCache, fullCoverCacheExpiry, retainedFullPaths);
+
+    for (const requestKey of Array.from(inFlightRequests.keys())) {
+      const isThumbnail = isThumbnailRequestKey(requestKey);
+      const path = requestKey.slice(requestKey.indexOf(':') + 1);
+      const retainedSet = isThumbnail ? retainedThumbnailPaths : retainedFullPaths;
+
+      if (retainedSet.has(path)) {
+        continue;
+      }
+
+      inFlightRequests.delete(requestKey);
+      loadingSet.delete(requestKey);
+    }
+
+    for (const [path, priority] of Array.from(queuedPathPriority.entries())) {
+      const retainedSet = priority === 'priority' || priority === 'background'
+        ? retainedThumbnailPaths
+        : retainedFullPaths;
+      if (retainedSet.has(path)) {
+        continue;
+      }
+
+      queuedPathPriority.delete(path);
+    }
+
+    priorityPreloadQueue.splice(0, priorityPreloadQueue.length, ...priorityPreloadQueue.filter(path => retainedThumbnailPaths.has(path)));
+    backgroundPreloadQueue.splice(0, backgroundPreloadQueue.length, ...backgroundPreloadQueue.filter(path => retainedThumbnailPaths.has(path)));
+
+    pruneCache(thumbnailCache, thumbnailCacheExpiry, Math.max(HIDDEN_THUMBNAIL_CACHE_LIMIT, retainedThumbnailPaths.size));
+    pruneCache(fullCoverCache, fullCoverCacheExpiry, Math.max(1, retainedFullPaths.size));
+  };
+
   const clearCoverCaches = () => {
     bumpCacheEpoch();
     clearCacheEntries(thumbnailCache, thumbnailCacheExpiry);
@@ -475,6 +535,7 @@ export function useCoverCache() {
     loadFullCover,
     preloadCovers,
     preloadPriorityCovers: (paths: string[]) => preloadCovers(paths, 'priority'),
+    retainCoverPaths,
     clearCoverCaches,
   };
 }

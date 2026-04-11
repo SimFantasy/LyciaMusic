@@ -2,8 +2,8 @@ import { tauriInvoke } from '../services/tauri/invoke';
 import type { SongDetail } from '../types';
 import { MemoryCache } from '../utils/MemoryCache';
 
-const SONG_DETAIL_CACHE_TTL_MS = 15 * 60 * 1000;
-const SONG_DETAIL_CACHE_MAX_ENTRIES = 64;
+const SONG_DETAIL_CACHE_TTL_MS = 5 * 60 * 1000;
+const SONG_DETAIL_CACHE_MAX_ENTRIES = 8;
 
 const songDetailCache = new MemoryCache<string, SongDetail>({
   maxEntries: SONG_DETAIL_CACHE_MAX_ENTRIES,

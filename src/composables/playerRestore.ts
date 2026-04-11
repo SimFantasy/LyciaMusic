@@ -40,7 +40,7 @@ export const createPlayerRestore = ({
   const collectionsStore = useCollectionsStore();
   const libraryStore = useLibraryStore();
   const playbackStore = usePlaybackStore();
-  const { loadCover, loadFullCover } = useCoverCache();
+  const { loadCover, retainCoverPaths } = useCoverCache();
 
   const restoreRecentHistory = async () => {
     const legacyHistory = readStoredHistory(keys.legacyPlayerHistory);
@@ -116,11 +116,11 @@ export const createPlayerRestore = ({
       loadCover(playbackStore.currentSong.path)
         .then(cover => {
           playbackStore.currentCover = cover || '';
-        })
-        .catch(() => {});
-      loadFullCover(playbackStore.currentSong.path)
-        .then(cover => {
-          playbackStore.currentCoverFull = cover || playbackStore.currentCover;
+          playbackStore.currentCoverFull = playbackStore.currentCover;
+          retainCoverPaths({
+            thumbnailPaths: [playbackStore.currentSong?.path ?? ''].filter(Boolean),
+            fullPaths: [],
+          });
         })
         .catch(() => {});
       playbackStore.isSongLoaded = false;
