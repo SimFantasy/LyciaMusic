@@ -93,21 +93,16 @@ const createSongLookup = (fallbackSongs: Song[] = []) => {
     }
   }
 
-  for (const song of libraryStore.canonicalSongs) {
-    if (song?.path) {
-      lookup.set(song.path, song);
-    }
-  }
+  libraryStore.songLookup.forEach((song, path) => {
+    lookup.set(path, song);
+  });
 
   return lookup;
 };
 
 const resolveSongsFromPaths = (paths: string[], fallbackSongs: Song[] = []) => {
-  const lookup = createSongLookup(fallbackSongs);
-
-  return paths
-    .map(path => lookup.get(path))
-    .filter((song): song is Song => !!song);
+  const libraryStore = useLibraryStore();
+  return libraryStore.resolveSongsByPaths(paths, fallbackSongs);
 };
 
 const formatDuration = (seconds: number) => {

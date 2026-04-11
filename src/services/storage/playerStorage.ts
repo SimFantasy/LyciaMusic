@@ -151,23 +151,23 @@ export const playerStorage = {
     queuePathKey: string;
     legacyPlaylistKey: string;
     legacyQueueKey: string;
-    sourceSongs: Song[];
+    sourceSongPaths: string[];
     watchedFolders: string[];
     favoritePaths: string[];
     playlists: Playlist[];
     settings: AppSettings;
-    playQueue: Song[];
+    playQueuePaths: string[];
     artistCustomOrder: string[];
     albumCustomOrder: string[];
     folderCustomOrder: Record<string, string[]>;
     localCustomOrder: string[];
   }) {
-    localStore.setJson(options.playlistPathKey, options.sourceSongs.map((song) => song.path));
+    localStore.setJson(options.playlistPathKey, options.sourceSongPaths);
     localStore.setJson(playerStorageKeys.watchedFolders, options.watchedFolders);
     localStore.setJson(playerStorageKeys.favorites, options.favoritePaths);
     localStore.setJson(playerStorageKeys.playlists, options.playlists);
     localStore.setJson(playerStorageKeys.settings, options.settings);
-    localStore.setJson(options.queuePathKey, options.playQueue.map((song) => song.path));
+    localStore.setJson(options.queuePathKey, options.playQueuePaths);
     localStore.setJson(playerStorageKeys.artistCustomOrder, options.artistCustomOrder);
     localStore.setJson(playerStorageKeys.albumCustomOrder, options.albumCustomOrder);
     localStore.setJson(playerStorageKeys.folderCustomOrder, options.folderCustomOrder);

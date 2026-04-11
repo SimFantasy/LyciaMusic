@@ -1,4 +1,4 @@
-import { ref, shallowRef, watch } from 'vue';
+import { computed, ref, shallowRef } from 'vue';
 import { defineStore } from 'pinia';
 
 import type {
@@ -15,9 +15,12 @@ import type {
   Song,
 } from '../../types';
 
+const areSamePaths = (left: string[], right: string[]) =>
+  left.length === right.length && left.every((path, index) => path === right[index]);
+
 export const useLibraryStore = defineStore('library', () => {
   const songPool = new Map<string, Song>();
-  let isNormalizingSongState = false;
+  const songCatalogVersion = ref(0);
 
   const songKeys: Array<keyof Song> = [
     'id',
@@ -46,40 +49,59 @@ export const useLibraryStore = defineStore('library', () => {
     'file_modified_at',
   ];
 
+  const canonicalSongPaths = shallowRef<string[]>([]);
+  const sourceSongPaths = shallowRef<string[]>([]);
+
   const syncSongRecord = (target: Song, source: Song) => {
+    let changed = false;
+
     songKeys.forEach((key) => {
-      const value = source[key];
-      if (Array.isArray(value)) {
-        (target as Record<keyof Song, unknown>)[key] = [...value];
+      const nextValue = source[key];
+      const normalizedValue = Array.isArray(nextValue) ? [...nextValue] : nextValue;
+      const prevValue = target[key];
+
+      const isSameArray = Array.isArray(prevValue)
+        && Array.isArray(normalizedValue)
+        && prevValue.length === normalizedValue.length
+        && prevValue.every((item, index) => item === normalizedValue[index]);
+
+      if (prevValue === normalizedValue || isSameArray) {
         return;
       }
 
-      (target as Record<keyof Song, unknown>)[key] = value;
+      (target as Record<keyof Song, unknown>)[key] = normalizedValue;
+      changed = true;
     });
+
+    return changed;
   };
 
-  const internSong = (song: Song): Song => {
+  const internSong = (song: Song) => {
     const path = song?.path;
     if (!path) {
-      return song;
+      return { song, changed: false };
     }
 
     const existing = songPool.get(path);
     if (!existing) {
-      songPool.set(path, song);
-      return song;
+      songPool.set(path, {
+        ...song,
+        artist_names: [...song.artist_names],
+        effective_artist_names: [...song.effective_artist_names],
+      });
+      return { song: songPool.get(path) as Song, changed: true };
     }
 
-    if (existing !== song) {
-      syncSongRecord(existing, song);
-    }
-
-    return existing;
+    return {
+      song: existing,
+      changed: syncSongRecord(existing, song),
+    };
   };
 
-  const internSongs = (songs: Song[]) => {
-    const normalized: Song[] = [];
+  const normalizeSongCollection = (songs: Song[]) => {
+    const nextPaths: string[] = [];
     const seenPaths = new Set<string>();
+    let changed = false;
 
     songs.forEach((song) => {
       if (!song?.path || seenPaths.has(song.path)) {
@@ -87,64 +109,121 @@ export const useLibraryStore = defineStore('library', () => {
       }
 
       seenPaths.add(song.path);
-      normalized.push(internSong(song));
+      nextPaths.push(song.path);
+
+      const interned = internSong(song);
+      if (interned.changed) {
+        changed = true;
+      }
     });
 
-    return normalized;
+    return { paths: nextPaths, changed };
   };
 
-  const areSameSongRefs = (left: Song[], right: Song[]) =>
-    left.length === right.length && left.every((song, index) => song === right[index]);
-
   const pruneSongPool = () => {
-    const referencedPaths = new Set<string>();
-    canonicalSongs.value.forEach((song) => {
-      if (song?.path) {
-        referencedPaths.add(song.path);
-      }
-    });
-    sourceSongs.value.forEach((song) => {
-      if (song?.path) {
-        referencedPaths.add(song.path);
-      }
-    });
+    const referencedPaths = new Set<string>([
+      ...canonicalSongPaths.value,
+      ...sourceSongPaths.value,
+    ]);
 
+    let removed = false;
     for (const path of songPool.keys()) {
       if (!referencedPaths.has(path)) {
         songPool.delete(path);
+        removed = true;
       }
+    }
+
+    if (removed) {
+      songCatalogVersion.value += 1;
     }
   };
 
-  const normalizeSongState = () => {
-    if (isNormalizingSongState) {
-      return;
+  const materializeSongs = (paths: string[]) => {
+    songCatalogVersion.value;
+    return paths
+      .map(path => songPool.get(path))
+      .filter((song): song is Song => !!song);
+  };
+
+  const updateCanonicalSongPaths = (paths: string[], didChangeSongPool = false) => {
+    if (!areSamePaths(canonicalSongPaths.value, paths)) {
+      canonicalSongPaths.value = paths;
     }
 
-    isNormalizingSongState = true;
-    try {
-      const normalizedCanonical = internSongs(canonicalSongs.value);
-      if (!areSameSongRefs(canonicalSongs.value, normalizedCanonical)) {
-        canonicalSongs.value = normalizedCanonical;
-      }
+    if (didChangeSongPool) {
+      songCatalogVersion.value += 1;
+    }
 
-      const normalizedSource = internSongs(sourceSongs.value);
-      if (!areSameSongRefs(sourceSongs.value, normalizedSource)) {
-        sourceSongs.value = normalizedSource;
-      }
+    pruneSongPool();
+  };
 
-      pruneSongPool();
-    } finally {
-      isNormalizingSongState = false;
+  const updateSourceSongPaths = (paths: string[], didChangeSongPool = false) => {
+    if (!areSamePaths(sourceSongPaths.value, paths)) {
+      sourceSongPaths.value = paths;
+    }
+
+    if (didChangeSongPool) {
+      songCatalogVersion.value += 1;
+    }
+
+    pruneSongPool();
+  };
+
+  const setCanonicalSongs = (songs: Song[]) => {
+    const normalized = normalizeSongCollection(songs);
+    updateCanonicalSongPaths(normalized.paths, normalized.changed);
+  };
+
+  const setSourceSongs = (songs: Song[]) => {
+    const normalized = normalizeSongCollection(songs);
+    updateSourceSongPaths(normalized.paths, normalized.changed);
+  };
+
+  const setSongRecord = (song: Song) => {
+    const interned = internSong(song);
+    if (interned.changed) {
+      songCatalogVersion.value += 1;
     }
   };
 
-  // Canonical library catalog data indexed from library_folders.
-  const canonicalSongs = shallowRef<Song[]>([]);
-  // File-system-backed source snapshot used by folder browsing and file operations.
-  const sourceSongs = shallowRef<Song[]>([]);
+  const getSongByPath = (path: string | null | undefined, fallback?: Song | null) => {
+    if (!path) {
+      return fallback ?? null;
+    }
+
+    return songPool.get(path) ?? fallback ?? null;
+  };
+
+  const resolveSongsByPaths = (paths: string[], fallbackSongs: Song[] = []) => {
+    const fallbackLookup = new Map<string, Song>();
+    fallbackSongs.forEach((song) => {
+      if (song?.path && !fallbackLookup.has(song.path)) {
+        fallbackLookup.set(song.path, song);
+      }
+    });
+
+    return paths
+      .map(path => getSongByPath(path, fallbackLookup.get(path)))
+      .filter((song): song is Song => !!song);
+  };
+
+  const songLookup = computed(() => {
+    songCatalogVersion.value;
+    return songPool;
+  });
+
+  const canonicalSongs = computed<Song[]>({
+    get: () => materializeSongs(canonicalSongPaths.value),
+    set: setCanonicalSongs,
+  });
+
+  const sourceSongs = computed<Song[]>({
+    get: () => materializeSongs(sourceSongPaths.value),
+    set: setSourceSongs,
+  });
+
   const libraryFolders = ref<LibraryFolder[]>([]);
-  // Directory hierarchy derived from the current library roots.
   const libraryHierarchy = ref<FolderNode[]>([]);
   const libraryScanProgress = ref<LibraryScanProgress | null>(null);
   const libraryScanSession = ref<LibraryScanSession | null>(null);
@@ -158,14 +237,6 @@ export const useLibraryStore = defineStore('library', () => {
   const folderCustomOrder = ref<Record<string, string[]>>({});
   const localSortMode = ref<LocalSortMode>('title');
   const localCustomOrder = ref<string[]>([]);
-
-  const setSourceSongs = (songs: Song[]) => {
-    sourceSongs.value = songs;
-  };
-
-  const setCanonicalSongs = (songs: Song[]) => {
-    canonicalSongs.value = songs;
-  };
 
   const setLibraryFolders = (folders: LibraryFolder[]) => {
     libraryFolders.value = folders;
@@ -202,16 +273,17 @@ export const useLibraryStore = defineStore('library', () => {
     watchedFolders.value = list;
   };
 
-  watch([canonicalSongs, sourceSongs], normalizeSongState, {
-    flush: 'sync',
-  });
-
   return {
     canonicalSongs,
+    canonicalSongPaths,
     sourceSongs,
+    sourceSongPaths,
+    songLookup,
+    getSongByPath,
+    resolveSongsByPaths,
+    setSongRecord,
     libraryFolders,
     libraryHierarchy,
-    // Compatibility aliases while callers migrate to the semantic names above.
     songList: sourceSongs,
     librarySongs: canonicalSongs,
     folderTree: libraryHierarchy,
@@ -231,7 +303,6 @@ export const useLibraryStore = defineStore('library', () => {
     setCanonicalSongs,
     setLibraryFolders,
     setLibraryHierarchy,
-    // Compatibility aliases while callers migrate to the semantic setters above.
     setSongList: setSourceSongs,
     setLibrarySongs: setCanonicalSongs,
     setFolderTree: setLibraryHierarchy,

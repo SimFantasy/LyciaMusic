@@ -22,7 +22,9 @@ export const createPlayerPersistence = ({ keys }: { keys: PlayerPersistenceKeys 
     albumCustomOrder,
     folderCustomOrder,
     localCustomOrder,
+    sourceSongPaths,
   } = storeToRefs(libraryStore);
+  const { playQueuePaths } = storeToRefs(playbackStore);
   let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
   const flushPersistedState = () => {
@@ -36,12 +38,12 @@ export const createPlayerPersistence = ({ keys }: { keys: PlayerPersistenceKeys 
       queuePathKey: keys.playerQueuePaths,
       legacyPlaylistKey: keys.legacyPlayerPlaylist,
       legacyQueueKey: keys.legacyPlayerQueue,
-      sourceSongs: libraryStore.sourceSongs,
+      sourceSongPaths: sourceSongPaths.value,
       watchedFolders: libraryStore.watchedFolders,
       favoritePaths: collectionsStore.favoritePaths,
       playlists: collectionsStore.playlists,
       settings: settingsStore.settings,
-      playQueue: playbackStore.playQueue,
+      playQueuePaths: playQueuePaths.value,
       artistCustomOrder: artistCustomOrder.value,
       albumCustomOrder: albumCustomOrder.value,
       folderCustomOrder: folderCustomOrder.value,

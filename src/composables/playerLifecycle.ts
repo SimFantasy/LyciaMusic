@@ -230,7 +230,7 @@ export const createPlayerLifecycle = ({
   const uiStore = useUiStore();
   const { settings } = storeToRefs(settingsStore);
   const {
-    sourceSongs,
+    sourceSongPaths,
     watchedFolders,
     artistSortMode,
     albumSortMode,
@@ -244,11 +244,11 @@ export const createPlayerLifecycle = ({
   const { favoritePaths, playlists, playlistSortMode } = storeToRefs(collectionsStore);
   const {
     currentCover,
-    currentSong,
+    currentSongPath,
     currentTime,
     isPlaying,
     playMode,
-    playQueue,
+    playQueuePaths,
     volume,
   } = storeToRefs(playbackStore);
   const { dominantColors } = storeToRefs(uiStore);
@@ -313,8 +313,8 @@ export const createPlayerLifecycle = ({
       playerStorage.writeNumber(playerStorageKeys.playMode, value);
     });
 
-    watch(sourceSongs, scheduleStatePersistence);
-    watch(playQueue, scheduleStatePersistence);
+    watch(sourceSongPaths, scheduleStatePersistence);
+    watch(playQueuePaths, scheduleStatePersistence);
     watch(watchedFolders, scheduleStatePersistence);
     watch(favoritePaths, scheduleStatePersistence, { deep: true });
     watch(playlists, scheduleStatePersistence, { deep: true });
@@ -340,9 +340,9 @@ export const createPlayerLifecycle = ({
       playerStorage.setString(playerStorageKeys.playlistSortMode, value);
     });
 
-    watch(currentSong, song => {
-      if (song?.path) {
-        playerStorage.setString(lastSongPathKey, song.path);
+    watch(currentSongPath, path => {
+      if (path) {
+        playerStorage.setString(lastSongPathKey, path);
         playerStorage.remove(legacyLastSongKey);
         return;
       }
