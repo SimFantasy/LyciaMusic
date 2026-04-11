@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { onMounted, onScopeDispose, watch, type Ref } from 'vue';
 import { storeToRefs } from 'pinia';
 
-import { extractDominantColors } from './colorExtraction';
+import { clearPaletteCache, extractDominantColors } from './colorExtraction';
 import type { LibraryScanProgress, Song } from '../types';
 import {
   playerStorage,
@@ -19,7 +19,7 @@ import { useCollectionsStore } from '../features/collections/store';
 import { useLibraryStore } from '../features/library/store';
 import { usePlaybackStore } from '../features/playback/store';
 import { mergeAppSettings, useSettingsStore } from '../features/settings/store';
-import { useUiStore } from '../shared/stores/ui';
+import { defaultDominantColors, useUiStore } from '../shared/stores/ui';
 import type { AppSettings } from '../types';
 
 interface SeekCompletedPayload {
@@ -60,6 +60,7 @@ interface CreatePlayerLifecycleDeps {
 
 let lifecycleInitDone = false;
 let dominantColorTaskId = 0;
+let dominantColorSignature = '';
 
 interface SortSettingsRefs {
   artistSortMode: Ref<ArtistSortMode>;
@@ -351,22 +352,46 @@ export const createPlayerLifecycle = ({
       playerStorage.remove(legacyLastSongKey);
     });
 
-    // 封面切换时立即重提取主色
-    watch(currentCover, async (nextCover) => {
-      if (!nextCover) return;
-
-      const taskId = ++dominantColorTaskId;
-      let coverUrl = nextCover;
-      if (!nextCover.startsWith('http') && !nextCover.startsWith('data:')) {
-        coverUrl = convertFileSrc(nextCover);
+    const resolveCoverUrl = (cover: string) => {
+      if (!cover) {
+        return '';
       }
 
+      return cover.startsWith('http') || cover.startsWith('data:')
+        ? cover
+        : convertFileSrc(cover);
+    };
+
+    const updateDominantColors = async (cover: string) => {
+      if (!cover) {
+        dominantColorSignature = '';
+        dominantColors.value = [...defaultDominantColors];
+        return;
+      }
+
+      const coverUrl = resolveCoverUrl(cover);
+      const signature = JSON.stringify({
+        coverUrl,
+        colorBoost: settings.value.theme.flowColorBoost,
+        depth: settings.value.theme.flowDepth,
+      });
+
+      if (signature === dominantColorSignature) {
+        return;
+      }
+
+      const taskId = ++dominantColorTaskId;
       const colors = await extractDominantColors(coverUrl, 4, {
         colorBoost: settings.value.theme.flowColorBoost,
         depth: settings.value.theme.flowDepth,
       });
       if (taskId !== dominantColorTaskId) return;
+      dominantColorSignature = signature;
       dominantColors.value = colors;
+    };
+
+    watch(currentCover, (nextCover) => {
+      void updateDominantColors(nextCover);
     }, { immediate: true });
 
     // 流光参数微调时 debounce 延迟重提取主色，避免拖动滑块时频繁触发层切换闪烁
@@ -377,23 +402,18 @@ export const createPlayerLifecycle = ({
     ], () => {
       if (flowTweakTimer) clearTimeout(flowTweakTimer);
       flowTweakTimer = setTimeout(async () => {
-        const cover = currentCover.value;
-        if (!cover) return;
-
-        const taskId = ++dominantColorTaskId;
-        let coverUrl = cover;
-        if (!cover.startsWith('http') && !cover.startsWith('data:')) {
-          coverUrl = convertFileSrc(cover);
-        }
-
-        const colors = await extractDominantColors(coverUrl, 4, {
-          colorBoost: settings.value.theme.flowColorBoost,
-          depth: settings.value.theme.flowDepth,
-        });
-        if (taskId !== dominantColorTaskId) return;
-        dominantColors.value = colors;
+        void updateDominantColors(currentCover.value);
       }, 500);
     });
+
+    watch(
+      () => settings.value.theme.dynamicBgType,
+      (dynamicBgType) => {
+        if (dynamicBgType !== 'flow') {
+          clearPaletteCache();
+        }
+      },
+    );
 
     watch(isPlaying, playing => {
       if (!playing) {
@@ -456,6 +476,11 @@ export const createPlayerLifecycle = ({
     });
 
     onScopeDispose(() => {
+      if (flowTweakTimer) {
+        clearTimeout(flowTweakTimer);
+      }
+      dominantColorTaskId += 1;
+      dominantColorSignature = '';
       void Promise.all(listenerRegistrations).then(unlisteners => {
         unlisteners.forEach(unlisten => unlisten());
       });

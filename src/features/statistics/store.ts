@@ -163,6 +163,7 @@ export const useStatisticsStore = defineStore('statistics', () => {
   };
 
   const releaseHeavyData = () => {
+    stats.value = null;
     behaviorStats.value = null;
     qualityDistribution.value = null;
     formatDistribution.value = null;

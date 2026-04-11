@@ -1,3 +1,5 @@
+import { MemoryCache } from '../utils/MemoryCache';
+
 interface HslColor {
   h: number;
   s: number;
@@ -36,7 +38,11 @@ const CANVAS_SIZE = 56;
 const SAMPLE_STEP = 2;
 const DEFAULT_COUNT = 4;
 const PALETTE_CACHE_LIMIT = 128;
-const paletteCache = new Map<string, string[]>();
+const PALETTE_CACHE_TTL_MS = 15 * 60 * 1000;
+const paletteCache = new MemoryCache<string, string[]>({
+  maxEntries: PALETTE_CACHE_LIMIT,
+  ttlMs: PALETTE_CACHE_TTL_MS,
+});
 
 export function clearPaletteCache() {
   paletteCache.clear();
@@ -57,28 +63,11 @@ function buildPaletteCacheKey(imageUrl: string, count: number, options: ExtractC
 
 function getCachedPalette(cacheKey: string): string[] | undefined {
   const cached = paletteCache.get(cacheKey);
-  if (!cached) {
-    return undefined;
-  }
-
-  paletteCache.delete(cacheKey);
-  paletteCache.set(cacheKey, cached);
-  return [...cached];
+  return cached ? [...cached] : undefined;
 }
 
 function setCachedPalette(cacheKey: string, palette: string[]) {
-  if (paletteCache.has(cacheKey)) {
-    paletteCache.delete(cacheKey);
-  }
-
   paletteCache.set(cacheKey, [...palette]);
-  while (paletteCache.size > PALETTE_CACHE_LIMIT) {
-    const oldestKey = paletteCache.keys().next().value as string | undefined;
-    if (!oldestKey) {
-      break;
-    }
-    paletteCache.delete(oldestKey);
-  }
 }
 
 function clamp(value: number, min: number, max: number): number {
