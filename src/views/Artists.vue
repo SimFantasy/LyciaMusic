@@ -17,7 +17,7 @@ const router = useRouter();
 const route = useRoute();
 const { openHomeArtist } = useHomeNavigation(router);
 const isSearchActive = computed(() => searchQuery.value.trim().length > 0);
-const { peekCoverUrl, touchCoverPaths, isCoverLoading, preloadPriorityCovers } = useCoverCache();
+const { peekCoverUrl, touchCoverPaths, preloadPriorityCovers } = useCoverCache();
 
 const showSortMenu = ref(false);
 const dragOverName = ref<string | null>(null);
@@ -529,7 +529,6 @@ onUnmounted(() => {
               >
                 <div class="w-full h-full rounded-full overflow-hidden shadow-sm group-hover:shadow transition-shadow duration-300 relative bg-gray-100 dark:bg-white/5 flex items-center justify-center">
                   <img v-if="getDisplayedCoverUrl(item.artist.firstSongPath)" :src="getDisplayedCoverUrl(item.artist.firstSongPath)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="item.artist.name">
-                  <div v-else-if="isCoverLoading(item.artist.firstSongPath)" class="w-full h-full bg-gray-200 dark:bg-white/10 animate-pulse"></div>
                   <div v-else class="w-full h-full flex items-center justify-center text-lg md:text-xl font-bold text-white bg-gradient-to-br animate-in fade-in duration-300" :class="getGradientForArtist(item.artist.name)">
                     {{ item.artist.name.charAt(0).toUpperCase() }}
                   </div>
@@ -570,7 +569,6 @@ onUnmounted(() => {
           >
             <div class="w-full h-full rounded-full overflow-hidden shadow-sm group-hover:shadow transition-shadow duration-300 relative bg-gray-100 dark:bg-white/5 flex items-center justify-center">
               <img v-if="getDisplayedCoverUrl(item.artist.firstSongPath)" :src="getDisplayedCoverUrl(item.artist.firstSongPath)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="item.artist.name">
-              <div v-else-if="isCoverLoading(item.artist.firstSongPath)" class="w-full h-full bg-gray-200 dark:bg-white/10 animate-pulse"></div>
               <div v-else class="w-full h-full flex items-center justify-center text-lg md:text-xl font-bold text-white bg-gradient-to-br animate-in fade-in duration-300" :class="getGradientForArtist(item.artist.name)">
                 {{ item.artist.name.charAt(0).toUpperCase() }}
               </div>
