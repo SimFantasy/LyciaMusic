@@ -2,8 +2,10 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useLyrics } from '../../composables/lyrics';
+import { useSongDetailCache } from '../../composables/useSongDetailCache';
 import { usePlaybackController } from '../../features/playback/usePlaybackController';
 import { useSharedTransition } from '../../composables/useSharedTransition';
+import type { SongDetail } from '../../types';
 import LyricsView from './LyricsView.vue';
 import PlayerDetailBackground from './PlayerDetailBackground.vue';
 import PlayerDetailLeft from './PlayerDetailLeft.vue';
@@ -18,11 +20,14 @@ const {
 
 const { parsedLyrics } = useLyrics();
 const { staggerPhase } = useSharedTransition();
+const { loadSongDetail } = useSongDetailCache();
 
 const TOP_CHROME_HIDE_DELAY = 2500;
 
 const isTopChromeVisible = ref(false);
 let topChromeHideTimer: ReturnType<typeof setTimeout> | null = null;
+const currentSongDetail = ref<SongDetail | null>(null);
+let detailRequestId = 0;
 
 const appWindow = getCurrentWindow();
 
@@ -73,9 +78,51 @@ watch(showPlayerDetail, (visible) => {
   isTopChromeVisible.value = false;
 });
 
+watch(() => currentSong.value?.path ?? '', async (path) => {
+  const requestId = ++detailRequestId;
+
+  if (!path) {
+    currentSongDetail.value = null;
+    return;
+  }
+
+  try {
+    const detail = await loadSongDetail(path);
+    if (requestId !== detailRequestId || path !== (currentSong.value?.path ?? '')) {
+      return;
+    }
+
+    currentSongDetail.value = detail;
+  } catch {
+    if (requestId !== detailRequestId || path !== (currentSong.value?.path ?? '')) {
+      return;
+    }
+
+    currentSongDetail.value = null;
+  }
+}, { immediate: true });
+
 onBeforeUnmount(() => {
   clearTopChromeHideTimer();
 });
+
+const formatFileSize = (size: number | undefined) => {
+  if (!size || size <= 0) {
+    return '';
+  }
+
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = size;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  const precision = value >= 100 || unitIndex === 0 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(precision)} ${units[unitIndex]}`;
+};
 
 const staggerStyle = (phase: number, translateDir: 'Y' | 'X' = 'Y', distance = 20) => {
   const visible = showPlayerDetail.value || staggerPhase.value >= phase;
@@ -96,13 +143,15 @@ const metaInfo = computed(() => {
   if (!currentSong.value) return [];
 
   const song = currentSong.value;
+  const detail = currentSongDetail.value;
 
   return [
     { label: '歌手', value: song.artist },
     { label: '专辑', value: song.album },
     { label: '音质', value: song.bitrate ? `${song.sample_rate}Hz / ${song.bitrate}kbps` : 'Standard' },
-    song.genre ? { label: '流派', value: song.genre } : null,
-    song.year ? { label: '年份', value: song.year } : null,
+    (detail?.genre || song.genre) ? { label: '流派', value: detail?.genre || song.genre || '' } : null,
+    (detail?.year || song.year) ? { label: '年份', value: detail?.year || song.year || '' } : null,
+    detail?.file_size ? { label: '大小', value: formatFileSize(detail.file_size) } : null,
   ].filter((item): item is { label: string; value: string } => Boolean(item?.value));
 });
 </script>

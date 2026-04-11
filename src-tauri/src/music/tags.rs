@@ -17,6 +17,13 @@ pub struct TagTextMetadata {
     pub album_artist: Option<String>,
 }
 
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
+pub struct TagDetailMetadata {
+    pub genre: Option<String>,
+    pub year: Option<String>,
+    pub comment: Option<String>,
+}
+
 pub fn read_tagged_file_from_path(path: &Path) -> lofty::error::Result<TaggedFile> {
     read_tagged_file_from_path_with_cover_mode(path, true)
 }
@@ -72,6 +79,56 @@ where
             && metadata.album.is_some()
             && metadata.album_artist.is_some()
         {
+            break;
+        }
+    }
+
+    metadata
+}
+
+pub fn extract_detail_metadata<T>(tagged_file: &T) -> TagDetailMetadata
+where
+    T: TaggedFileExt + ?Sized,
+{
+    let mut metadata = TagDetailMetadata::default();
+
+    for tag in ordered_tags(tagged_file) {
+        if metadata.genre.is_none() {
+            metadata.genre = tag
+                .genre()
+                .as_deref()
+                .and_then(clean_text)
+                .or_else(|| read_tag_text(tag, &[], &["GENRE", "TCON", "IGNR"]));
+        }
+
+        if metadata.year.is_none() {
+            metadata.year = tag
+                .get_string(&ItemKey::RecordingDate)
+                .and_then(clean_text)
+                .or_else(|| read_tag_text(tag, &[], &["DATE", "YEAR", "TYER", "TDRC", "ICRD"]));
+        }
+
+        if metadata.comment.is_none() {
+            metadata.comment = tag
+                .get_string(&ItemKey::Comment)
+                .and_then(clean_text)
+                .or_else(|| {
+                    tag.items().find_map(|item| match item.key() {
+                        ItemKey::Comment | ItemKey::Description => item_text(item),
+                        ItemKey::Unknown(key)
+                            if matches!(
+                                key.to_ascii_uppercase().as_str(),
+                                "COMMENT" | "COMMENTS" | "DESCRIPTION"
+                            ) =>
+                        {
+                            item_text(item)
+                        }
+                        _ => None,
+                    })
+                });
+        }
+
+        if metadata.genre.is_some() && metadata.year.is_some() && metadata.comment.is_some() {
             break;
         }
     }

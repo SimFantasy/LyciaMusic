@@ -1,18 +1,7 @@
-import type { Song } from '../../types';
+import type { AlbumCatalogItem, ArtistCatalogItem, Song } from '../../types';
 
-export interface ArtistListItem {
-  name: string;
-  count: number;
-  firstSongPath: string;
-}
-
-export interface AlbumListItem {
-  key: string;
-  name: string;
-  count: number;
-  artist: string;
-  firstSongPath: string;
-}
+export type ArtistListItem = ArtistCatalogItem;
+export type AlbumListItem = AlbumCatalogItem;
 
 export const isDirectParent = (parentPath: string, childPath: string) => {
   if (!parentPath || !childPath) return false;

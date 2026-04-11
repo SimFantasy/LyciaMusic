@@ -1,4 +1,4 @@
-export interface Song {
+export interface SongCore {
   id?: number;       // 数据库主键 (用于播放记录关联)
   name: string;
   title?: string;
@@ -24,6 +24,50 @@ export interface Song {
   file_size?: number;
   added_at?: number;
   file_modified_at?: number;
+}
+
+export interface Song extends SongCore {}
+
+export type LibrarySong = Omit<Song, 'container' | 'codec' | 'file_size' | 'genre' | 'year'>;
+
+export interface SongDetail {
+  path: string;
+  genre?: string;
+  year?: string;
+  comment?: string;
+  container?: string;
+  codec?: string;
+  file_size?: number;
+}
+
+export interface ArtistCatalogItem {
+  name: string;
+  count: number;
+  firstSongPath: string;
+}
+
+export interface AlbumCatalogItem {
+  key: string;
+  name: string;
+  count: number;
+  artist: string;
+  firstSongPath: string;
+}
+
+export interface RecentAlbumCatalogItem {
+  key: string;
+  name: string;
+  artist: string;
+  playedAt: number;
+  firstSongPath: string;
+}
+
+export interface RecentPlaylistCatalogItem {
+  id: string;
+  name: string;
+  count: number;
+  playedAt: number;
+  firstSongPath: string;
 }
 
 export interface HistoryItem {

@@ -5,7 +5,11 @@ import {
   startLibraryScanSession,
 } from './playerLibraryScan';
 import type { ScanLibraryOptions } from './playerLibraryScan';
-import type { Song } from '../types';
+import type { AlbumCatalogItem, ArtistCatalogItem, LibrarySong, Song } from '../types';
+import { useLibraryAllSongPathCache } from './useLibraryAllSongPathCache';
+import { useLibraryCollectionSongPathCache } from './useLibraryCollectionSongPathCache';
+import { useLibraryDetailSongPathCache } from './useLibraryDetailSongPathCache';
+import { useLibraryFolderSongPathCache } from './useLibraryFolderSongPathCache';
 import { useLibraryStore } from '../features/library/store';
 
 let hasBootstrappedLibrary = false;
@@ -19,7 +23,7 @@ interface CreatePlayerLibraryRuntimeDeps {
   flushBufferedLibraryScanBatch: () => void;
   refreshStateSongReferences: (fallbackSongs?: Song[]) => void;
   finalizeLibraryScanProgress: (
-    songs: Song[],
+    songs: LibrarySong[],
     failed?: boolean,
     message?: string,
   ) => void;
@@ -34,6 +38,10 @@ export const createPlayerLibraryRuntime = ({
   onSilentScanError,
 }: CreatePlayerLibraryRuntimeDeps) => {
   const libraryStore = useLibraryStore();
+  const { clearLibraryAllSongPathCache } = useLibraryAllSongPathCache();
+  const { clearLibraryCollectionSongPathCache } = useLibraryCollectionSongPathCache();
+  const { clearLibraryDetailSongPathCache } = useLibraryDetailSongPathCache();
+  const { clearLibraryFolderSongPathCache } = useLibraryFolderSongPathCache();
 
   const cancelScheduledLibraryRefresh = () => {
     if (libraryRefreshTimer) {
@@ -49,11 +57,29 @@ export const createPlayerLibraryRuntime = ({
   const loadLibrarySongsFromCache = async () => {
     try {
       flushBufferedLibraryScanBatch();
-      const songs = await invoke<Song[]>('get_library_songs_cached');
+      const songs = await invoke<LibrarySong[]>('get_library_songs_cached');
       libraryStore.setLibrarySongs(songs);
+      clearLibraryAllSongPathCache();
+      clearLibraryCollectionSongPathCache();
+      clearLibraryDetailSongPathCache();
+      clearLibraryFolderSongPathCache();
       refreshStateSongReferences(songs);
     } catch (error) {
       console.error('Failed to load cached library songs:', error);
+    }
+  };
+
+  const loadLibraryCatalogsFromCache = async () => {
+    try {
+      const [artists, albums] = await Promise.all([
+        invoke<ArtistCatalogItem[]>('get_library_artist_catalog'),
+        invoke<AlbumCatalogItem[]>('get_library_album_catalog'),
+      ]);
+
+      libraryStore.setArtistCatalog(artists);
+      libraryStore.setAlbumCatalog(albums);
+    } catch (error) {
+      console.error('Failed to load cached library catalogs:', error);
     }
   };
 
@@ -81,10 +107,17 @@ export const createPlayerLibraryRuntime = ({
     libraryRefreshPromise = (async () => {
       try {
         flushBufferedLibraryScanBatch();
-        const songs = await invoke<Song[]>('scan_library');
+        const songs = await invoke<LibrarySong[]>('scan_library');
         libraryStore.setLibrarySongs(songs);
+        clearLibraryAllSongPathCache();
+        clearLibraryCollectionSongPathCache();
+        clearLibraryDetailSongPathCache();
+        clearLibraryFolderSongPathCache();
         refreshStateSongReferences(songs);
-        await fetchLibraryFolders();
+        await Promise.all([
+          fetchLibraryFolders(),
+          loadLibraryCatalogsFromCache(),
+        ]);
 
         if (!libraryStore.libraryScanProgress?.done) {
           finalizeLibraryScanProgress(songs);
@@ -143,6 +176,7 @@ export const createPlayerLibraryRuntime = ({
       libraryBootstrapPromise = (async () => {
         await Promise.all([
           loadLibrarySongsFromCache(),
+          loadLibraryCatalogsFromCache(),
           fetchLibraryFolders(),
         ]);
         scheduleLibraryRefresh();
@@ -154,6 +188,7 @@ export const createPlayerLibraryRuntime = ({
 
   return {
     bootstrapLibrary,
+    loadLibraryCatalogsFromCache,
     loadLibrarySongsFromCache,
     scanLibrary,
     dispose: cancelScheduledLibraryRefresh,

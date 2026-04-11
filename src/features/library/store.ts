@@ -8,8 +8,11 @@ import type {
   LocalSortMode,
 } from '../../services/storage/playerStorage';
 import type {
+  AlbumCatalogItem,
+  ArtistCatalogItem,
   FolderNode,
   LibraryFolder,
+  LibrarySong,
   LibraryScanProgress,
   LibraryScanSession,
   Song,
@@ -31,10 +34,12 @@ const resolveSharedPaths = (paths: string[], existing: string[], sibling: string
 };
 
 export const useLibraryStore = defineStore('library', () => {
-  const songPool = new Map<string, Song>();
+  const songPool = new Map<string, LibrarySong>();
   const songCatalogVersion = ref(0);
+  const stringPool = new Map<string, string>();
+  const arrayPool = new Map<string, string[]>();
 
-  const songKeys: Array<keyof Song> = [
+  const songKeys: Array<keyof LibrarySong> = [
     'id',
     'name',
     'title',
@@ -48,28 +53,73 @@ export const useLibraryStore = defineStore('library', () => {
     'is_various_artists_album',
     'collapse_artist_credits',
     'duration',
-    'genre',
-    'year',
     'bitrate',
     'sample_rate',
     'bit_depth',
     'format',
-    'container',
-    'codec',
-    'file_size',
     'added_at',
     'file_modified_at',
   ];
 
   const canonicalSongPaths = shallowRef<string[]>([]);
   const sourceSongPaths = shallowRef<string[]>([]);
+  const artistCatalog = shallowRef<ArtistCatalogItem[]>([]);
+  const albumCatalog = shallowRef<AlbumCatalogItem[]>([]);
 
-  const syncSongRecord = (target: Song, source: Song) => {
+  const internString = (value: string | undefined) => {
+    if (!value) {
+      return value;
+    }
+
+    const existing = stringPool.get(value);
+    if (existing) {
+      return existing;
+    }
+
+    stringPool.set(value, value);
+    return value;
+  };
+
+  const internStringArray = (values: string[] = []) => {
+    if (values.length === 0) {
+      return [];
+    }
+
+    const normalized = values.map(value => internString(value) ?? '');
+    const key = normalized.join('\u0001');
+    const existing = arrayPool.get(key);
+    if (existing) {
+      return existing;
+    }
+
+    arrayPool.set(key, normalized);
+    return normalized;
+  };
+
+  const normalizeSongRecord = (song: LibrarySong): LibrarySong => ({
+    ...song,
+    name: internString(song.name) ?? '',
+    title: internString(song.title),
+    path: internString(song.path) ?? '',
+    artist: internString(song.artist) ?? '',
+    artist_names: internStringArray(song.artist_names),
+    effective_artist_names: internStringArray(song.effective_artist_names),
+    album: internString(song.album) ?? '',
+    album_artist: internString(song.album_artist) ?? '',
+    album_key: internString(song.album_key) ?? '',
+    format: internString(song.format),
+  });
+
+  const syncSongRecord = (target: LibrarySong, source: LibrarySong) => {
     let changed = false;
 
     songKeys.forEach((key) => {
       const nextValue = source[key];
-      const normalizedValue = Array.isArray(nextValue) ? [...nextValue] : nextValue;
+      const normalizedValue = Array.isArray(nextValue)
+        ? internStringArray(nextValue)
+        : typeof nextValue === 'string'
+          ? internString(nextValue)
+          : nextValue;
       const prevValue = target[key];
 
       const isSameArray = Array.isArray(prevValue)
@@ -81,14 +131,14 @@ export const useLibraryStore = defineStore('library', () => {
         return;
       }
 
-      (target as Record<keyof Song, unknown>)[key] = normalizedValue;
+      (target as Record<keyof LibrarySong, unknown>)[key] = normalizedValue;
       changed = true;
     });
 
     return changed;
   };
 
-  const internSong = (song: Song) => {
+  const internSong = (song: LibrarySong) => {
     const path = song?.path;
     if (!path) {
       return { song, changed: false };
@@ -96,21 +146,17 @@ export const useLibraryStore = defineStore('library', () => {
 
     const existing = songPool.get(path);
     if (!existing) {
-      songPool.set(path, {
-        ...song,
-        artist_names: [...song.artist_names],
-        effective_artist_names: [...song.effective_artist_names],
-      });
-      return { song: songPool.get(path) as Song, changed: true };
+      songPool.set(path, normalizeSongRecord(song));
+      return { song: songPool.get(path) as LibrarySong, changed: true };
     }
 
     return {
       song: existing,
-      changed: syncSongRecord(existing, song),
+      changed: syncSongRecord(existing, normalizeSongRecord(song)),
     };
   };
 
-  const normalizeSongCollection = (songs: Song[]) => {
+  const normalizeSongCollection = (songs: LibrarySong[]) => {
     const nextPaths: string[] = [];
     const seenPaths = new Set<string>();
     let changed = false;
@@ -155,7 +201,7 @@ export const useLibraryStore = defineStore('library', () => {
     songCatalogVersion.value;
     return paths
       .map(path => songPool.get(path))
-      .filter((song): song is Song => !!song);
+      .filter((song): song is LibrarySong => !!song);
   };
 
   const updateCanonicalSongPaths = (paths: string[], didChangeSongPool = false) => {
@@ -184,17 +230,17 @@ export const useLibraryStore = defineStore('library', () => {
     pruneSongPool();
   };
 
-  const setCanonicalSongs = (songs: Song[]) => {
+  const setCanonicalSongs = (songs: LibrarySong[]) => {
     const normalized = normalizeSongCollection(songs);
     updateCanonicalSongPaths(normalized.paths, normalized.changed);
   };
 
-  const setSourceSongs = (songs: Song[]) => {
+  const setSourceSongs = (songs: LibrarySong[]) => {
     const normalized = normalizeSongCollection(songs);
     updateSourceSongPaths(normalized.paths, normalized.changed);
   };
 
-  const setSongRecord = (song: Song) => {
+  const setSongRecord = (song: LibrarySong) => {
     const interned = internSong(song);
     if (interned.changed) {
       songCatalogVersion.value += 1;
@@ -224,7 +270,7 @@ export const useLibraryStore = defineStore('library', () => {
 
   const songLookup = computed(() => {
     songCatalogVersion.value;
-    return songPool;
+    return songPool as Map<string, Song>;
   });
 
   const canonicalSongs = computed<Song[]>({
@@ -258,6 +304,14 @@ export const useLibraryStore = defineStore('library', () => {
 
   const setLibraryHierarchy = (tree: FolderNode[]) => {
     libraryHierarchy.value = tree;
+  };
+
+  const setArtistCatalog = (items: ArtistCatalogItem[]) => {
+    artistCatalog.value = items;
+  };
+
+  const setAlbumCatalog = (items: AlbumCatalogItem[]) => {
+    albumCatalog.value = items;
   };
 
   const setLibraryScanProgress = (progress: LibraryScanProgress | null) => {
@@ -298,6 +352,8 @@ export const useLibraryStore = defineStore('library', () => {
     setSongRecord,
     libraryFolders,
     libraryHierarchy,
+    artistCatalog,
+    albumCatalog,
     songList: sourceSongs,
     librarySongs: canonicalSongs,
     folderTree: libraryHierarchy,
@@ -317,6 +373,8 @@ export const useLibraryStore = defineStore('library', () => {
     setCanonicalSongs,
     setLibraryFolders,
     setLibraryHierarchy,
+    setArtistCatalog,
+    setAlbumCatalog,
     setSongList: setSourceSongs,
     setLibrarySongs: setCanonicalSongs,
     setFolderTree: setLibraryHierarchy,

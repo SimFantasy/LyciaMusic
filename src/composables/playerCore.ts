@@ -29,7 +29,7 @@ import { useLibraryStore } from '../features/library/store';
 import { useNavigationStore } from '../shared/stores/navigation';
 import { usePlaybackStore } from '../features/playback/store';
 import { useUiStore } from '../shared/stores/ui';
-import type { HistoryItem, Song } from '../types';
+import type { HistoryItem, LibrarySong, Song } from '../types';
 
 interface PlaySongOptions {
   updateShuffleHistory?: boolean;
@@ -45,7 +45,7 @@ const LEGACY_PLAYER_QUEUE_KEY = 'player_queue';
 const LEGACY_PLAYER_HISTORY_KEY = 'player_history';
 const LEGACY_PLAYER_LAST_SONG_KEY = 'player_last_song';
 
-const finalizeLibraryScanProgress = (songs: Song[], failed = false, message?: string) => {
+const finalizeLibraryScanProgress = (songs: LibrarySong[], failed = false, message?: string) => {
   const libraryStore = useLibraryStore();
   const existing = libraryStore.libraryScanProgress;
 

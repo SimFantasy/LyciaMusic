@@ -30,6 +30,8 @@ export function usePlayerLibraryView() {
   const {
     libraryHierarchy,
     libraryFolders,
+    artistCatalog,
+    albumCatalog,
     canonicalSongs,
     canonicalSongPaths,
     songLookup,
@@ -56,7 +58,8 @@ export function usePlayerLibraryView() {
   const isFolderMode = computed(() => currentViewMode.value === 'folder');
 
   const catalogSelectors = useLibraryCatalogSelectors({
-    canonicalSongs,
+    artistCatalog,
+    albumCatalog,
     searchQuery,
     artistSortMode,
     albumSortMode,
@@ -83,7 +86,6 @@ export function usePlayerLibraryView() {
 
   const { currentViewSongs } = useLibraryCurrentViewSongs({
     canonicalSongPaths,
-    sourceSongPaths,
     playlists,
     recentSongs,
     songLookup,
@@ -94,9 +96,11 @@ export function usePlayerLibraryView() {
     localMusicTab,
     currentArtistFilter,
     currentAlbumFilter,
+    currentFolderFilter,
     filterCondition,
     favTab,
     favDetailFilter,
+    folderSortMode,
     localSortMode,
     localCustomOrder,
     playlistSortMode,

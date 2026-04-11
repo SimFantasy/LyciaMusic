@@ -1,4 +1,14 @@
-import type { FolderNode, LibraryFolder, Song } from '../../types';
+import type {
+  AlbumCatalogItem,
+  ArtistCatalogItem,
+  FolderNode,
+  LibraryFolder,
+  RecentAlbumCatalogItem,
+  RecentPlaylistCatalogItem,
+  Playlist,
+  Song,
+  SongDetail,
+} from '../../types';
 
 export interface AudioDevice {
   id: string;
@@ -65,6 +75,27 @@ export interface TauriCommandMap {
   // Deprecated compat command. Do not use in new main-flow code.
   remove_sidebar_folder: { payload: { path: string }; response: void };
   get_library_hierarchy: { payload: undefined; response: FolderNode[] };
+  get_library_artist_catalog: { payload: undefined; response: ArtistCatalogItem[] };
+  get_library_album_catalog: { payload: undefined; response: AlbumCatalogItem[] };
+  get_library_song_paths_by_artist: { payload: { artistName: string }; response: string[] };
+  get_library_song_paths_by_album: { payload: { albumKey: string }; response: string[] };
+  get_library_song_paths_for_all_view: {
+    payload: {
+      query?: string;
+      artistFilter?: string;
+      albumFilter?: string;
+      sortMode: 'title' | 'artist' | 'added_at' | 'added_at_asc' | 'file_modified_at' | 'file_modified_at_asc';
+    };
+    response: string[];
+  };
+  get_library_song_paths_for_folder_view: {
+    payload: {
+      folderPath: string;
+      query?: string;
+      sortMode: 'title' | 'name' | 'artist' | 'added_at' | 'added_at_asc';
+    };
+    response: string[];
+  };
   get_folder_children: { payload: { folderPath: string }; response: FolderNode[] };
   get_library_folders: { payload: undefined; response: LibraryFolder[] };
   // Deprecated compat command. Main folder-tree flow must use get_library_hierarchy.
@@ -96,6 +127,7 @@ export interface TauriCommandMap {
   get_song_cover_thumbnail: { payload: { path: string }; response: string };
   get_song_cover: { payload: { path: string }; response: string };
   clear_cover_cache: { payload: undefined; response: void };
+  get_song_detail: { payload: { path: string }; response: SongDetail };
   play_audio: { payload: PlayAudioOptions; response: void };
   update_playback_metadata: { payload: UpdatePlaybackMetadataOptions; response: void };
   pause_audio: { payload: undefined; response: void };
@@ -108,6 +140,37 @@ export interface TauriCommandMap {
   remove_from_recent_history: { payload: { songPaths: string[] }; response: void };
   clear_recent_history: { payload: undefined; response: void };
   get_recent_history: { payload: { limit: number }; response: RecentHistoryRecord[] };
+  get_favorite_artist_catalog: { payload: { favoritePaths: string[] }; response: ArtistCatalogItem[] };
+  get_favorite_album_catalog: { payload: { favoritePaths: string[] }; response: AlbumCatalogItem[] };
+  get_favorite_song_paths_view: {
+    payload: {
+      favoritePaths: string[];
+      query?: string;
+      sortMode: 'title' | 'artist' | 'added_at' | 'added_at_asc' | 'file_modified_at' | 'file_modified_at_asc';
+      detailFilterType?: 'artist' | 'album';
+      detailFilterValue?: string;
+    };
+    response: string[];
+  };
+  get_recent_album_catalog: {
+    payload: { recentEntries: RecentHistoryImportRecord[] };
+    response: RecentAlbumCatalogItem[];
+  };
+  get_recent_song_paths_view: {
+    payload: {
+      recentEntries: RecentHistoryImportRecord[];
+      query?: string;
+      sortMode: 'title' | 'artist' | 'added_at' | 'added_at_asc' | 'file_modified_at' | 'file_modified_at_asc';
+    };
+    response: string[];
+  };
+  get_recent_playlist_catalog: {
+    payload: {
+      playlists: Playlist[];
+      recentEntries: RecentHistoryImportRecord[];
+    };
+    response: RecentPlaylistCatalogItem[];
+  };
   import_recent_history: {
     payload: { entries: RecentHistoryImportRecord[] };
     response: void;

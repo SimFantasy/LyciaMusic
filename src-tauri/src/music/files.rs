@@ -1,6 +1,7 @@
 // music/files.rs - 文件操作命令
 
-use super::tags::{extract_embedded_lyrics, read_tagged_file_from_path};
+use super::tags::{extract_detail_metadata, extract_embedded_lyrics, read_tagged_file_from_path};
+use super::types::SongDetail;
 use crate::database::DbState;
 use crate::error::CommandError;
 use rusqlite::params;
@@ -94,6 +95,29 @@ pub async fn get_song_lyrics(path: String) -> Result<String, String> {
     }
 
     Ok(String::new())
+}
+
+#[tauri::command]
+pub async fn get_song_detail(path: String) -> Result<SongDetail, String> {
+    let normalized_path = normalize_path(&path);
+    let path_obj = Path::new(&path);
+    let mut detail = SongDetail {
+        path: normalized_path,
+        ..SongDetail::default()
+    };
+
+    if let Ok(metadata) = fs::metadata(path_obj) {
+        detail.file_size = Some(metadata.len());
+    }
+
+    if let Ok(tagged_file) = read_tagged_file_from_path(path_obj) {
+        let tag_detail = extract_detail_metadata(&tagged_file);
+        detail.genre = tag_detail.genre;
+        detail.year = tag_detail.year;
+        detail.comment = tag_detail.comment;
+    }
+
+    Ok(detail)
 }
 
 #[tauri::command]

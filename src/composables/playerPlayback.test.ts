@@ -46,7 +46,7 @@ describe('player playback domain', () => {
     vi.clearAllMocks();
   });
 
-  it('reuses the display song list array when rebuilding the queue for playback', async () => {
+  it('rebuilds the queue from the display song list order when playback starts', async () => {
     const playbackStore = usePlaybackStore();
     const firstSong = makeSong({ path: '/music/first.flac', title: 'First' });
     const secondSong = makeSong({ path: '/music/second.flac', title: 'Second' });
@@ -60,7 +60,7 @@ describe('player playback domain', () => {
 
     await playerPlayback.playSong(firstSong);
 
-    expect(playbackStore.playQueue).toBe(displaySongList);
+    expect(playbackStore.playQueue.map(song => song.path)).toEqual(displaySongList.map(song => song.path));
     playerPlayback.dispose();
   });
 });

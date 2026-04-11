@@ -1,6 +1,8 @@
 use crate::database::DbState;
 use crate::music::utils::{format_distribution_bucket, is_lossless_audio, normalize_path};
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 
@@ -310,6 +312,268 @@ pub struct RecentHistoryImportEntry {
     pub played_at: i64,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentAlbumCatalogItem {
+    pub key: String,
+    pub name: String,
+    pub artist: String,
+    pub played_at: i64,
+    pub first_song_path: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentPlaylistCatalogItem {
+    pub id: String,
+    pub name: String,
+    pub count: u32,
+    pub played_at: i64,
+    pub first_song_path: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistImportItem {
+    pub id: String,
+    pub name: String,
+    pub song_paths: Vec<String>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum SongPathSortMode {
+    Title,
+    Artist,
+    AddedAt,
+    AddedAtAsc,
+    FileModifiedAt,
+    FileModifiedAtAsc,
+}
+
+#[derive(Debug)]
+struct SongCatalogRow {
+    path: String,
+    artist: String,
+    artist_names: Vec<String>,
+    effective_artist_names: Vec<String>,
+    album: String,
+    album_artist: String,
+    album_key: String,
+}
+
+#[derive(Debug)]
+struct SongViewRow {
+    path: String,
+    title: String,
+    artist: String,
+    artist_names: Vec<String>,
+    effective_artist_names: Vec<String>,
+    album: String,
+    album_artist: String,
+    album_key: String,
+    added_at: Option<i64>,
+    file_modified_at: Option<i64>,
+}
+
+fn deserialize_string_list(raw: Option<String>) -> Vec<String> {
+    raw.and_then(|value| serde_json::from_str::<Vec<String>>(&value).ok())
+        .unwrap_or_default()
+}
+
+fn preferred_artist_names(row: &SongCatalogRow) -> Vec<String> {
+    if !row.effective_artist_names.is_empty() {
+        return row.effective_artist_names.clone();
+    }
+
+    if !row.artist_names.is_empty() {
+        return row.artist_names.clone();
+    }
+
+    vec![row.artist.clone()]
+}
+
+fn preferred_view_artist_names(row: &SongViewRow) -> Vec<String> {
+    if !row.effective_artist_names.is_empty() {
+        return row.effective_artist_names.clone();
+    }
+
+    if !row.artist_names.is_empty() {
+        return row.artist_names.clone();
+    }
+
+    vec![row.artist.clone()]
+}
+
+fn resolve_album_key(row: &SongCatalogRow) -> String {
+    if !row.album_key.trim().is_empty() {
+        return row.album_key.clone();
+    }
+
+    let album = if row.album.trim().is_empty() {
+        "unknown".to_string()
+    } else {
+        row.album.to_ascii_lowercase()
+    };
+    let artist = if row.album_artist.trim().is_empty() && row.artist.trim().is_empty() {
+        "unknown".to_string()
+    } else if row.album_artist.trim().is_empty() {
+        row.artist.to_ascii_lowercase()
+    } else {
+        row.album_artist.to_ascii_lowercase()
+    };
+
+    format!(
+        "{}::{}",
+        album,
+        artist,
+    )
+}
+
+fn resolve_view_album_key(row: &SongViewRow) -> String {
+    if !row.album_key.trim().is_empty() {
+        return row.album_key.clone();
+    }
+
+    let album = if row.album.trim().is_empty() {
+        "unknown".to_string()
+    } else {
+        row.album.to_ascii_lowercase()
+    };
+    let artist = if row.album_artist.trim().is_empty() && row.artist.trim().is_empty() {
+        "unknown".to_string()
+    } else if row.album_artist.trim().is_empty() {
+        row.artist.to_ascii_lowercase()
+    } else {
+        row.album_artist.to_ascii_lowercase()
+    };
+
+    format!("{album}::{artist}")
+}
+
+fn path_file_name(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string())
+}
+
+fn song_title_label(row: &SongViewRow) -> String {
+    if row.title.trim().is_empty() {
+        path_file_name(&row.path)
+    } else {
+        row.title.clone()
+    }
+}
+
+fn song_matches_query(row: &SongViewRow, query: &str) -> bool {
+    let lowered_query = query.trim().to_lowercase();
+    if lowered_query.is_empty() {
+        return true;
+    }
+
+    path_file_name(&row.path).to_lowercase().contains(&lowered_query)
+        || row.title.to_lowercase().contains(&lowered_query)
+        || row.artist.to_lowercase().contains(&lowered_query)
+        || row.album.to_lowercase().contains(&lowered_query)
+        || row.album_artist.to_lowercase().contains(&lowered_query)
+        || preferred_view_artist_names(row)
+            .iter()
+            .any(|name| name.to_lowercase().contains(&lowered_query))
+}
+
+fn song_has_artist(row: &SongViewRow, artist_name: &str) -> bool {
+    preferred_view_artist_names(row)
+        .iter()
+        .any(|name| name == artist_name)
+}
+
+fn sort_song_view_rows(rows: &mut [SongViewRow], sort_mode: &SongPathSortMode) {
+    rows.sort_by(|left, right| match sort_mode {
+        SongPathSortMode::Title => song_title_label(left)
+            .to_lowercase()
+            .cmp(&song_title_label(right).to_lowercase()),
+        SongPathSortMode::Artist => left
+            .artist
+            .to_lowercase()
+            .cmp(&right.artist.to_lowercase())
+            .then_with(|| song_title_label(left).to_lowercase().cmp(&song_title_label(right).to_lowercase())),
+        SongPathSortMode::AddedAt => right
+            .added_at
+            .unwrap_or_default()
+            .cmp(&left.added_at.unwrap_or_default())
+            .then_with(|| song_title_label(left).to_lowercase().cmp(&song_title_label(right).to_lowercase())),
+        SongPathSortMode::AddedAtAsc => left
+            .added_at
+            .unwrap_or_default()
+            .cmp(&right.added_at.unwrap_or_default())
+            .then_with(|| song_title_label(left).to_lowercase().cmp(&song_title_label(right).to_lowercase())),
+        SongPathSortMode::FileModifiedAt => right
+            .file_modified_at
+            .unwrap_or_default()
+            .cmp(&left.file_modified_at.unwrap_or_default())
+            .then_with(|| song_title_label(left).to_lowercase().cmp(&song_title_label(right).to_lowercase())),
+        SongPathSortMode::FileModifiedAtAsc => left
+            .file_modified_at
+            .unwrap_or_default()
+            .cmp(&right.file_modified_at.unwrap_or_default())
+            .then_with(|| song_title_label(left).to_lowercase().cmp(&song_title_label(right).to_lowercase())),
+    });
+}
+
+fn load_song_catalog_row(
+    conn: &rusqlite::Connection,
+    normalized_path: &str,
+) -> Result<Option<SongCatalogRow>, String> {
+    conn.query_row(
+        "SELECT path, artist, artist_names, effective_artist_names, album, album_artist, album_key
+         FROM songs
+         WHERE path = ?1",
+        [normalized_path],
+        |row| {
+            Ok(SongCatalogRow {
+                path: row.get::<_, String>(0)?,
+                artist: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                artist_names: deserialize_string_list(row.get::<_, Option<String>>(2)?),
+                effective_artist_names: deserialize_string_list(row.get::<_, Option<String>>(3)?),
+                album: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                album_artist: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                album_key: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
+            })
+        },
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+fn load_song_view_row(
+    conn: &rusqlite::Connection,
+    normalized_path: &str,
+) -> Result<Option<SongViewRow>, String> {
+    conn.query_row(
+        "SELECT path, title, artist, artist_names, effective_artist_names, album, album_artist, album_key, added_at, file_modified_at
+         FROM songs
+         WHERE path = ?1",
+        [normalized_path],
+        |row| {
+            Ok(SongViewRow {
+                path: row.get::<_, String>(0)?,
+                title: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                artist: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                artist_names: deserialize_string_list(row.get::<_, Option<String>>(3)?),
+                effective_artist_names: deserialize_string_list(row.get::<_, Option<String>>(4)?),
+                album: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                album_artist: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
+                album_key: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
+                added_at: row.get::<_, Option<i64>>(8)?,
+                file_modified_at: row.get::<_, Option<i64>>(9)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
 fn lookup_song_id(conn: &rusqlite::Connection, normalized_path: &str) -> Option<i64> {
     conn.query_row(
         "SELECT id FROM songs WHERE path = ?1",
@@ -414,6 +678,340 @@ pub fn get_recent_history(
         .map_err(|e| e.to_string())?;
 
     Ok(rows.filter_map(|row| row.ok()).collect())
+}
+
+#[tauri::command]
+pub fn get_favorite_artist_catalog(
+    db: State<DbState>,
+    favorite_paths: Vec<String>,
+) -> Result<Vec<crate::music::types::ArtistCatalogItem>, String> {
+    if favorite_paths.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut map = HashMap::<String, (u32, String)>::new();
+
+    for path in favorite_paths {
+        let normalized_path = normalize_path(&path);
+        if normalized_path.is_empty() {
+            continue;
+        }
+
+        let Some(row) = load_song_catalog_row(&conn, &normalized_path)? else {
+            continue;
+        };
+
+        for artist_name in preferred_artist_names(&row) {
+            let key = if artist_name.trim().is_empty() {
+                "Unknown".to_string()
+            } else {
+                artist_name
+            };
+            let entry = map.entry(key).or_insert((0, row.path.clone()));
+            entry.0 = entry.0.saturating_add(1);
+        }
+    }
+
+    let mut result: Vec<crate::music::types::ArtistCatalogItem> = map
+        .into_iter()
+        .map(|(name, (count, first_song_path))| crate::music::types::ArtistCatalogItem {
+            name,
+            count,
+            first_song_path,
+        })
+        .collect();
+
+    result.sort_by(|a, b| {
+        b.count
+            .cmp(&a.count)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn get_favorite_album_catalog(
+    db: State<DbState>,
+    favorite_paths: Vec<String>,
+) -> Result<Vec<crate::music::types::AlbumCatalogItem>, String> {
+    if favorite_paths.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut map = HashMap::<String, crate::music::types::AlbumCatalogItem>::new();
+
+    for path in favorite_paths {
+        let normalized_path = normalize_path(&path);
+        if normalized_path.is_empty() {
+            continue;
+        }
+
+        let Some(row) = load_song_catalog_row(&conn, &normalized_path)? else {
+            continue;
+        };
+
+        let key = resolve_album_key(&row);
+        let existing = map.entry(key.clone()).or_insert(crate::music::types::AlbumCatalogItem {
+            key,
+            name: if row.album.trim().is_empty() {
+                "Unknown".to_string()
+            } else {
+                row.album.clone()
+            },
+            count: 0,
+            artist: if row.album_artist.trim().is_empty() {
+                if row.artist.trim().is_empty() {
+                    "Unknown".to_string()
+                } else {
+                    row.artist.clone()
+                }
+            } else {
+                row.album_artist.clone()
+            },
+            first_song_path: row.path.clone(),
+        });
+
+        existing.count = existing.count.saturating_add(1);
+    }
+
+    let mut result: Vec<crate::music::types::AlbumCatalogItem> = map.into_values().collect();
+    result.sort_by(|a, b| {
+        b.count
+            .cmp(&a.count)
+            .then_with(|| a.artist.to_lowercase().cmp(&b.artist.to_lowercase()))
+    });
+
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn get_recent_album_catalog(
+    db: State<DbState>,
+    recent_entries: Vec<RecentHistoryImportEntry>,
+) -> Result<Vec<RecentAlbumCatalogItem>, String> {
+    if recent_entries.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut map = HashMap::<String, RecentAlbumCatalogItem>::new();
+
+    for entry in recent_entries {
+        let normalized_path = normalize_path(&entry.song_path);
+        if normalized_path.is_empty() {
+            continue;
+        }
+
+        let Some(row) = load_song_catalog_row(&conn, &normalized_path)? else {
+            continue;
+        };
+
+        let key = resolve_album_key(&row);
+        let played_at = entry.played_at;
+
+        match map.get_mut(&key) {
+            Some(existing) if played_at > existing.played_at => {
+                existing.played_at = played_at;
+                existing.first_song_path = row.path.clone();
+            }
+            Some(_) => {}
+            None => {
+                map.insert(
+                    key.clone(),
+                    RecentAlbumCatalogItem {
+                        key,
+                        name: if row.album.trim().is_empty() {
+                            "Unknown".to_string()
+                        } else {
+                            row.album.clone()
+                        },
+                        artist: if row.album_artist.trim().is_empty() {
+                            if row.artist.trim().is_empty() {
+                                "Unknown".to_string()
+                            } else {
+                                row.artist.clone()
+                            }
+                        } else {
+                            row.album_artist.clone()
+                        },
+                        played_at,
+                        first_song_path: row.path.clone(),
+                    },
+                );
+            }
+        }
+    }
+
+    let mut result: Vec<RecentAlbumCatalogItem> = map.into_values().collect();
+    result.sort_by(|a, b| b.played_at.cmp(&a.played_at));
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn get_favorite_song_paths_view(
+    db: State<DbState>,
+    favorite_paths: Vec<String>,
+    query: Option<String>,
+    sort_mode: SongPathSortMode,
+    detail_filter_type: Option<String>,
+    detail_filter_value: Option<String>,
+) -> Result<Vec<String>, String> {
+    if favorite_paths.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let lowered_query = query.map(|value| value.trim().to_lowercase());
+    let normalized_filter_type = detail_filter_type
+        .map(|value| value.trim().to_lowercase())
+        .filter(|value| !value.is_empty());
+    let normalized_filter_value = detail_filter_value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let mut rows: Vec<SongViewRow> = Vec::new();
+
+    for path in favorite_paths {
+        let normalized_path = normalize_path(&path);
+        if normalized_path.is_empty() {
+            continue;
+        }
+
+        let Some(row) = load_song_view_row(&conn, &normalized_path)? else {
+            continue;
+        };
+
+        let matches_detail_filter = match (
+            normalized_filter_type.as_deref(),
+            normalized_filter_value.as_deref(),
+        ) {
+            (Some("artist"), Some(filter_value)) => song_has_artist(&row, filter_value),
+            (Some("album"), Some(filter_value)) => resolve_view_album_key(&row) == filter_value,
+            _ => true,
+        };
+
+        if !matches_detail_filter {
+            continue;
+        }
+
+        let matches_search = lowered_query
+            .as_deref()
+            .map(|value| song_matches_query(&row, value))
+            .unwrap_or(true);
+
+        if matches_search {
+            rows.push(row);
+        }
+    }
+
+    sort_song_view_rows(&mut rows, &sort_mode);
+    Ok(rows.into_iter().map(|row| row.path).collect())
+}
+
+#[tauri::command]
+pub fn get_recent_song_paths_view(
+    db: State<DbState>,
+    recent_entries: Vec<RecentHistoryImportEntry>,
+    query: Option<String>,
+    sort_mode: SongPathSortMode,
+) -> Result<Vec<String>, String> {
+    if recent_entries.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let lowered_query = query.map(|value| value.trim().to_lowercase());
+    let mut latest_entries = HashMap::<String, i64>::new();
+
+    for entry in recent_entries {
+        let normalized_path = normalize_path(&entry.song_path);
+        if normalized_path.is_empty() {
+            continue;
+        }
+
+        let existing = latest_entries
+            .entry(normalized_path)
+            .or_insert(entry.played_at);
+        if entry.played_at > *existing {
+            *existing = entry.played_at;
+        }
+    }
+
+    let mut rows: Vec<SongViewRow> = Vec::new();
+    for normalized_path in latest_entries.into_keys() {
+        let Some(row) = load_song_view_row(&conn, &normalized_path)? else {
+            continue;
+        };
+
+        let matches_search = lowered_query
+            .as_deref()
+            .map(|value| song_matches_query(&row, value))
+            .unwrap_or(true);
+
+        if matches_search {
+            rows.push(row);
+        }
+    }
+
+    sort_song_view_rows(&mut rows, &sort_mode);
+    Ok(rows.into_iter().map(|row| row.path).collect())
+}
+
+#[tauri::command]
+pub fn get_recent_playlist_catalog(
+    playlists: Vec<PlaylistImportItem>,
+    recent_entries: Vec<RecentHistoryImportEntry>,
+) -> Result<Vec<RecentPlaylistCatalogItem>, String> {
+    if playlists.is_empty() || recent_entries.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut latest_played_at_by_path = HashMap::<String, i64>::new();
+    for entry in recent_entries {
+        let normalized_path = normalize_path(&entry.song_path);
+        if normalized_path.is_empty() {
+            continue;
+        }
+
+        let existing = latest_played_at_by_path
+            .entry(normalized_path)
+            .or_insert(entry.played_at);
+        if entry.played_at > *existing {
+            *existing = entry.played_at;
+        }
+    }
+
+    let mut result = Vec::new();
+
+    for playlist in playlists {
+        let mut last_played_time = 0;
+
+        for path in &playlist.song_paths {
+            let normalized_path = normalize_path(path);
+            if let Some(played_at) = latest_played_at_by_path.get(&normalized_path) {
+                if *played_at > last_played_time {
+                    last_played_time = *played_at;
+                }
+            }
+        }
+
+        if last_played_time <= 0 {
+            continue;
+        }
+
+        result.push(RecentPlaylistCatalogItem {
+            id: playlist.id,
+            name: playlist.name,
+            count: playlist.song_paths.len().min(u32::MAX as usize) as u32,
+            played_at: last_played_time,
+            first_song_path: playlist.song_paths.first().cloned().unwrap_or_default(),
+        });
+    }
+
+    result.sort_by(|a, b| b.played_at.cmp(&a.played_at));
+    Ok(result)
 }
 
 #[tauri::command]

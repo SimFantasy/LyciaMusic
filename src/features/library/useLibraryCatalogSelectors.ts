@@ -1,17 +1,16 @@
 import { computed, type Ref } from 'vue';
 
-import type { Song } from '../../types';
+import type { AlbumCatalogItem, ArtistCatalogItem } from '../../types';
 import { compareByAlphabetIndex } from '../../utils/alphabetIndex';
 import type { AlbumSortMode, ArtistSortMode } from '../../services/storage/playerStorage';
 import {
-  getSongAlbumKey,
-  getSongArtistNames,
   type AlbumListItem,
   type ArtistListItem,
 } from './playerLibraryViewShared';
 
 interface UseLibraryCatalogSelectorsOptions {
-  canonicalSongs: Ref<Song[]>;
+  artistCatalog: Ref<ArtistCatalogItem[]>;
+  albumCatalog: Ref<AlbumCatalogItem[]>;
   searchQuery: Ref<string>;
   artistSortMode: Ref<ArtistSortMode>;
   albumSortMode: Ref<AlbumSortMode>;
@@ -20,7 +19,8 @@ interface UseLibraryCatalogSelectorsOptions {
 }
 
 export function useLibraryCatalogSelectors({
-  canonicalSongs,
+  artistCatalog,
+  albumCatalog,
   searchQuery,
   artistSortMode,
   albumSortMode,
@@ -28,27 +28,7 @@ export function useLibraryCatalogSelectors({
   albumCustomOrder,
 }: UseLibraryCatalogSelectorsOptions) {
   const artistList = computed<ArtistListItem[]>(() => {
-    const map = new Map<string, { count: number; firstSongPath: string }>();
-
-    canonicalSongs.value.forEach(song => {
-      getSongArtistNames(song).forEach(artistName => {
-        const key = artistName || 'Unknown';
-        const existing = map.get(key);
-
-        if (existing) {
-          existing.count += 1;
-          return;
-        }
-
-        map.set(key, { count: 1, firstSongPath: song.path });
-      });
-    });
-
-    const list = Array.from(map, ([name, value]) => ({
-      name,
-      count: value.count,
-      firstSongPath: value.firstSongPath,
-    }));
+    const list = [...artistCatalog.value];
 
     if (artistSortMode.value === 'name') {
       list.sort((a, b) => compareByAlphabetIndex(a.name, b.name));
@@ -67,27 +47,7 @@ export function useLibraryCatalogSelectors({
   });
 
   const albumList = computed<AlbumListItem[]>(() => {
-    const map = new Map<string, AlbumListItem>();
-
-    canonicalSongs.value.forEach(song => {
-      const key = getSongAlbumKey(song);
-      const existing = map.get(key);
-
-      if (existing) {
-        existing.count += 1;
-        return;
-      }
-
-      map.set(key, {
-        key,
-        name: song.album || 'Unknown',
-        count: 1,
-        artist: song.album_artist || song.artist || 'Unknown',
-        firstSongPath: song.path,
-      });
-    });
-
-    const list = Array.from(map.values());
+    const list = [...albumCatalog.value];
 
     if (albumSortMode.value === 'name') {
       list.sort((a, b) => compareByAlphabetIndex(a.name, b.name));

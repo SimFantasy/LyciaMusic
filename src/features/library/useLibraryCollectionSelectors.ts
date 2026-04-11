@@ -1,21 +1,17 @@
-import { computed, type ComputedRef, type Ref } from 'vue';
+import { computed, ref, watch, type ComputedRef, type Ref } from 'vue';
 
-import type { HistoryItem, Playlist, Song } from '../../types';
-import { compareByAlphabetIndex } from '../../utils/alphabetIndex';
+import { tauriInvoke } from '../../services/tauri/invoke';
+import type {
+  HistoryItem,
+  Playlist,
+  RecentAlbumCatalogItem,
+  RecentPlaylistCatalogItem,
+  Song,
+} from '../../types';
 import {
-  getSongAlbumKey,
-  getSongArtistNames,
   type AlbumListItem,
   type ArtistListItem,
 } from './playerLibraryViewShared';
-
-interface RecentPlaylistListItem {
-  id: string;
-  name: string;
-  count: number;
-  playedAt: number;
-  firstSongPath: string;
-}
 
 interface UseLibraryCollectionSelectorsOptions {
   canonicalSongPaths: Ref<string[]>;
@@ -32,6 +28,15 @@ export function useLibraryCollectionSelectors({
   recentSongs,
   songLookup,
 }: UseLibraryCollectionSelectorsOptions) {
+  const favArtistList = ref<ArtistListItem[]>([]);
+  const favAlbumList = ref<AlbumListItem[]>([]);
+  const recentAlbumList = ref<RecentAlbumCatalogItem[]>([]);
+  const recentPlaylistList = ref<RecentPlaylistCatalogItem[]>([]);
+  let favoriteArtistRequestId = 0;
+  let favoriteAlbumRequestId = 0;
+  let recentAlbumRequestId = 0;
+  let recentPlaylistRequestId = 0;
+
   const favoriteSongPaths = computed(() => {
     const favoritePathSet = new Set(favoritePaths.value);
     return canonicalSongPaths.value.filter(path => favoritePathSet.has(path) && songLookup.value.has(path));
@@ -43,118 +48,136 @@ export function useLibraryCollectionSelectors({
       .filter((song): song is Song => !!song),
   );
 
-  const favArtistList = computed<ArtistListItem[]>(() => {
-    const map = new Map<string, { count: number; firstSongPath: string }>();
+  watch(
+    favoriteSongPaths,
+    async (paths) => {
+      const requestId = ++favoriteArtistRequestId;
 
-    favoriteSongPaths.value.forEach((path) => {
-      const song = songLookup.value.get(path);
-      if (!song) {
+      if (paths.length === 0) {
+        favArtistList.value = [];
         return;
       }
 
-      getSongArtistNames(song).forEach(name => {
-        const existing = map.get(name);
-        if (existing) {
-          existing.count += 1;
+      try {
+        const result = await tauriInvoke('get_favorite_artist_catalog', {
+          favoritePaths: paths,
+        });
+
+        if (requestId !== favoriteArtistRequestId) {
           return;
         }
 
-        map.set(name, { count: 1, firstSongPath: song.path });
-      });
-    });
-
-    return Array.from(map, ([name, value]) => ({
-      name,
-      count: value.count,
-      firstSongPath: value.firstSongPath,
-    })).sort((a, b) => b.count - a.count || compareByAlphabetIndex(a.name, b.name));
-  });
-
-  const favAlbumList = computed<AlbumListItem[]>(() => {
-    const map = new Map<string, AlbumListItem>();
-
-    favoriteSongPaths.value.forEach((path) => {
-      const song = songLookup.value.get(path);
-      if (!song) {
-        return;
-      }
-
-      const key = getSongAlbumKey(song);
-      const existing = map.get(key);
-
-      if (existing) {
-        existing.count += 1;
-        return;
-      }
-
-      map.set(key, {
-        key,
-        name: song.album || 'Unknown',
-        count: 1,
-        artist: song.album_artist || song.artist || 'Unknown',
-        firstSongPath: song.path,
-      });
-    });
-
-    return Array.from(map.values()).sort((a, b) => b.count - a.count || compareByAlphabetIndex(a.artist, b.artist));
-  });
-
-  const recentAlbumList = computed(() => {
-    const map = new Map<string, { key: string; name: string; artist: string; playedAt: number; firstSongPath: string }>();
-
-    recentSongs.value.forEach(item => {
-      const song = songLookup.value.get(item.path);
-      if (!song) {
-        return;
-      }
-
-      const key = getSongAlbumKey(song);
-      if (!map.has(key) || item.playedAt > map.get(key)!.playedAt) {
-        map.set(key, {
-          key,
-          name: song.album || 'Unknown',
-          artist: song.album_artist || song.artist || 'Unknown',
-          playedAt: item.playedAt,
-          firstSongPath: song.path,
-        });
-      }
-    });
-
-    return Array.from(map.values()).sort((a, b) => b.playedAt - a.playedAt);
-  });
-
-  const recentPlaylistList = computed<RecentPlaylistListItem[]>(() => {
-    const result: RecentPlaylistListItem[] = [];
-
-    playlists.value.forEach(playlist => {
-      let lastPlayedTime = 0;
-      let hasPlayed = false;
-      const playlistSongPaths = new Set(playlist.songPaths);
-
-      for (const historyItem of recentSongs.value) {
-        if (!playlistSongPaths.has(historyItem.path)) {
-          continue;
+        favArtistList.value = result;
+      } catch {
+        if (requestId !== favoriteArtistRequestId) {
+          return;
         }
 
-        if (historyItem.playedAt > lastPlayedTime) {
-          lastPlayedTime = historyItem.playedAt;
-          hasPlayed = true;
-        }
+        favArtistList.value = [];
+      }
+    },
+    { immediate: true },
+  );
+
+  watch(
+    favoriteSongPaths,
+    async (paths) => {
+      const requestId = ++favoriteAlbumRequestId;
+
+      if (paths.length === 0) {
+        favAlbumList.value = [];
+        return;
       }
 
-      if (hasPlayed) {
-        result.push({
-          id: playlist.id,
-          name: playlist.name,
-          count: playlist.songPaths.length,
-          playedAt: lastPlayedTime,
-          firstSongPath: playlist.songPaths.length > 0 ? playlist.songPaths[0] : '',
+      try {
+        const result = await tauriInvoke('get_favorite_album_catalog', {
+          favoritePaths: paths,
         });
-      }
-    });
 
-    return result.sort((a, b) => b.playedAt - a.playedAt);
-  });
+        if (requestId !== favoriteAlbumRequestId) {
+          return;
+        }
+
+        favAlbumList.value = result;
+      } catch {
+        if (requestId !== favoriteAlbumRequestId) {
+          return;
+        }
+
+        favAlbumList.value = [];
+      }
+    },
+    { immediate: true },
+  );
+
+  watch(
+    recentSongs,
+    async (items) => {
+      const requestId = ++recentAlbumRequestId;
+
+      if (items.length === 0) {
+        recentAlbumList.value = [];
+        return;
+      }
+
+      try {
+        const result = await tauriInvoke('get_recent_album_catalog', {
+          recentEntries: items.map(item => ({
+            songPath: item.path,
+            playedAt: item.playedAt,
+          })),
+        });
+
+        if (requestId !== recentAlbumRequestId) {
+          return;
+        }
+
+        recentAlbumList.value = result;
+      } catch {
+        if (requestId !== recentAlbumRequestId) {
+          return;
+        }
+
+        recentAlbumList.value = [];
+      }
+    },
+    { deep: true, immediate: true },
+  );
+
+  watch(
+    [playlists, recentSongs],
+    async ([playlistItems, recentItems]) => {
+      const requestId = ++recentPlaylistRequestId;
+
+      if (playlistItems.length === 0 || recentItems.length === 0) {
+        recentPlaylistList.value = [];
+        return;
+      }
+
+      try {
+        const result = await tauriInvoke('get_recent_playlist_catalog', {
+          playlists: playlistItems,
+          recentEntries: recentItems.map(item => ({
+            songPath: item.path,
+            playedAt: item.playedAt,
+          })),
+        });
+
+        if (requestId !== recentPlaylistRequestId) {
+          return;
+        }
+
+        recentPlaylistList.value = result;
+      } catch {
+        if (requestId !== recentPlaylistRequestId) {
+          return;
+        }
+
+        recentPlaylistList.value = [];
+      }
+    },
+    { deep: true, immediate: true },
+  );
 
   return {
     favoriteSongPaths,
