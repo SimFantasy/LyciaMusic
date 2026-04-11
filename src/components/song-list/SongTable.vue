@@ -1,5 +1,5 @@
 ﻿<script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch, watchEffect } from 'vue';
+import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { dragSession } from '../../composables/dragState';
 import type { Song } from '../../types';
@@ -70,7 +70,6 @@ const rootRef = ref<HTMLElement | null>(null);
 const containerRef = ref<HTMLElement | null>(null);
 const scrollTop = ref(0);
 const containerHeight = ref(600);
-const displayedCoverUrls = reactive(new Map<string, string>());
 
 const tableViewportKey = computed(() =>
   [
@@ -90,7 +89,7 @@ const getDisplayedCoverUrl = (path: string | undefined) => {
     return '';
   }
 
-  return displayedCoverUrls.get(path) ?? coverCache.get(path) ?? '';
+  return coverCache.get(path) ?? '';
 };
 
 const updateContainerHeight = () => {
@@ -105,15 +104,11 @@ const restoreViewportCoverSnapshot = (key = tableViewportKey.value) => {
   }
 
   const snapshot = songTableViewportCoverSnapshotCache.get(key);
-  if (!snapshot) {
+  if (!snapshot || snapshot.length === 0) {
     return;
   }
 
-  snapshot.forEach(([path, url]) => {
-    if (path && url) {
-      displayedCoverUrls.set(path, url);
-    }
-  });
+  preloadPriorityCovers(snapshot);
 };
 
 const saveViewportCoverSnapshot = (key = tableViewportKey.value) => {
@@ -125,7 +120,7 @@ const saveViewportCoverSnapshot = (key = tableViewportKey.value) => {
   const viewportBuffer = containerRef.value.clientHeight;
   const snapshotTop = containerRect.top - viewportBuffer;
   const snapshotBottom = containerRect.bottom + viewportBuffer;
-  const snapshot: Array<readonly [string, string]> = [];
+  const snapshot: string[] = [];
   const seenPaths = new Set<string>();
 
   containerRef.value.querySelectorAll<HTMLElement>('[data-cover-path]').forEach((element) => {
@@ -143,13 +138,12 @@ const saveViewportCoverSnapshot = (key = tableViewportKey.value) => {
       return;
     }
 
-    const url = getDisplayedCoverUrl(path);
-    if (!url) {
+    if (!coverCache.get(path)) {
       return;
     }
 
     seenPaths.add(path);
-    snapshot.push([path, url]);
+    snapshot.push(path);
   });
 
   if (snapshot.length > 0) {
@@ -227,15 +221,6 @@ watch(
   { immediate: true },
 );
 
-watchEffect(() => {
-  for (const song of virtualItems.value) {
-    const resolvedCoverUrl = coverCache.get(song.path);
-    if (resolvedCoverUrl) {
-      displayedCoverUrls.set(song.path, resolvedCoverUrl);
-    }
-  }
-});
-
 watch(
   tableViewportKey,
   (newKey, oldKey) => {
@@ -243,7 +228,6 @@ watch(
       saveViewportCoverSnapshot(oldKey);
     }
 
-    displayedCoverUrls.clear();
     restoreViewportCoverSnapshot(newKey);
   },
   { immediate: true },

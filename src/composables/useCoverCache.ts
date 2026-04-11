@@ -7,6 +7,9 @@ type PreloadPriority = 'priority' | 'background';
 
 const THUMBNAIL_CACHE_LIMIT = 96;
 const FULL_COVER_CACHE_LIMIT = 12;
+const THUMBNAIL_CACHE_TTL_MS = 10 * 60 * 1000;
+const FULL_COVER_CACHE_TTL_MS = 5 * 60 * 1000;
+const HIDDEN_THUMBNAIL_CACHE_LIMIT = 24;
 const PRELOAD_CONCURRENCY = 4;
 const BACKGROUND_PRELOAD_CONCURRENCY = 1;
 const FAILURE_RETRY_MS = 10_000;
@@ -14,6 +17,8 @@ const FAILURE_RETRY_MS = 10_000;
 // Small in-memory LRU for thumbnail URLs. The actual image files live on disk.
 const thumbnailCache = reactive(new Map<string, string>());
 const fullCoverCache = reactive(new Map<string, string>());
+const thumbnailCacheExpiry = new Map<string, number>();
+const fullCoverCacheExpiry = new Map<string, number>();
 const loadingSet = reactive(new Set<string>());
 const inFlightRequests = new Map<string, Promise<string>>();
 const recentFailureCache = new MemoryCache<string, true>({
@@ -25,54 +30,129 @@ const backgroundPreloadQueue: string[] = [];
 const queuedPathPriority = new Map<string, PreloadPriority>();
 let backgroundPreloadTimer: ReturnType<typeof setTimeout> | null = null;
 let backgroundPreloadIdleId: number | null = null;
+let cachePruneTimer: ReturnType<typeof setTimeout> | null = null;
 let hasRegisteredVisibilityCleanup = false;
+let cacheEpoch = 0;
 
 const getCacheForKind = (kind: CoverKind) =>
   kind === 'full' ? fullCoverCache : thumbnailCache;
+const getCacheExpiryForKind = (kind: CoverKind) =>
+  kind === 'full' ? fullCoverCacheExpiry : thumbnailCacheExpiry;
+const getCacheLimitForKind = (kind: CoverKind) =>
+  kind === 'full' ? FULL_COVER_CACHE_LIMIT : THUMBNAIL_CACHE_LIMIT;
+const getCacheTtlForKind = (kind: CoverKind) =>
+  kind === 'full' ? FULL_COVER_CACHE_TTL_MS : THUMBNAIL_CACHE_TTL_MS;
 
 const buildCacheKey = (path: string, kind: CoverKind) => `${kind}:${path}`;
 const isThumbnailRequestKey = (requestKey: string) => requestKey.startsWith('thumbnail:');
 
-const touchCacheEntry = (cache: Map<string, string>, path: string, value: string) => {
+const deleteCacheEntry = (cache: Map<string, string>, expiry: Map<string, number>, path: string) => {
+  cache.delete(path);
+  expiry.delete(path);
+};
+
+const clearCacheEntries = (cache: Map<string, string>, expiry: Map<string, number>) => {
+  cache.clear();
+  expiry.clear();
+};
+
+const touchCacheEntry = (
+  cache: Map<string, string>,
+  expiry: Map<string, number>,
+  path: string,
+  value: string,
+  ttlMs: number,
+) => {
   if (cache.has(path)) {
     cache.delete(path);
   }
+  expiry.delete(path);
   cache.set(path, value);
+  expiry.set(path, Date.now() + ttlMs);
 };
 
-const pruneCache = (cache: Map<string, string>, limit: number) => {
+const pruneExpiredEntries = (
+  cache: Map<string, string>,
+  expiry: Map<string, number>,
+  now: number,
+) => {
+  for (const [path, expiresAt] of expiry) {
+    if (expiresAt > now && cache.has(path)) {
+      continue;
+    }
+
+    deleteCacheEntry(cache, expiry, path);
+  }
+};
+
+const pruneCache = (
+  cache: Map<string, string>,
+  expiry: Map<string, number>,
+  limit: number,
+) => {
+  pruneExpiredEntries(cache, expiry, Date.now());
+
   while (cache.size > limit) {
     const oldestKey = cache.keys().next().value as string | undefined;
     if (!oldestKey) {
       break;
     }
-    cache.delete(oldestKey);
+    deleteCacheEntry(cache, expiry, oldestKey);
   }
+
+  scheduleCachePrune();
+};
+
+const scheduleCachePrune = () => {
+  if (cachePruneTimer) {
+    clearTimeout(cachePruneTimer);
+    cachePruneTimer = null;
+  }
+
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  let nextExpiry: number | null = null;
+  for (const expiresAt of thumbnailCacheExpiry.values()) {
+    nextExpiry = nextExpiry === null ? expiresAt : Math.min(nextExpiry, expiresAt);
+  }
+  for (const expiresAt of fullCoverCacheExpiry.values()) {
+    nextExpiry = nextExpiry === null ? expiresAt : Math.min(nextExpiry, expiresAt);
+  }
+
+  if (nextExpiry === null) {
+    return;
+  }
+
+  const delay = Math.max(0, nextExpiry - Date.now());
+  cachePruneTimer = window.setTimeout(() => {
+    cachePruneTimer = null;
+    pruneCache(thumbnailCache, thumbnailCacheExpiry, THUMBNAIL_CACHE_LIMIT);
+    pruneCache(fullCoverCache, fullCoverCacheExpiry, FULL_COVER_CACHE_LIMIT);
+  }, delay);
 };
 
 const getCachedCover = (path: string, kind: CoverKind): string | undefined => {
   const cache = getCacheForKind(kind);
-  if (!cache) {
-    return undefined;
-  }
+  const expiry = getCacheExpiryForKind(kind);
+  const ttlMs = getCacheTtlForKind(kind);
+  pruneCache(cache, expiry, getCacheLimitForKind(kind));
 
   const cachedValue = cache.get(path);
   if (cachedValue === undefined) {
     return undefined;
   }
 
-  touchCacheEntry(cache, path, cachedValue);
+  touchCacheEntry(cache, expiry, path, cachedValue, ttlMs);
   return cachedValue;
 };
 
 const setCachedCover = (path: string, kind: CoverKind, value: string) => {
   const cache = getCacheForKind(kind);
-  if (!cache) {
-    return;
-  }
-
-  touchCacheEntry(cache, path, value);
-  pruneCache(cache, kind === 'full' ? FULL_COVER_CACHE_LIMIT : THUMBNAIL_CACHE_LIMIT);
+  const expiry = getCacheExpiryForKind(kind);
+  touchCacheEntry(cache, expiry, path, value, getCacheTtlForKind(kind));
+  pruneCache(cache, expiry, getCacheLimitForKind(kind));
 };
 
 const getFailureCacheKey = (path: string, kind: CoverKind) => buildCacheKey(path, kind);
@@ -82,8 +162,14 @@ const hasRecentFailure = (path: string, kind: CoverKind) => {
   return recentFailureCache.has(cacheKey);
 };
 
+const bumpCacheEpoch = () => {
+  cacheEpoch += 1;
+};
+
 const trimTransientCoverState = () => {
-  fullCoverCache.clear();
+  bumpCacheEpoch();
+  pruneCache(thumbnailCache, thumbnailCacheExpiry, HIDDEN_THUMBNAIL_CACHE_LIMIT);
+  clearCacheEntries(fullCoverCache, fullCoverCacheExpiry);
   priorityPreloadQueue.length = 0;
   backgroundPreloadQueue.length = 0;
   queuedPathPriority.clear();
@@ -114,12 +200,16 @@ const loadCoverInternal = (path: string, kind: CoverKind): Promise<string> => {
   if (existingRequest) {
     return existingRequest;
   }
+  const requestEpoch = cacheEpoch;
 
   const request = (async () => {
     loadingSet.add(requestKey);
     try {
       const command = kind === 'full' ? 'get_song_cover' : 'get_song_cover_thumbnail';
       const coverPath = await invoke<string>(command, { path });
+      if (requestEpoch !== cacheEpoch) {
+        return '';
+      }
       const finalUrl = coverPath ? convertFileSrc(coverPath) : '';
       recentFailureCache.delete(requestKey);
       if (finalUrl) {
@@ -127,6 +217,9 @@ const loadCoverInternal = (path: string, kind: CoverKind): Promise<string> => {
       }
       return finalUrl;
     } catch {
+      if (requestEpoch !== cacheEpoch) {
+        return '';
+      }
       recentFailureCache.set(requestKey, true);
       return '';
     } finally {
@@ -324,8 +417,9 @@ export function useCoverCache() {
   };
 
   const clearCoverCaches = () => {
-    thumbnailCache.clear();
-    fullCoverCache.clear();
+    bumpCacheEpoch();
+    clearCacheEntries(thumbnailCache, thumbnailCacheExpiry);
+    clearCacheEntries(fullCoverCache, fullCoverCacheExpiry);
     loadingSet.clear();
     inFlightRequests.clear();
     recentFailureCache.clear();
@@ -333,6 +427,10 @@ export function useCoverCache() {
     backgroundPreloadQueue.length = 0;
     queuedPathPriority.clear();
     cancelBackgroundPreload();
+    if (cachePruneTimer) {
+      clearTimeout(cachePruneTimer);
+      cachePruneTimer = null;
+    }
   };
 
   return {

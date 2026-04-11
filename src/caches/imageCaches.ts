@@ -1,6 +1,6 @@
 import { MemoryCache } from '../utils/MemoryCache';
 
-export type ViewportCoverSnapshot = Array<readonly [string, string]>;
+export type ViewportCoverSnapshot = string[];
 
 export const artistHeaderCache = new MemoryCache<string, string>({
   maxEntries: 32,

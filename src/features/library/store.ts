@@ -18,6 +18,18 @@ import type {
 const areSamePaths = (left: string[], right: string[]) =>
   left.length === right.length && left.every((path, index) => path === right[index]);
 
+const resolveSharedPaths = (paths: string[], existing: string[], sibling: string[]) => {
+  if (areSamePaths(existing, paths)) {
+    return existing;
+  }
+
+  if (areSamePaths(sibling, paths)) {
+    return sibling;
+  }
+
+  return paths;
+};
+
 export const useLibraryStore = defineStore('library', () => {
   const songPool = new Map<string, Song>();
   const songCatalogVersion = ref(0);
@@ -147,8 +159,9 @@ export const useLibraryStore = defineStore('library', () => {
   };
 
   const updateCanonicalSongPaths = (paths: string[], didChangeSongPool = false) => {
-    if (!areSamePaths(canonicalSongPaths.value, paths)) {
-      canonicalSongPaths.value = paths;
+    const nextPaths = resolveSharedPaths(paths, canonicalSongPaths.value, sourceSongPaths.value);
+    if (canonicalSongPaths.value !== nextPaths) {
+      canonicalSongPaths.value = nextPaths;
     }
 
     if (didChangeSongPool) {
@@ -159,8 +172,9 @@ export const useLibraryStore = defineStore('library', () => {
   };
 
   const updateSourceSongPaths = (paths: string[], didChangeSongPool = false) => {
-    if (!areSamePaths(sourceSongPaths.value, paths)) {
-      sourceSongPaths.value = paths;
+    const nextPaths = resolveSharedPaths(paths, sourceSongPaths.value, canonicalSongPaths.value);
+    if (sourceSongPaths.value !== nextPaths) {
+      sourceSongPaths.value = nextPaths;
     }
 
     if (didChangeSongPool) {
