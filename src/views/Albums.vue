@@ -25,8 +25,10 @@ const containerRef = ref<HTMLElement | null>(null);
 const containerScrollTop = ref(0);
 const containerHeight = ref(720);
 const containerWidth = ref(1200);
+const measuredAlbumCardHeight = ref(0);
 let coverObserver: IntersectionObserver | null = null;
 let containerResizeObserver: ResizeObserver | null = null;
+let coverObserverRefreshFrame = 0;
 const VIEWPORT_SNAPSHOT_KEY = 'albums-current';
 const VIEWPORT_SNAPSHOT_LIMIT = 72;
 const ALBUM_GRID_GAP_X = 24;
@@ -70,12 +72,18 @@ const getAlbumGridColumns = () => {
 
 const albumGridColumns = ref(getAlbumGridColumns());
 
-const albumRowSpan = computed(() => {
+const estimatedAlbumRowSpan = computed(() => {
   const columns = albumGridColumns.value;
   const width = Math.max(0, containerWidth.value - ALBUM_GRID_GAP_X * (columns - 1));
   const itemWidth = columns > 0 ? width / columns : containerWidth.value;
   return itemWidth + ALBUM_CARD_EXTRA_HEIGHT + ALBUM_GRID_GAP_Y;
 });
+
+const albumRowSpan = computed(() =>
+  measuredAlbumCardHeight.value > 0
+    ? measuredAlbumCardHeight.value + ALBUM_GRID_GAP_Y
+    : estimatedAlbumRowSpan.value,
+);
 
 const updateViewportMetrics = () => {
   if (containerRef.value) {
@@ -84,6 +92,20 @@ const updateViewportMetrics = () => {
   }
 
   albumGridColumns.value = getAlbumGridColumns();
+};
+
+const measureAlbumCardHeight = async () => {
+  await nextTick();
+
+  const firstCard = containerRef.value?.querySelector<HTMLElement>('[data-album-card]');
+  if (!firstCard) {
+    return;
+  }
+
+  const nextHeight = firstCard.offsetHeight;
+  if (nextHeight > 0 && nextHeight !== measuredAlbumCardHeight.value) {
+    measuredAlbumCardHeight.value = nextHeight;
+  }
 };
 
 const handleContainerScroll = (event: Event) => {
@@ -289,37 +311,48 @@ const visibleAlbumCoverPaths = computed(() => {
 const initCoverObserver = async () => {
   await nextTick();
 
-  if (coverObserver) {
-    coverObserver.disconnect();
-  }
-
   if (!containerRef.value) {
     return;
   }
 
-  coverObserver = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting) {
-          return;
-        }
+  if (!coverObserver) {
+    coverObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) {
+            return;
+          }
 
-        const target = entry.target as HTMLElement;
-        const path = target.dataset.coverPath;
-        if (path) {
-          preloadPriorityCovers([path]);
-        }
-        coverObserver?.unobserve(target);
-      });
-    },
-    {
-      root: containerRef.value,
-      rootMargin: '200px 0px',
-    },
-  );
+          const target = entry.target as HTMLElement;
+          const path = target.dataset.coverPath;
+          if (path) {
+            preloadPriorityCovers([path]);
+          }
+          coverObserver?.unobserve(target);
+        });
+      },
+      {
+        root: containerRef.value,
+        rootMargin: '200px 0px',
+      },
+    );
+  } else {
+    coverObserver.disconnect();
+  }
 
   containerRef.value.querySelectorAll<HTMLElement>('[data-cover-path]').forEach((element) => {
     coverObserver?.observe(element);
+  });
+};
+
+const scheduleCoverObserverRefresh = () => {
+  if (coverObserverRefreshFrame) {
+    cancelAnimationFrame(coverObserverRefreshFrame);
+  }
+
+  coverObserverRefreshFrame = requestAnimationFrame(() => {
+    coverObserverRefreshFrame = 0;
+    void initCoverObserver();
   });
 };
 
@@ -334,7 +367,15 @@ watch(
   ([paths]) => {
     touchCoverPaths(paths);
     preloadPriorityCovers(paths);
-    void initCoverObserver();
+    scheduleCoverObserverRefresh();
+  },
+  { immediate: true, flush: 'post' },
+);
+
+watch(
+  [albumSortMode, albumGridColumns, filteredAlbumList],
+  () => {
+    void measureAlbumCardHeight();
   },
   { immediate: true, flush: 'post' },
 );
@@ -410,11 +451,13 @@ onMounted(() => {
   if (containerRef.value) {
     containerResizeObserver = new ResizeObserver(() => {
       updateViewportMetrics();
+      void measureAlbumCardHeight();
     });
     containerResizeObserver.observe(containerRef.value);
   }
   requestAnimationFrame(() => {
-    void initCoverObserver();
+    void measureAlbumCardHeight();
+    scheduleCoverObserverRefresh();
   });
 });
 
@@ -434,6 +477,10 @@ onUnmounted(() => {
   if (coverObserver) {
     coverObserver.disconnect();
     coverObserver = null;
+  }
+  if (coverObserverRefreshFrame) {
+    cancelAnimationFrame(coverObserverRefreshFrame);
+    coverObserverRefreshFrame = 0;
   }
 });
 </script>
@@ -520,6 +567,7 @@ onUnmounted(() => {
             <div
               v-for="item in row.items"
               :key="item.album.key"
+              data-album-card
               class="group cursor-pointer rounded-xl p-2 md:p-3 transition-all duration-300 flex flex-col relative select-none hover:bg-white/40 dark:hover:bg-white/5"
               :class="[
                 dragSession.active && dragSession.type === 'album' && dragSession.data?.key === item.album.key ? 'opacity-50' : '',
@@ -580,6 +628,7 @@ onUnmounted(() => {
         <div
           v-for="item in flatAlbumVirtualState.items"
           :key="item.album.key"
+          data-album-card
           class="group cursor-pointer rounded-xl p-2 md:p-3 transition-all duration-300 flex flex-col relative select-none hover:bg-white/40 dark:hover:bg-white/5"
           :class="[
             dragSession.active && dragSession.type === 'album' && dragSession.data?.key === item.album.key ? 'opacity-50' : '',
