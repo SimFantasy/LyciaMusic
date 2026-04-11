@@ -18,7 +18,7 @@ interface RecentPlaylistListItem {
 }
 
 interface UseLibraryCollectionSelectorsOptions {
-  canonicalSongs: Ref<Song[]>;
+  canonicalSongPaths: Ref<string[]>;
   favoritePaths: Ref<string[]>;
   playlists: Ref<Playlist[]>;
   recentSongs: Ref<HistoryItem[]>;
@@ -26,20 +26,32 @@ interface UseLibraryCollectionSelectorsOptions {
 }
 
 export function useLibraryCollectionSelectors({
-  canonicalSongs,
+  canonicalSongPaths,
   favoritePaths,
   playlists,
   recentSongs,
   songLookup,
 }: UseLibraryCollectionSelectorsOptions) {
+  const favoriteSongPaths = computed(() => {
+    const favoritePathSet = new Set(favoritePaths.value);
+    return canonicalSongPaths.value.filter(path => favoritePathSet.has(path) && songLookup.value.has(path));
+  });
+
   const favoriteSongList = computed(() =>
-    canonicalSongs.value.filter(song => favoritePaths.value.includes(song.path)),
+    favoriteSongPaths.value
+      .map(path => songLookup.value.get(path))
+      .filter((song): song is Song => !!song),
   );
 
   const favArtistList = computed<ArtistListItem[]>(() => {
     const map = new Map<string, { count: number; firstSongPath: string }>();
 
-    favoriteSongList.value.forEach(song => {
+    favoriteSongPaths.value.forEach((path) => {
+      const song = songLookup.value.get(path);
+      if (!song) {
+        return;
+      }
+
       getSongArtistNames(song).forEach(name => {
         const existing = map.get(name);
         if (existing) {
@@ -61,7 +73,12 @@ export function useLibraryCollectionSelectors({
   const favAlbumList = computed<AlbumListItem[]>(() => {
     const map = new Map<string, AlbumListItem>();
 
-    favoriteSongList.value.forEach(song => {
+    favoriteSongPaths.value.forEach((path) => {
+      const song = songLookup.value.get(path);
+      if (!song) {
+        return;
+      }
+
       const key = getSongAlbumKey(song);
       const existing = map.get(key);
 
@@ -140,6 +157,7 @@ export function useLibraryCollectionSelectors({
   });
 
   return {
+    favoriteSongPaths,
     favoriteSongList,
     favArtistList,
     favAlbumList,

@@ -31,8 +31,10 @@ export function usePlayerLibraryView() {
     libraryHierarchy,
     libraryFolders,
     canonicalSongs,
+    canonicalSongPaths,
     songLookup,
     sourceSongs,
+    sourceSongPaths,
     watchedFolders,
     artistSortMode,
     albumSortMode,
@@ -64,14 +66,15 @@ export function usePlayerLibraryView() {
 
   const folderSelectors = useLibraryFolderSelectors({
     watchedFolders,
-    sourceSongs,
+    sourceSongPaths,
+    songLookup,
     currentFolderFilter,
     folderSortMode,
     folderCustomOrder,
   });
 
   const collectionSelectors = useLibraryCollectionSelectors({
-    canonicalSongs,
+    canonicalSongPaths,
     favoritePaths,
     playlists,
     recentSongs,
@@ -79,13 +82,13 @@ export function usePlayerLibraryView() {
   });
 
   const { currentViewSongs } = useLibraryCurrentViewSongs({
-    canonicalSongs,
-    sourceSongs,
+    canonicalSongPaths,
+    sourceSongPaths,
     playlists,
     recentSongs,
     songLookup,
-    favoriteSongList: collectionSelectors.favoriteSongList,
-    currentFolderSongs: folderSelectors.currentFolderSongs,
+    favoriteSongPaths: collectionSelectors.favoriteSongPaths,
+    currentFolderSongPaths: folderSelectors.currentFolderSongPaths,
     currentViewMode,
     searchQuery,
     localMusicTab,

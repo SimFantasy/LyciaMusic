@@ -10,30 +10,14 @@ import {
   songHasArtist,
 } from './playerLibraryViewShared';
 
-const sortByAddedAtDesc = (songs: Song[]) => {
-  songs.sort((left, right) => (right.added_at || 0) - (left.added_at || 0));
-};
-
-const sortByAddedAtAsc = (songs: Song[]) => {
-  songs.sort((left, right) => (left.added_at || 0) - (right.added_at || 0));
-};
-
-const sortByFileModifiedAtDesc = (songs: Song[]) => {
-  songs.sort((left, right) => (right.file_modified_at || 0) - (left.file_modified_at || 0));
-};
-
-const sortByFileModifiedAtAsc = (songs: Song[]) => {
-  songs.sort((left, right) => (left.file_modified_at || 0) - (right.file_modified_at || 0));
-};
-
 interface UseLibraryCurrentViewSongsOptions {
-  canonicalSongs: Ref<Song[]>;
-  sourceSongs: Ref<Song[]>;
+  canonicalSongPaths: Ref<string[]>;
+  sourceSongPaths: Ref<string[]>;
   playlists: Ref<Playlist[]>;
   recentSongs: Ref<HistoryItem[]>;
   songLookup: ComputedRef<Map<string, Song>>;
-  favoriteSongList: ComputedRef<Song[]>;
-  currentFolderSongs: ComputedRef<Song[]>;
+  favoriteSongPaths: ComputedRef<string[]>;
+  currentFolderSongPaths: ComputedRef<string[]>;
   currentViewMode: Ref<string>;
   searchQuery: Ref<string>;
   localMusicTab: Ref<'default' | 'artist' | 'album'>;
@@ -47,30 +31,14 @@ interface UseLibraryCurrentViewSongsOptions {
   playlistSortMode: Ref<PlaylistSortMode>;
 }
 
-const sortSongsByLocalMode = (songs: Song[], mode: LocalSortMode) => {
-  if (mode === 'title') {
-    songs.sort((left, right) => (left.title || left.name).localeCompare(right.title || right.name, 'zh-CN'));
-  } else if (mode === 'artist') {
-    songs.sort((left, right) => (left.artist || '').localeCompare(right.artist || '', 'zh-CN'));
-  } else if (mode === 'added_at') {
-    sortByAddedAtDesc(songs);
-  } else if (mode === 'added_at_asc') {
-    sortByAddedAtAsc(songs);
-  } else if (mode === 'file_modified_at') {
-    sortByFileModifiedAtDesc(songs);
-  } else if (mode === 'file_modified_at_asc') {
-    sortByFileModifiedAtAsc(songs);
-  }
-};
-
 export function useLibraryCurrentViewSongs({
-  canonicalSongs,
-  sourceSongs,
+  canonicalSongPaths,
+  sourceSongPaths,
   playlists,
   recentSongs,
   songLookup,
-  favoriteSongList,
-  currentFolderSongs,
+  favoriteSongPaths,
+  currentFolderSongPaths,
   currentViewMode,
   searchQuery,
   localMusicTab,
@@ -83,117 +51,151 @@ export function useLibraryCurrentViewSongs({
   localCustomOrder,
   playlistSortMode,
 }: UseLibraryCurrentViewSongsOptions) {
-  const resolveRecentSongs = () =>
+  const resolveRecentSongPaths = () =>
     recentSongs.value
-      .map(item => songLookup.value.get(item.path))
+      .map(item => item.path)
+      .filter(path => songLookup.value.has(path));
+
+  const materializeSongPaths = (paths: string[]) =>
+    paths
+      .map(path => songLookup.value.get(path))
       .filter((song): song is Song => !!song);
 
-  const currentViewSongs = computed(() => {
+  const sortSongPathsByLocalMode = (paths: string[], mode: LocalSortMode) => {
+    const sortedPaths = [...paths];
+
+    if (mode === 'title') {
+      sortedPaths.sort((left, right) =>
+        (songLookup.value.get(left)?.title || songLookup.value.get(left)?.name || '').localeCompare(
+          songLookup.value.get(right)?.title || songLookup.value.get(right)?.name || '',
+          'zh-CN',
+        ),
+      );
+    } else if (mode === 'artist') {
+      sortedPaths.sort((left, right) =>
+        (songLookup.value.get(left)?.artist || '').localeCompare(songLookup.value.get(right)?.artist || '', 'zh-CN'),
+      );
+    } else if (mode === 'added_at') {
+      sortedPaths.sort((left, right) =>
+        (songLookup.value.get(right)?.added_at || 0) - (songLookup.value.get(left)?.added_at || 0),
+      );
+    } else if (mode === 'added_at_asc') {
+      sortedPaths.sort((left, right) =>
+        (songLookup.value.get(left)?.added_at || 0) - (songLookup.value.get(right)?.added_at || 0),
+      );
+    } else if (mode === 'file_modified_at') {
+      sortedPaths.sort((left, right) =>
+        (songLookup.value.get(right)?.file_modified_at || 0) - (songLookup.value.get(left)?.file_modified_at || 0),
+      );
+    } else if (mode === 'file_modified_at_asc') {
+      sortedPaths.sort((left, right) =>
+        (songLookup.value.get(left)?.file_modified_at || 0) - (songLookup.value.get(right)?.file_modified_at || 0),
+      );
+    }
+
+    return sortedPaths;
+  };
+
+  const currentViewSongPaths = computed(() => {
     if (searchQuery.value.trim()) {
       const query = searchQuery.value.toLowerCase();
+      const matchesQuery = (path: string) => {
+        const song = songLookup.value.get(path);
+        if (!song) {
+          return false;
+        }
+
+        return song.name.toLowerCase().includes(query)
+          || getSongArtistSearchText(song).includes(query)
+          || song.album.toLowerCase().includes(query);
+      };
 
       if (currentViewMode.value === 'favorites') {
-        return favoriteSongList.value.filter(song =>
-          song.name.toLowerCase().includes(query) ||
-          getSongArtistSearchText(song).includes(query),
-        );
+        return favoriteSongPaths.value.filter(matchesQuery);
       }
 
       if (currentViewMode.value === 'recent') {
-        return resolveRecentSongs().filter(song => song.name.toLowerCase().includes(query));
+        return resolveRecentSongPaths().filter(matchesQuery);
       }
 
       if (currentViewMode.value === 'all') {
         return sortItemsByAlphabetIndex(
-          canonicalSongs.value.filter(song =>
-            song.name.toLowerCase().includes(query) ||
-            getSongArtistSearchText(song).includes(query) ||
-            song.album.toLowerCase().includes(query),
-          ),
-          getSongTitleLabel,
+          canonicalSongPaths.value.filter(matchesQuery),
+          (path) => getSongTitleLabel(songLookup.value.get(path)!),
         );
       }
 
       if (currentViewMode.value === 'folder') {
         return sortItemsByAlphabetIndex(
-          sourceSongs.value.filter(song =>
-            song.name.toLowerCase().includes(query) ||
-            getSongArtistSearchText(song).includes(query) ||
-            song.album.toLowerCase().includes(query),
-          ),
-          getSongTitleLabel,
+          sourceSongPaths.value.filter(matchesQuery),
+          (path) => getSongTitleLabel(songLookup.value.get(path)!),
         );
       }
 
-      return canonicalSongs.value.filter(song =>
-        song.name.toLowerCase().includes(query) ||
-        getSongArtistSearchText(song).includes(query) ||
-        song.album.toLowerCase().includes(query),
-      );
+      return canonicalSongPaths.value.filter(matchesQuery);
     }
 
     if (currentViewMode.value === 'all') {
-      let base = [...canonicalSongs.value];
+      let base = [...canonicalSongPaths.value];
       if (localMusicTab.value === 'artist' && currentArtistFilter.value) {
-        base = base.filter(song => songHasArtist(song, currentArtistFilter.value));
+        base = base.filter(path => songHasArtist(songLookup.value.get(path)!, currentArtistFilter.value));
       } else if (localMusicTab.value === 'album' && currentAlbumFilter.value) {
-        base = base.filter(song => matchesAlbumKey(song, currentAlbumFilter.value));
+        base = base.filter(path => matchesAlbumKey(songLookup.value.get(path)!, currentAlbumFilter.value));
       }
 
       if (localSortMode.value === 'title') {
-        base = sortItemsByAlphabetIndex(base, getSongTitleLabel);
+        base = sortItemsByAlphabetIndex(base, (path) => getSongTitleLabel(songLookup.value.get(path)!));
       } else if (localSortMode.value === 'artist') {
-        base.sort((left, right) => (left.artist || '').localeCompare(right.artist || '', 'zh-CN'));
+        base.sort((left, right) =>
+          (songLookup.value.get(left)?.artist || '').localeCompare(songLookup.value.get(right)?.artist || '', 'zh-CN'),
+        );
       } else if (localSortMode.value === 'added_at') {
-        sortByAddedAtDesc(base);
+        base.sort((left, right) => (songLookup.value.get(right)?.added_at || 0) - (songLookup.value.get(left)?.added_at || 0));
       } else if (localSortMode.value === 'added_at_asc') {
-        sortByAddedAtAsc(base);
+        base.sort((left, right) => (songLookup.value.get(left)?.added_at || 0) - (songLookup.value.get(right)?.added_at || 0));
       } else if (localSortMode.value === 'file_modified_at') {
-        sortByFileModifiedAtDesc(base);
+        base.sort((left, right) => (songLookup.value.get(right)?.file_modified_at || 0) - (songLookup.value.get(left)?.file_modified_at || 0));
       } else if (localSortMode.value === 'file_modified_at_asc') {
-        sortByFileModifiedAtAsc(base);
+        base.sort((left, right) => (songLookup.value.get(left)?.file_modified_at || 0) - (songLookup.value.get(right)?.file_modified_at || 0));
       } else if (localSortMode.value === 'custom') {
         const orderMap = new Map(localCustomOrder.value.map((path, index) => [path, index]));
         base.sort((left, right) => {
-          const leftIndex = orderMap.has(left.path) ? orderMap.get(left.path)! : Number.MAX_SAFE_INTEGER;
-          const rightIndex = orderMap.has(right.path) ? orderMap.get(right.path)! : Number.MAX_SAFE_INTEGER;
+          const leftIndex = orderMap.has(left) ? orderMap.get(left)! : Number.MAX_SAFE_INTEGER;
+          const rightIndex = orderMap.has(right) ? orderMap.get(right)! : Number.MAX_SAFE_INTEGER;
           return leftIndex - rightIndex;
         });
       } else {
-        base = sortItemsByAlphabetIndex(base, getSongTitleLabel);
+        base = sortItemsByAlphabetIndex(base, (path) => getSongTitleLabel(songLookup.value.get(path)!));
       }
 
       return base;
     }
 
     if (currentViewMode.value === 'folder') {
-      return currentFolderSongs.value;
+      return currentFolderSongPaths.value;
     }
 
     if (currentViewMode.value === 'recent') {
-      const songs = [...resolveRecentSongs()];
-      sortSongsByLocalMode(songs, localSortMode.value);
-      return songs;
+      return sortSongPathsByLocalMode(resolveRecentSongPaths(), localSortMode.value);
     }
 
     if (currentViewMode.value === 'favorites') {
-      let songs: Song[] = [];
+      let paths: string[] = [];
       if (favTab.value === 'songs') {
-        songs = [...favoriteSongList.value];
+        paths = [...favoriteSongPaths.value];
       } else if (favTab.value === 'artists') {
-        songs = favDetailFilter.value?.type === 'artist'
-          ? favoriteSongList.value.filter(song => songHasArtist(song, favDetailFilter.value!.name))
+        paths = favDetailFilter.value?.type === 'artist'
+          ? favoriteSongPaths.value.filter(path => songHasArtist(songLookup.value.get(path)!, favDetailFilter.value!.name))
           : [];
       } else if (favTab.value === 'albums') {
-        songs = favDetailFilter.value?.type === 'album'
-          ? favoriteSongList.value.filter(song => matchesAlbumKey(song, favDetailFilter.value!.name))
+        paths = favDetailFilter.value?.type === 'album'
+          ? favoriteSongPaths.value.filter(path => matchesAlbumKey(songLookup.value.get(path)!, favDetailFilter.value!.name))
           : [];
       } else {
-        songs = [...favoriteSongList.value];
+        paths = [...favoriteSongPaths.value];
       }
 
-      sortSongsByLocalMode(songs, localSortMode.value);
-      return songs;
+      return sortSongPathsByLocalMode(paths, localSortMode.value);
     }
 
     if (currentViewMode.value === 'playlist') {
@@ -202,40 +204,55 @@ export function useLibraryCurrentViewSongs({
         return [];
       }
 
-      const songMap = new Map<string, Song>();
-      canonicalSongs.value.forEach(song => songMap.set(song.path, song));
-      sourceSongs.value.forEach(song => {
-        if (!songMap.has(song.path)) {
-          songMap.set(song.path, song);
-        }
-      });
-
-      const songs = playlist.songPaths
-        .map(path => songMap.get(path))
-        .filter((song): song is Song => !!song);
+      const paths = playlist.songPaths.filter(path => songLookup.value.has(path));
 
       if (playlistSortMode.value === 'title') {
-        songs.sort((left, right) => (left.title || left.name).localeCompare(right.title || right.name, 'zh-CN'));
+        paths.sort((left, right) =>
+          (songLookup.value.get(left)?.title || songLookup.value.get(left)?.name || '').localeCompare(
+            songLookup.value.get(right)?.title || songLookup.value.get(right)?.name || '',
+            'zh-CN',
+          ),
+        );
       } else if (playlistSortMode.value === 'name') {
-        songs.sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'));
+        paths.sort((left, right) =>
+          (songLookup.value.get(left)?.name || '').localeCompare(songLookup.value.get(right)?.name || '', 'zh-CN'),
+        );
       } else if (playlistSortMode.value === 'artist') {
-        songs.sort((left, right) => (left.artist || '').localeCompare(right.artist || '', 'zh-CN'));
+        paths.sort((left, right) =>
+          (songLookup.value.get(left)?.artist || '').localeCompare(songLookup.value.get(right)?.artist || '', 'zh-CN'),
+        );
       } else if (playlistSortMode.value === 'added_at') {
-        songs.sort((left, right) => (right.added_at || 0) - (left.added_at || 0));
+        paths.sort((left, right) =>
+          (songLookup.value.get(right)?.added_at || 0) - (songLookup.value.get(left)?.added_at || 0),
+        );
       } else if (playlistSortMode.value === 'added_at_asc') {
-        songs.sort((left, right) => (left.added_at || 0) - (right.added_at || 0));
+        paths.sort((left, right) =>
+          (songLookup.value.get(left)?.added_at || 0) - (songLookup.value.get(right)?.added_at || 0),
+        );
       }
 
-      return songs;
+      return paths;
     }
 
-    return canonicalSongs.value.filter(song =>
-      songHasArtist(song, filterCondition.value) ||
-      matchesAlbumKey(song, filterCondition.value),
-    );
+    return canonicalSongPaths.value.filter(path => {
+      const song = songLookup.value.get(path);
+      if (!song) {
+        return false;
+      }
+
+      return songHasArtist(song, filterCondition.value) || matchesAlbumKey(song, filterCondition.value);
+    });
   });
 
+  const currentViewSongs = computed(() =>
+    materializeSongPaths(currentViewSongPaths.value),
+  );
+
+  const currentViewSongCount = computed(() => currentViewSongPaths.value.length);
+
   return {
+    currentViewSongPaths,
+    currentViewSongCount,
     currentViewSongs,
   };
 }
