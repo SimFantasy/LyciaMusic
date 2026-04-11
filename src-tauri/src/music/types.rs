@@ -67,6 +67,7 @@ pub struct SongDetail {
 }
 
 #[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct ArtistCatalogItem {
     pub name: String,
     pub count: u32,
@@ -74,6 +75,7 @@ pub struct ArtistCatalogItem {
 }
 
 #[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct AlbumCatalogItem {
     pub key: String,
     pub name: String,
