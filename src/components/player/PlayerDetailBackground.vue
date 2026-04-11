@@ -5,6 +5,7 @@ import { useCoverCache } from '../../composables/useCoverCache';
 
 const props = defineProps<{
   bgOpacity?: number;
+  active?: boolean;
 }>();
 
 const { dominantColors, currentSong } = usePlayer();
@@ -23,12 +24,12 @@ const thumbCoverUrl = ref('');
 let coverRequestId = 0;
 
 watch(
-  () => currentSong.value?.path,
-  async (path) => {
+  [() => props.active ?? true, () => currentSong.value?.path],
+  async ([active, path]) => {
     const requestId = ++coverRequestId;
-    thumbCoverUrl.value = '';
 
-    if (!path) {
+    if (!active || !path) {
+      thumbCoverUrl.value = '';
       return;
     }
 

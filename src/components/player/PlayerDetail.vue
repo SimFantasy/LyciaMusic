@@ -78,23 +78,31 @@ watch(showPlayerDetail, (visible) => {
   isTopChromeVisible.value = false;
 });
 
-watch(() => currentSong.value?.path ?? '', async (path) => {
+watch([showPlayerDetail, () => currentSong.value?.path ?? ''], async ([visible, path]) => {
   const requestId = ++detailRequestId;
 
-  if (!path) {
+  if (!visible || !path) {
     currentSongDetail.value = null;
     return;
   }
 
   try {
     const detail = await loadSongDetail(path);
-    if (requestId !== detailRequestId || path !== (currentSong.value?.path ?? '')) {
+    if (
+      requestId !== detailRequestId
+      || !showPlayerDetail.value
+      || path !== (currentSong.value?.path ?? '')
+    ) {
       return;
     }
 
     currentSongDetail.value = detail;
   } catch {
-    if (requestId !== detailRequestId || path !== (currentSong.value?.path ?? '')) {
+    if (
+      requestId !== detailRequestId
+      || !showPlayerDetail.value
+      || path !== (currentSong.value?.path ?? '')
+    ) {
       return;
     }
 
@@ -169,7 +177,7 @@ const metaInfo = computed(() => {
           transform: showPlayerDetail ? 'translateY(0)' : 'translateY(100%)',
         }"
       >
-        <PlayerDetailBackground :bgOpacity="1" />
+        <PlayerDetailBackground :bgOpacity="1" :active="showPlayerDetail" />
         <div class="absolute inset-0 z-[-1] bg-[#0a0a0a]"></div>
       </div>
 

@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { storeToRefs } from 'pinia';
 import { usePlayer } from '../../composables/player';
 import { useThemeSettings } from '../../composables/useThemeSettings';
+import { useCoverCache } from '../../composables/useCoverCache';
+import { usePlaybackStore } from '../../features/playback/store';
 import { useWindowMaterial } from '../../composables/windowMaterial';
 
 const { currentCover, currentCoverFull, dominantColors, showPlayerDetail } = usePlayer();
 const { theme, isDarkTheme } = useThemeSettings();
 const { activeWindowMaterial } = useWindowMaterial();
+const { loadFullCover } = useCoverCache();
+const playbackStore = usePlaybackStore();
+const { currentSongPath } = storeToRefs(playbackStore);
 
 const hasWindowMaterial = computed(() => activeWindowMaterial.value !== 'none');
 const isMicaWindowMaterial = computed(() => activeWindowMaterial.value === 'mica');
@@ -196,6 +202,7 @@ const flowLayers = ref<FlowLayerSnapshot[]>([]);
 let flowLayerId = 0;
 let flowTransitionTimer: ReturnType<typeof setTimeout> | null = null;
 let flowEnterAnimationFrame: number | null = null;
+let fullCoverRequestId = 0;
 
 function clearFlowTransitionTimer() {
   if (flowTransitionTimer) {
@@ -304,9 +311,46 @@ watch(
   },
 );
 
+watch(
+  [() => activeBackgroundInfo.value?.type, currentSongPath],
+  async ([backgroundType, path]) => {
+    if (backgroundType !== 'blur' || !path) {
+      fullCoverRequestId += 1;
+      return;
+    }
+
+    const requestId = ++fullCoverRequestId;
+
+    try {
+      const fullCoverUrl = await loadFullCover(path);
+      if (
+        requestId !== fullCoverRequestId
+        || currentSongPath.value !== path
+        || activeBackgroundInfo.value?.type !== 'blur'
+      ) {
+        return;
+      }
+
+      playbackStore.currentCoverFull = fullCoverUrl || playbackStore.currentCover;
+    } catch {
+      if (
+        requestId !== fullCoverRequestId
+        || currentSongPath.value !== path
+        || activeBackgroundInfo.value?.type !== 'blur'
+      ) {
+        return;
+      }
+
+      playbackStore.currentCoverFull = playbackStore.currentCover;
+    }
+  },
+  { immediate: true },
+);
+
 onBeforeUnmount(() => {
   clearFlowTransitionTimer();
   clearFlowEnterAnimationFrame();
+  fullCoverRequestId += 1;
 });
 
 const staticMaskClass = computed(() => {

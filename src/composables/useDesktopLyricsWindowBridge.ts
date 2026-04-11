@@ -382,9 +382,7 @@ export function useDesktopLyricsWindowBridge() {
     }
 
     stopSyncLoop();
-    const targetWindow = await getDesktopLyricsWindow();
-    if (!targetWindow) return;
-    await targetWindow.hide();
+    await destroyDesktopLyricsWindow();
   });
 
   watch(

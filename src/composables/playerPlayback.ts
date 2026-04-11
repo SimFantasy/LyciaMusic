@@ -41,7 +41,7 @@ export const createPlayerPlayback = ({
   onBeforePlay,
 }: CreatePlayerPlaybackDeps) => {
   const playbackStore = usePlaybackStore();
-  const { loadCover, loadFullCover } = useCoverCache();
+  const { loadCover } = useCoverCache();
   const {
     currentCover,
     currentCoverFull,
@@ -187,16 +187,6 @@ export const createPlayerPlayback = ({
             duration: Math.floor(song.duration),
             isPlaying: isPlaying.value,
           }).catch(() => {});
-
-          void loadFullCover(song.path)
-            .then(fullCover => {
-              if (requestId !== playRequestId || currentSong.value?.path !== song.path) {
-                return;
-              }
-
-              currentCoverFull.value = fullCover || normalizedCover;
-            })
-            .catch(() => {});
         })
         .catch(() => {});
     } catch {
