@@ -11,7 +11,7 @@ const props = defineProps<{
 const {
   currentSong, currentCover, currentCoverFull, isPlaying, dominantColors
 } = usePlaybackController();
-const { loadFullCover, retainCoverPaths } = useCoverCache();
+const { loadFullCover, retainFullCoverPaths } = useCoverCache();
 
 const showContextMenu = ref(false);
 const contextMenuX = ref(0);
@@ -50,10 +50,7 @@ watch([currentSongPath, () => props.isExpanded], async ([path, isExpanded]) => {
   }
 
   if (currentCoverFull.value && currentCoverFull.value !== currentCover.value) {
-    retainCoverPaths({
-      thumbnailPaths: currentCover.value ? [path] : [],
-      fullPaths: [path],
-    });
+    retainFullCoverPaths([path]);
     return;
   }
 
@@ -63,10 +60,7 @@ watch([currentSongPath, () => props.isExpanded], async ([path, isExpanded]) => {
     const fullCoverUrl = await loadFullCover(path);
     if (requestId !== fullCoverRequestId || path !== currentSongPath.value || !props.isExpanded) return;
     currentCoverFull.value = fullCoverUrl || currentCover.value;
-    retainCoverPaths({
-      thumbnailPaths: currentCover.value ? [path] : [],
-      fullPaths: fullCoverUrl ? [path] : [],
-    });
+    retainFullCoverPaths(fullCoverUrl ? [path] : []);
   } catch {
     if (requestId !== fullCoverRequestId || path !== currentSongPath.value || !props.isExpanded) return;
     currentCoverFull.value = currentCover.value;

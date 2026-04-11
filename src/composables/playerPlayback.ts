@@ -41,7 +41,7 @@ export const createPlayerPlayback = ({
   onBeforePlay,
 }: CreatePlayerPlaybackDeps) => {
   const playbackStore = usePlaybackStore();
-  const { loadCover, retainCoverPaths } = useCoverCache();
+  const { loadCover, retainFullCoverPaths } = useCoverCache();
   const {
     currentCover,
     currentCoverFull,
@@ -67,27 +67,6 @@ export const createPlayerPlayback = ({
     playbackAnchorTime = performance.now();
     playbackStartOffset = time;
     currentTime.value = time;
-  };
-
-  const getRetainedThumbnailPaths = (anchorPath: string) => {
-    const uniquePaths = new Set<string>();
-    const queuePaths = playQueue.value
-      .map(song => song.path)
-      .filter(Boolean);
-    const currentIndex = queuePaths.indexOf(anchorPath);
-
-    uniquePaths.add(anchorPath);
-
-    if (currentIndex !== -1) {
-      const startIndex = Math.max(0, currentIndex - 1);
-      const endIndex = Math.min(queuePaths.length, currentIndex + 3);
-
-      for (let index = startIndex; index < endIndex; index += 1) {
-        uniquePaths.add(queuePaths[index]);
-      }
-    }
-
-    return Array.from(uniquePaths);
   };
 
   const startPlaybackRuntime = () => {
@@ -167,10 +146,7 @@ export const createPlayerPlayback = ({
     isSongLoaded.value = false;
     currentCover.value = '';
     currentCoverFull.value = '';
-    retainCoverPaths({
-      thumbnailPaths: getRetainedThumbnailPaths(song.path),
-      fullPaths: [],
-    });
+    retainFullCoverPaths([]);
     stopPlaybackRuntime();
     reanchorPlaybackClock(0);
     accumulatedTime = 0;
@@ -203,10 +179,7 @@ export const createPlayerPlayback = ({
           const normalizedCover = cover || '';
           currentCover.value = normalizedCover;
           currentCoverFull.value = normalizedCover;
-          retainCoverPaths({
-            thumbnailPaths: getRetainedThumbnailPaths(song.path),
-            fullPaths: [],
-          });
+          retainFullCoverPaths([]);
 
           await playbackApi.updatePlaybackMetadata({
             title: song.name,

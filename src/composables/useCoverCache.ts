@@ -460,27 +460,19 @@ export function useCoverCache() {
     scheduleBackgroundPreload();
   };
 
-  const retainCoverPaths = ({
-    thumbnailPaths = [],
-    fullPaths = [],
-  }: {
-    thumbnailPaths?: string[];
-    fullPaths?: string[];
-  }) => {
+  const retainFullCoverPaths = (fullPaths: string[]) => {
     bumpCacheEpoch();
 
-    const retainedThumbnailPaths = new Set(thumbnailPaths.filter(Boolean));
     const retainedFullPaths = new Set(fullPaths.filter(Boolean));
-
-    retainCacheEntries(thumbnailCache, thumbnailCacheExpiry, retainedThumbnailPaths);
     retainCacheEntries(fullCoverCache, fullCoverCacheExpiry, retainedFullPaths);
 
     for (const requestKey of Array.from(inFlightRequests.keys())) {
-      const isThumbnail = isThumbnailRequestKey(requestKey);
-      const path = requestKey.slice(requestKey.indexOf(':') + 1);
-      const retainedSet = isThumbnail ? retainedThumbnailPaths : retainedFullPaths;
+      if (isThumbnailRequestKey(requestKey)) {
+        continue;
+      }
 
-      if (retainedSet.has(path)) {
+      const path = requestKey.slice(requestKey.indexOf(':') + 1);
+      if (retainedFullPaths.has(path)) {
         continue;
       }
 
@@ -489,20 +481,17 @@ export function useCoverCache() {
     }
 
     for (const [path, priority] of Array.from(queuedPathPriority.entries())) {
-      const retainedSet = priority === 'priority' || priority === 'background'
-        ? retainedThumbnailPaths
-        : retainedFullPaths;
-      if (retainedSet.has(path)) {
+      if (priority === 'priority' || priority === 'background') {
+        continue;
+      }
+
+      if (retainedFullPaths.has(path)) {
         continue;
       }
 
       queuedPathPriority.delete(path);
     }
 
-    priorityPreloadQueue.splice(0, priorityPreloadQueue.length, ...priorityPreloadQueue.filter(path => retainedThumbnailPaths.has(path)));
-    backgroundPreloadQueue.splice(0, backgroundPreloadQueue.length, ...backgroundPreloadQueue.filter(path => retainedThumbnailPaths.has(path)));
-
-    pruneCache(thumbnailCache, thumbnailCacheExpiry, Math.max(HIDDEN_THUMBNAIL_CACHE_LIMIT, retainedThumbnailPaths.size));
     pruneCache(fullCoverCache, fullCoverCacheExpiry, Math.max(1, retainedFullPaths.size));
   };
 
@@ -535,7 +524,7 @@ export function useCoverCache() {
     loadFullCover,
     preloadCovers,
     preloadPriorityCovers: (paths: string[]) => preloadCovers(paths, 'priority'),
-    retainCoverPaths,
+    retainFullCoverPaths,
     clearCoverCaches,
   };
 }
