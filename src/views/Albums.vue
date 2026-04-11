@@ -1,8 +1,9 @@
 <script setup lang="ts">
 defineOptions({ name: 'Albums' });
 
-import { computed, onMounted, onUnmounted, reactive, ref, watch, watchEffect } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch, watchEffect } from 'vue';
 import { useRouter } from 'vue-router';
+import { albumViewportCoverSnapshotCache } from '../caches/imageCaches';
 import { dragSession } from '../composables/dragState';
 import { useCoverCache } from '../composables/useCoverCache';
 import { useHomeNavigation } from '../composables/useHomeNavigation';
@@ -20,6 +21,9 @@ const showSortMenu = ref(false);
 const dragOverKey = ref<string | null>(null);
 const containerRef = ref<HTMLElement | null>(null);
 const displayedCoverUrls = reactive(new Map<string, string>());
+let coverObserver: IntersectionObserver | null = null;
+const VIEWPORT_SNAPSHOT_KEY = 'albums-current';
+const VIEWPORT_SNAPSHOT_LIMIT = 72;
 
 const handleAlbumClick = (albumKey: string) => {
   void openHomeAlbum(albumKey);
@@ -30,7 +34,74 @@ const handleSortChange = (mode: 'count' | 'name' | 'artist' | 'custom') => {
   showSortMenu.value = false;
 };
 
-const { coverCache, isCoverLoading, preloadCovers } = useCoverCache();
+const { coverCache, isCoverLoading, preloadCovers, preloadPriorityCovers } = useCoverCache();
+
+const getDisplayedCoverUrl = (path: string | undefined) => {
+  if (!path) {
+    return '';
+  }
+
+  return displayedCoverUrls.get(path) ?? coverCache.get(path) ?? '';
+};
+
+const restoreViewportCoverSnapshot = () => {
+  const snapshot = albumViewportCoverSnapshotCache.get(VIEWPORT_SNAPSHOT_KEY);
+  if (!snapshot) {
+    return;
+  }
+
+  snapshot.forEach(([path, url]) => {
+    if (path && url) {
+      displayedCoverUrls.set(path, url);
+    }
+  });
+};
+
+const saveViewportCoverSnapshot = () => {
+  if (!containerRef.value) {
+    return;
+  }
+
+  const containerRect = containerRef.value.getBoundingClientRect();
+  const viewportBuffer = containerRef.value.clientHeight;
+  const snapshotTop = containerRect.top - viewportBuffer;
+  const snapshotBottom = containerRect.bottom + viewportBuffer;
+  const snapshot: Array<readonly [string, string]> = [];
+  const seenPaths = new Set<string>();
+
+  containerRef.value.querySelectorAll<HTMLElement>('[data-cover-path]').forEach((element) => {
+    if (snapshot.length >= VIEWPORT_SNAPSHOT_LIMIT) {
+      return;
+    }
+
+    const path = element.dataset.coverPath;
+    if (!path || seenPaths.has(path)) {
+      return;
+    }
+
+    const rect = element.getBoundingClientRect();
+    if (rect.bottom < snapshotTop || rect.top > snapshotBottom) {
+      return;
+    }
+
+    const url = displayedCoverUrls.get(path) ?? coverCache.get(path);
+    if (!url) {
+      return;
+    }
+
+    seenPaths.add(path);
+    snapshot.push([path, url]);
+  });
+
+  if (snapshot.length > 0) {
+    albumViewportCoverSnapshotCache.set(VIEWPORT_SNAPSHOT_KEY, snapshot);
+    return;
+  }
+
+  albumViewportCoverSnapshotCache.delete(VIEWPORT_SNAPSHOT_KEY);
+};
+
+restoreViewportCoverSnapshot();
 
 const albumSections = computed(() => {
   const sections: Array<{
@@ -73,6 +144,43 @@ watch(
   { immediate: true },
 );
 
+const initCoverObserver = async () => {
+  await nextTick();
+
+  if (coverObserver) {
+    coverObserver.disconnect();
+  }
+
+  if (!containerRef.value) {
+    return;
+  }
+
+  coverObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) {
+          return;
+        }
+
+        const target = entry.target as HTMLElement;
+        const path = target.dataset.coverPath;
+        if (path) {
+          preloadPriorityCovers([path]);
+        }
+        coverObserver?.unobserve(target);
+      });
+    },
+    {
+      root: containerRef.value,
+      rootMargin: '200px 0px',
+    },
+  );
+
+  containerRef.value.querySelectorAll<HTMLElement>('[data-cover-path]').forEach((element) => {
+    coverObserver?.observe(element);
+  });
+};
+
 watchEffect(() => {
   for (const album of filteredAlbumList.value) {
     const path = album.firstSongPath;
@@ -87,7 +195,15 @@ watchEffect(() => {
   }
 });
 
-useListScrollMemory('albums-view', containerRef);
+const { restoreScrollPosition } = useListScrollMemory('albums-view', containerRef);
+
+watch(
+  [() => filteredAlbumList.value, albumSortMode],
+  () => {
+    void initCoverObserver();
+  },
+  { immediate: true },
+);
 
 let mouseDownInfo: { x: number; y: number; index: number; album: AlbumListItem } | null = null;
 
@@ -155,12 +271,25 @@ onMounted(() => {
   window.addEventListener('mousemove', handleGlobalMouseMove);
   window.addEventListener('mouseup', handleGlobalMouseUp);
   window.addEventListener('click', closeMenu);
+  void restoreScrollPosition().then(() => {
+    requestAnimationFrame(() => {
+      void initCoverObserver();
+    });
+  });
+});
+
+onBeforeUnmount(() => {
+  saveViewportCoverSnapshot();
 });
 
 onUnmounted(() => {
   window.removeEventListener('mousemove', handleGlobalMouseMove);
   window.removeEventListener('mouseup', handleGlobalMouseUp);
   window.removeEventListener('click', closeMenu);
+  if (coverObserver) {
+    coverObserver.disconnect();
+    coverObserver = null;
+  }
 });
 </script>
 
@@ -245,7 +374,7 @@ onUnmounted(() => {
               @mousemove="handleItemMouseMove($event, item.album.key)"
               @click="handleAlbumClick(item.album.key)"
             >
-              <div class="relative w-full aspect-square mb-3 mt-4">
+              <div class="relative w-full aspect-square mb-3 mt-4" :data-cover-path="item.album.firstSongPath">
                 <div class="absolute inset-x-2 top-0 bottom-1/2 bg-[#1c1c1c] rounded-t-full shadow-inner origin-bottom translate-y-[-10%] group-hover:translate-y-[-24%] transition-transform duration-500 ease-out z-0 flex items-center justify-center overflow-hidden border border-[#333]">
                   <div class="absolute inset-0 rounded-t-full border border-white/5 scale-90"></div>
                   <div class="absolute inset-0 rounded-t-full border border-white/5 scale-75"></div>
@@ -254,9 +383,9 @@ onUnmounted(() => {
 
                 <div class="absolute inset-0 z-10 bg-white dark:bg-gray-800 rounded-md shadow-md border border-gray-100 dark:border-white/10 p-1 flex items-center justify-center overflow-hidden group-hover:shadow-xl transition-shadow duration-300">
                   <div
-                    v-if="displayedCoverUrls.get(item.album.firstSongPath)"
+                    v-if="getDisplayedCoverUrl(item.album.firstSongPath)"
                     class="w-full h-full bg-cover bg-center rounded-sm"
-                    :style="{ backgroundImage: `url(${displayedCoverUrls.get(item.album.firstSongPath)})` }"
+                    :style="{ backgroundImage: `url(${getDisplayedCoverUrl(item.album.firstSongPath)})` }"
                   ></div>
 
                   <div
@@ -297,7 +426,7 @@ onUnmounted(() => {
           @mousemove="handleItemMouseMove($event, album.key)"
           @click="handleAlbumClick(album.key)"
         >
-          <div class="relative w-full aspect-square mb-3 mt-4">
+          <div class="relative w-full aspect-square mb-3 mt-4" :data-cover-path="album.firstSongPath">
             <div class="absolute inset-x-2 top-0 bottom-1/2 bg-[#1c1c1c] rounded-t-full shadow-inner origin-bottom translate-y-[-10%] group-hover:translate-y-[-24%] transition-transform duration-500 ease-out z-0 flex items-center justify-center overflow-hidden border border-[#333]">
               <div class="absolute inset-0 rounded-t-full border border-white/5 scale-90"></div>
               <div class="absolute inset-0 rounded-t-full border border-white/5 scale-75"></div>
@@ -306,9 +435,9 @@ onUnmounted(() => {
 
             <div class="absolute inset-0 z-10 bg-white dark:bg-gray-800 rounded-md shadow-md border border-gray-100 dark:border-white/10 p-1 flex items-center justify-center overflow-hidden group-hover:shadow-xl transition-shadow duration-300">
               <div
-                v-if="displayedCoverUrls.get(album.firstSongPath)"
+                v-if="getDisplayedCoverUrl(album.firstSongPath)"
                 class="w-full h-full bg-cover bg-center rounded-sm"
-                :style="{ backgroundImage: `url(${displayedCoverUrls.get(album.firstSongPath)})` }"
+                :style="{ backgroundImage: `url(${getDisplayedCoverUrl(album.firstSongPath)})` }"
               ></div>
 
               <div

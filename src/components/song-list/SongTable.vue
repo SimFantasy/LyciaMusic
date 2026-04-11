@@ -1,8 +1,9 @@
 ﻿<script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch, watchEffect } from 'vue';
 import { storeToRefs } from 'pinia';
 import { dragSession } from '../../composables/dragState';
 import type { Song } from '../../types';
+import { listScrollCache, songTableViewportCoverSnapshotCache } from '../../caches/imageCaches';
 import { useLibraryCollections } from '../../features/collections/useLibraryCollections';
 import { useSettings } from '../../features/settings/useSettings';
 import { useRoute, useRouter } from 'vue-router';
@@ -41,6 +42,7 @@ const {
   localSortMode,
   folderSortMode,
   activeRootPath,
+  filterCondition,
   currentFolderFilter,
 } = usePlayerViewState();
 const {
@@ -58,19 +60,131 @@ const { isFavorite, toggleFavorite } = useLibraryCollections();
 const router = useRouter();
 const route = useRoute();
 const { openHomeArtist } = useHomeNavigation(router);
-const { coverCache, preloadCovers } = useCoverCache();
+const { coverCache, preloadPriorityCovers } = useCoverCache();
 
 const ROW_HEIGHT = 72;
 const OVERSCAN = 20;
+const VIEWPORT_SNAPSHOT_LIMIT = 72;
 const rootRef = ref<HTMLElement | null>(null);
 const containerRef = ref<HTMLElement | null>(null);
 const scrollTop = ref(0);
 const containerHeight = ref(600);
+const displayedCoverUrls = reactive(new Map<string, string>());
+
+const tableViewportKey = computed(() =>
+  [
+    'song-table',
+    route.path,
+    currentViewMode.value,
+    filterCondition.value || '',
+    currentFolderFilter.value || '',
+    activeRootPath.value || '',
+  ].join('::'),
+);
+
+const getDisplayedCoverUrl = (path: string | undefined) => {
+  if (!path) {
+    return '';
+  }
+
+  return displayedCoverUrls.get(path) ?? coverCache.get(path) ?? '';
+};
 
 const updateContainerHeight = () => {
   if (containerRef.value) {
     containerHeight.value = containerRef.value.clientHeight;
   }
+};
+
+const saveScrollPosition = (key = tableViewportKey.value) => {
+  if (!key || !containerRef.value) {
+    return;
+  }
+
+  listScrollCache.set(key, containerRef.value.scrollTop);
+};
+
+const restoreScrollPosition = async (key = tableViewportKey.value) => {
+  await nextTick();
+
+  if (!key || !containerRef.value) {
+    return;
+  }
+
+  const savedTop = listScrollCache.get(key);
+  if (savedTop === undefined) {
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    if (!containerRef.value) {
+      return;
+    }
+
+    containerRef.value.scrollTop = savedTop;
+    scrollTop.value = savedTop;
+  });
+};
+
+const restoreViewportCoverSnapshot = (key = tableViewportKey.value) => {
+  if (!key) {
+    return;
+  }
+
+  const snapshot = songTableViewportCoverSnapshotCache.get(key);
+  if (!snapshot) {
+    return;
+  }
+
+  snapshot.forEach(([path, url]) => {
+    if (path && url) {
+      displayedCoverUrls.set(path, url);
+    }
+  });
+};
+
+const saveViewportCoverSnapshot = (key = tableViewportKey.value) => {
+  if (!key || !containerRef.value) {
+    return;
+  }
+
+  const containerRect = containerRef.value.getBoundingClientRect();
+  const viewportBuffer = containerRef.value.clientHeight;
+  const snapshotTop = containerRect.top - viewportBuffer;
+  const snapshotBottom = containerRect.bottom + viewportBuffer;
+  const snapshot: Array<readonly [string, string]> = [];
+  const seenPaths = new Set<string>();
+
+  containerRef.value.querySelectorAll<HTMLElement>('[data-cover-path]').forEach((element) => {
+    if (snapshot.length >= VIEWPORT_SNAPSHOT_LIMIT) {
+      return;
+    }
+
+    const path = element.dataset.coverPath;
+    if (!path || seenPaths.has(path)) {
+      return;
+    }
+
+    const rect = element.getBoundingClientRect();
+    if (rect.bottom < snapshotTop || rect.top > snapshotBottom) {
+      return;
+    }
+
+    const url = getDisplayedCoverUrl(path);
+    if (!url) {
+      return;
+    }
+
+    seenPaths.add(path);
+    snapshot.push([path, url]);
+  });
+
+  if (snapshot.length > 0) {
+    songTableViewportCoverSnapshotCache.set(key, snapshot);
+    return;
+  }
+
+  songTableViewportCoverSnapshotCache.delete(key);
 };
 
 const virtualData = computed(() => {
@@ -134,7 +248,31 @@ const {
 
 watch(
   () => virtualData.value.items,
-  newItems => preloadCovers(newItems.map(song => song.path)),
+  newItems => preloadPriorityCovers(newItems.map(song => song.path)),
+  { immediate: true },
+);
+
+watchEffect(() => {
+  for (const song of virtualItems.value) {
+    const resolvedCoverUrl = coverCache.get(song.path);
+    if (resolvedCoverUrl) {
+      displayedCoverUrls.set(song.path, resolvedCoverUrl);
+    }
+  }
+});
+
+watch(
+  tableViewportKey,
+  (newKey, oldKey) => {
+    if (oldKey && oldKey !== newKey) {
+      saveScrollPosition(oldKey);
+      saveViewportCoverSnapshot(oldKey);
+    }
+
+    displayedCoverUrls.clear();
+    restoreViewportCoverSnapshot(newKey);
+    void restoreScrollPosition(newKey);
+  },
   { immediate: true },
 );
 
@@ -246,9 +384,14 @@ const handleArtistClick = (artistName: string) => {
 
 onMounted(() => {
   window.addEventListener('resize', updateContainerHeight);
-  if (containerRef.value) {
-    updateContainerHeight();
-  }
+  updateContainerHeight();
+  restoreViewportCoverSnapshot();
+  void restoreScrollPosition();
+});
+
+onBeforeUnmount(() => {
+  saveScrollPosition();
+  saveViewportCoverSnapshot();
 });
 
 onUnmounted(() => {
@@ -367,8 +510,8 @@ const getRowStyle = (songIndex: number, songPath: string) => {
             </div>
           </div>
 
-          <div class="w-12 h-12 rounded-lg bg-gray-200/50 dark:bg-white/5 flex items-center justify-center shrink-0 overflow-hidden text-gray-400 dark:text-white/40 relative border border-black/5 dark:border-white/5">
-            <img v-if="coverCache.get(song.path)" :src="coverCache.get(song.path)" class="w-full h-full object-cover transition-opacity duration-300" alt="Cover" />
+          <div class="w-12 h-12 rounded-lg bg-gray-200/50 dark:bg-white/5 flex items-center justify-center shrink-0 overflow-hidden text-gray-400 dark:text-white/40 relative border border-black/5 dark:border-white/5" :data-cover-path="song.path">
+            <img v-if="getDisplayedCoverUrl(song.path)" :src="getDisplayedCoverUrl(song.path)" class="w-full h-full object-cover transition-opacity duration-300" alt="Cover" decoding="async" />
             <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 opacity-40 absolute inset-0 m-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
             </svg>

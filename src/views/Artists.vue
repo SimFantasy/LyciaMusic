@@ -1,8 +1,9 @@
 <script setup lang="ts">
 defineOptions({ name: 'Artists' });
 
-import { computed, onMounted, onUnmounted, reactive, ref, watch, watchEffect } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch, watchEffect } from 'vue';
 import { useRouter } from 'vue-router';
+import { artistViewportCoverSnapshotCache } from '../caches/imageCaches';
 import { dragSession } from '../composables/dragState';
 import { useCoverCache } from '../composables/useCoverCache';
 import { useHomeNavigation } from '../composables/useHomeNavigation';
@@ -20,6 +21,9 @@ const showSortMenu = ref(false);
 const dragOverName = ref<string | null>(null);
 const containerRef = ref<HTMLElement | null>(null);
 const displayedCoverUrls = reactive(new Map<string, string>());
+let coverObserver: IntersectionObserver | null = null;
+const VIEWPORT_SNAPSHOT_KEY = 'artists-current';
+const VIEWPORT_SNAPSHOT_LIMIT = 72;
 
 const handleArtistClick = (artistName: string) => {
   void openHomeArtist(artistName);
@@ -30,7 +34,74 @@ const handleSortChange = (mode: 'count' | 'name' | 'custom') => {
   showSortMenu.value = false;
 };
 
-const { coverCache, isCoverLoading, preloadCovers } = useCoverCache();
+const { coverCache, isCoverLoading, preloadCovers, preloadPriorityCovers } = useCoverCache();
+
+const getDisplayedCoverUrl = (path: string | undefined) => {
+  if (!path) {
+    return '';
+  }
+
+  return displayedCoverUrls.get(path) ?? coverCache.get(path) ?? '';
+};
+
+const restoreViewportCoverSnapshot = () => {
+  const snapshot = artistViewportCoverSnapshotCache.get(VIEWPORT_SNAPSHOT_KEY);
+  if (!snapshot) {
+    return;
+  }
+
+  snapshot.forEach(([path, url]) => {
+    if (path && url) {
+      displayedCoverUrls.set(path, url);
+    }
+  });
+};
+
+const saveViewportCoverSnapshot = () => {
+  if (!containerRef.value) {
+    return;
+  }
+
+  const containerRect = containerRef.value.getBoundingClientRect();
+  const viewportBuffer = containerRef.value.clientHeight;
+  const snapshotTop = containerRect.top - viewportBuffer;
+  const snapshotBottom = containerRect.bottom + viewportBuffer;
+  const snapshot: Array<readonly [string, string]> = [];
+  const seenPaths = new Set<string>();
+
+  containerRef.value.querySelectorAll<HTMLElement>('[data-cover-path]').forEach((element) => {
+    if (snapshot.length >= VIEWPORT_SNAPSHOT_LIMIT) {
+      return;
+    }
+
+    const path = element.dataset.coverPath;
+    if (!path || seenPaths.has(path)) {
+      return;
+    }
+
+    const rect = element.getBoundingClientRect();
+    if (rect.bottom < snapshotTop || rect.top > snapshotBottom) {
+      return;
+    }
+
+    const url = displayedCoverUrls.get(path) ?? coverCache.get(path);
+    if (!url) {
+      return;
+    }
+
+    seenPaths.add(path);
+    snapshot.push([path, url]);
+  });
+
+  if (snapshot.length > 0) {
+    artistViewportCoverSnapshotCache.set(VIEWPORT_SNAPSHOT_KEY, snapshot);
+    return;
+  }
+
+  artistViewportCoverSnapshotCache.delete(VIEWPORT_SNAPSHOT_KEY);
+};
+
+restoreViewportCoverSnapshot();
 
 const artistSections = computed(() => {
   const sections: Array<{
@@ -73,6 +144,43 @@ watch(
   { immediate: true },
 );
 
+const initCoverObserver = async () => {
+  await nextTick();
+
+  if (coverObserver) {
+    coverObserver.disconnect();
+  }
+
+  if (!containerRef.value) {
+    return;
+  }
+
+  coverObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) {
+          return;
+        }
+
+        const target = entry.target as HTMLElement;
+        const path = target.dataset.coverPath;
+        if (path) {
+          preloadPriorityCovers([path]);
+        }
+        coverObserver?.unobserve(target);
+      });
+    },
+    {
+      root: containerRef.value,
+      rootMargin: '200px 0px',
+    },
+  );
+
+  containerRef.value.querySelectorAll<HTMLElement>('[data-cover-path]').forEach((element) => {
+    coverObserver?.observe(element);
+  });
+};
+
 watchEffect(() => {
   for (const artist of filteredArtistList.value) {
     const path = artist.firstSongPath;
@@ -87,7 +195,15 @@ watchEffect(() => {
   }
 });
 
-useListScrollMemory('artists-view', containerRef);
+const { restoreScrollPosition } = useListScrollMemory('artists-view', containerRef);
+
+watch(
+  [() => filteredArtistList.value, artistSortMode],
+  () => {
+    void initCoverObserver();
+  },
+  { immediate: true },
+);
 
 const gradients = [
   'from-pink-500 to-rose-500',
@@ -175,12 +291,25 @@ onMounted(() => {
   window.addEventListener('mousemove', handleGlobalMouseMove);
   window.addEventListener('mouseup', handleGlobalMouseUp);
   window.addEventListener('click', closeMenu);
+  void restoreScrollPosition().then(() => {
+    requestAnimationFrame(() => {
+      void initCoverObserver();
+    });
+  });
+});
+
+onBeforeUnmount(() => {
+  saveViewportCoverSnapshot();
 });
 
 onUnmounted(() => {
   window.removeEventListener('mousemove', handleGlobalMouseMove);
   window.removeEventListener('mouseup', handleGlobalMouseUp);
   window.removeEventListener('click', closeMenu);
+  if (coverObserver) {
+    coverObserver.disconnect();
+    coverObserver = null;
+  }
 });
 </script>
 
@@ -258,11 +387,12 @@ onUnmounted(() => {
             >
               <div
                 class="relative w-12 h-12 md:w-14 md:h-14 shrink-0"
+                :data-cover-path="item.artist.firstSongPath"
                 :class="{ 'ring-2 ring-[#EC4141] ring-offset-2 ring-offset-gray-50 dark:ring-offset-[#222222] rounded-full': dragSession.active && dragSession.type === 'artist' && dragOverName === item.artist.name && dragSession.data?.name !== item.artist.name }"
               >
                 <div class="w-full h-full rounded-full overflow-hidden shadow-sm group-hover:shadow transition-shadow duration-300 relative bg-gray-100 dark:bg-white/5 flex items-center justify-center">
-                  <div v-if="isCoverLoading(item.artist.firstSongPath)" class="w-full h-full bg-gray-200 dark:bg-white/10 animate-pulse"></div>
-                  <img v-else-if="displayedCoverUrls.get(item.artist.firstSongPath)" :src="displayedCoverUrls.get(item.artist.firstSongPath)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="item.artist.name">
+                  <img v-if="getDisplayedCoverUrl(item.artist.firstSongPath)" :src="getDisplayedCoverUrl(item.artist.firstSongPath)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="item.artist.name">
+                  <div v-else-if="isCoverLoading(item.artist.firstSongPath)" class="w-full h-full bg-gray-200 dark:bg-white/10 animate-pulse"></div>
                   <div v-else class="w-full h-full flex items-center justify-center text-lg md:text-xl font-bold text-white bg-gradient-to-br animate-in fade-in duration-300" :class="getGradientForArtist(item.artist.name)">
                     {{ item.artist.name.charAt(0).toUpperCase() }}
                   </div>
@@ -294,11 +424,12 @@ onUnmounted(() => {
         >
           <div
             class="relative w-12 h-12 md:w-14 md:h-14 shrink-0"
+            :data-cover-path="artist.firstSongPath"
             :class="{ 'ring-2 ring-[#EC4141] ring-offset-2 ring-offset-gray-50 dark:ring-offset-[#222222] rounded-full': dragSession.active && dragSession.type === 'artist' && dragOverName === artist.name && dragSession.data?.name !== artist.name }"
           >
             <div class="w-full h-full rounded-full overflow-hidden shadow-sm group-hover:shadow transition-shadow duration-300 relative bg-gray-100 dark:bg-white/5 flex items-center justify-center">
-              <div v-if="isCoverLoading(artist.firstSongPath)" class="w-full h-full bg-gray-200 dark:bg-white/10 animate-pulse"></div>
-              <img v-else-if="displayedCoverUrls.get(artist.firstSongPath)" :src="displayedCoverUrls.get(artist.firstSongPath)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="artist.name">
+              <img v-if="getDisplayedCoverUrl(artist.firstSongPath)" :src="getDisplayedCoverUrl(artist.firstSongPath)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="artist.name">
+              <div v-else-if="isCoverLoading(artist.firstSongPath)" class="w-full h-full bg-gray-200 dark:bg-white/10 animate-pulse"></div>
               <div v-else class="w-full h-full flex items-center justify-center text-lg md:text-xl font-bold text-white bg-gradient-to-br animate-in fade-in duration-300" :class="getGradientForArtist(artist.name)">
                 {{ artist.name.charAt(0).toUpperCase() }}
               </div>

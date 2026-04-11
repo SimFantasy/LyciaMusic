@@ -1,5 +1,7 @@
 import { MemoryCache } from '../utils/MemoryCache';
 
+export type ViewportCoverSnapshot = Array<readonly [string, string]>;
+
 export const artistHeaderCache = new MemoryCache<string, string>({
   maxEntries: 32,
   ttlMs: 10 * 60 * 1000,
@@ -18,4 +20,19 @@ export const sidebarPlaylistCoverCache = new MemoryCache<string, string>({
 export const listScrollCache = new MemoryCache<string, number>({
   maxEntries: 30,
   ttlMs: 30 * 60 * 1000,
+});
+
+export const artistViewportCoverSnapshotCache = new MemoryCache<string, ViewportCoverSnapshot>({
+  maxEntries: 1,
+  ttlMs: 10 * 60 * 1000,
+});
+
+export const albumViewportCoverSnapshotCache = new MemoryCache<string, ViewportCoverSnapshot>({
+  maxEntries: 1,
+  ttlMs: 10 * 60 * 1000,
+});
+
+export const songTableViewportCoverSnapshotCache = new MemoryCache<string, ViewportCoverSnapshot>({
+  maxEntries: 12,
+  ttlMs: 10 * 60 * 1000,
 });
