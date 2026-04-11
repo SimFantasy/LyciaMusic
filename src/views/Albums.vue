@@ -17,7 +17,7 @@ const router = useRouter();
 const route = useRoute();
 const { openHomeAlbum } = useHomeNavigation(router);
 const isSearchActive = computed(() => searchQuery.value.trim().length > 0);
-const { coverCache, isCoverLoading, preloadCovers, preloadPriorityCovers } = useCoverCache();
+const { peekCoverUrl, touchCoverPaths, isCoverLoading, preloadPriorityCovers } = useCoverCache();
 
 const showSortMenu = ref(false);
 const dragOverKey = ref<string | null>(null);
@@ -95,7 +95,7 @@ const getDisplayedCoverUrl = (path: string | undefined) => {
     return '';
   }
 
-  return coverCache.get(path) ?? '';
+  return peekCoverUrl(path);
 };
 
 const restoreViewportCoverSnapshot = () => {
@@ -134,7 +134,7 @@ const saveViewportCoverSnapshot = () => {
       return;
     }
 
-    if (!coverCache.get(path)) {
+    if (!getDisplayedCoverUrl(path)) {
       return;
     }
 
@@ -286,15 +286,6 @@ const visibleAlbumCoverPaths = computed(() => {
     .filter((path): path is string => !!path);
 });
 
-watch(
-  () => filteredAlbumList.value,
-  (newList) => {
-    const paths = newList.map((album) => album.firstSongPath).filter(Boolean);
-    preloadCovers(paths);
-  },
-  { immediate: true },
-);
-
 const initCoverObserver = async () => {
   await nextTick();
 
@@ -336,11 +327,13 @@ const scrollMemoryKey = computed(
   () => ['albums-view', route.path, albumSortMode.value, searchQuery.value.trim()].join('::'),
 );
 
-const { restoreScrollPosition } = useListScrollMemory(scrollMemoryKey, containerRef);
+useListScrollMemory(scrollMemoryKey, containerRef);
 
 watch(
   [visibleAlbumCoverPaths, albumSortMode],
-  () => {
+  ([paths]) => {
+    touchCoverPaths(paths);
+    preloadPriorityCovers(paths);
     void initCoverObserver();
   },
   { immediate: true, flush: 'post' },
@@ -420,10 +413,8 @@ onMounted(() => {
     });
     containerResizeObserver.observe(containerRef.value);
   }
-  void restoreScrollPosition().then(() => {
-    requestAnimationFrame(() => {
-      void initCoverObserver();
-    });
+  requestAnimationFrame(() => {
+    void initCoverObserver();
   });
 });
 
@@ -505,7 +496,7 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <section ref="containerRef" class="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 custom-scrollbar relative z-0" @scroll="handleContainerScroll">
+    <section ref="containerRef" class="albums-scroll-container flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 custom-scrollbar relative z-0" @scroll="handleContainerScroll">
       <div
         v-if="albumSortMode === 'name'"
         :style="{ paddingTop: groupedAlbumVirtualState.paddingTop, paddingBottom: groupedAlbumVirtualState.paddingBottom }"
@@ -641,3 +632,9 @@ onUnmounted(() => {
     </section>
   </div>
 </template>
+
+<style scoped>
+.albums-scroll-container {
+  overflow-anchor: none;
+}
+</style>

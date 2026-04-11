@@ -17,7 +17,7 @@ const router = useRouter();
 const route = useRoute();
 const { openHomeArtist } = useHomeNavigation(router);
 const isSearchActive = computed(() => searchQuery.value.trim().length > 0);
-const { coverCache, isCoverLoading, preloadCovers, preloadPriorityCovers } = useCoverCache();
+const { peekCoverUrl, touchCoverPaths, isCoverLoading, preloadPriorityCovers } = useCoverCache();
 
 const showSortMenu = ref(false);
 const dragOverName = ref<string | null>(null);
@@ -78,7 +78,7 @@ const getDisplayedCoverUrl = (path: string | undefined) => {
     return '';
   }
 
-  return coverCache.get(path) ?? '';
+  return peekCoverUrl(path);
 };
 
 const restoreViewportCoverSnapshot = () => {
@@ -117,7 +117,7 @@ const saveViewportCoverSnapshot = () => {
       return;
     }
 
-    if (!coverCache.get(path)) {
+    if (!getDisplayedCoverUrl(path)) {
       return;
     }
 
@@ -269,15 +269,6 @@ const visibleArtistCoverPaths = computed(() => {
     .filter((path): path is string => !!path);
 });
 
-watch(
-  () => filteredArtistList.value,
-  (newList) => {
-    const paths = newList.map((artist) => artist.firstSongPath).filter(Boolean);
-    preloadCovers(paths);
-  },
-  { immediate: true },
-);
-
 const initCoverObserver = async () => {
   await nextTick();
 
@@ -319,11 +310,13 @@ const scrollMemoryKey = computed(
   () => ['artists-view', route.path, artistSortMode.value, searchQuery.value.trim()].join('::'),
 );
 
-const { restoreScrollPosition } = useListScrollMemory(scrollMemoryKey, containerRef);
+useListScrollMemory(scrollMemoryKey, containerRef);
 
 watch(
   [visibleArtistCoverPaths, artistSortMode],
-  () => {
+  ([paths]) => {
+    touchCoverPaths(paths);
+    preloadPriorityCovers(paths);
     void initCoverObserver();
   },
   { immediate: true, flush: 'post' },
@@ -423,10 +416,8 @@ onMounted(() => {
     });
     containerResizeObserver.observe(containerRef.value);
   }
-  void restoreScrollPosition().then(() => {
-    requestAnimationFrame(() => {
-      void initCoverObserver();
-    });
+  requestAnimationFrame(() => {
+    void initCoverObserver();
   });
 });
 
@@ -500,7 +491,7 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <section ref="containerRef" class="flex-1 overflow-y-auto p-8 custom-scrollbar relative z-0" @scroll="handleContainerScroll">
+    <section ref="containerRef" class="artists-scroll-container flex-1 overflow-y-auto p-8 custom-scrollbar relative z-0" @scroll="handleContainerScroll">
       <div
         v-if="artistSortMode === 'name'"
         :style="{ paddingTop: groupedArtistVirtualState.paddingTop, paddingBottom: groupedArtistVirtualState.paddingBottom }"
@@ -597,3 +588,9 @@ onUnmounted(() => {
     </section>
   </div>
 </template>
+
+<style scoped>
+.artists-scroll-container {
+  overflow-anchor: none;
+}
+</style>

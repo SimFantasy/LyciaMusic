@@ -369,6 +369,36 @@ const enqueuePreload = (path: string, priority: PreloadPriority) => {
 export function useCoverCache() {
   registerVisibilityCleanup();
 
+  const peekCoverUrl = (path: string | undefined, kind: CoverKind = 'thumbnail') => {
+    if (!path) {
+      return '';
+    }
+
+    pruneCache(getCacheForKind(kind), getCacheExpiryForKind(kind), getCacheLimitForKind(kind));
+    return getCacheForKind(kind).get(path) ?? '';
+  };
+
+  const touchCoverPaths = (paths: string[], kind: CoverKind = 'thumbnail') => {
+    const cache = getCacheForKind(kind);
+    const expiry = getCacheExpiryForKind(kind);
+    const ttlMs = getCacheTtlForKind(kind);
+
+    paths.forEach((path) => {
+      if (!path) {
+        return;
+      }
+
+      const cachedValue = cache.get(path);
+      if (cachedValue === undefined) {
+        return;
+      }
+
+      touchCacheEntry(cache, expiry, path, cachedValue, ttlMs);
+    });
+
+    pruneCache(cache, expiry, getCacheLimitForKind(kind));
+  };
+
   const isCoverLoading = (path: string | undefined, kind: CoverKind = 'thumbnail') => {
     if (!path) {
       return false;
@@ -437,6 +467,9 @@ export function useCoverCache() {
     coverCache: thumbnailCache,
     fullCoverCache,
     loadingSet,
+    peekCoverUrl,
+    getFullCoverUrl: (path: string | undefined) => peekCoverUrl(path, 'full'),
+    touchCoverPaths,
     isCoverLoading,
     loadCover,
     loadFullCover,
