@@ -1,5 +1,5 @@
 ﻿<script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { dragSession } from '../../composables/dragState';
 import type { Song } from '../../types';
@@ -61,7 +61,7 @@ const { isFavorite, toggleFavorite } = useLibraryCollections();
 const router = useRouter();
 const route = useRoute();
 const { openHomeArtist } = useHomeNavigation(router);
-const { coverCache, preloadPriorityCovers } = useCoverCache();
+const { coverCache, loadCover, touchCoverPaths, preloadPriorityCovers } = useCoverCache();
 
 const ROW_HEIGHT = 72;
 const OVERSCAN = 20;
@@ -70,11 +70,28 @@ const rootRef = ref<HTMLElement | null>(null);
 const containerRef = ref<HTMLElement | null>(null);
 const scrollTop = ref(0);
 const containerHeight = ref(600);
+const displayedCoverUrls = reactive(new Map<string, string>());
+let visibleCoverPaths = new Set<string>();
+const resolveListRoutePath = (path: string) =>
+  ['/', '/favorites', '/recent'].includes(path) ? path : '/';
+const listRoutePath = ref(resolveListRoutePath(route.path));
+
+watch(
+  () => route.path,
+  (path) => {
+    if (!['/', '/favorites', '/recent'].includes(path)) {
+      return;
+    }
+
+    listRoutePath.value = path;
+  },
+  { immediate: true },
+);
 
 const tableViewportKey = computed(() =>
   [
     'song-table',
-    route.path,
+    listRoutePath.value,
     currentViewMode.value,
     filterCondition.value || '',
     currentFolderFilter.value || '',
@@ -89,7 +106,13 @@ const getDisplayedCoverUrl = (path: string | undefined) => {
     return '';
   }
 
-  return coverCache.get(path) ?? '';
+  return displayedCoverUrls.get(path) ?? coverCache.get(path) ?? '';
+};
+
+const syncScrollTopFromContainer = () => {
+  if (containerRef.value) {
+    scrollTop.value = containerRef.value.scrollTop;
+  }
 };
 
 const updateContainerHeight = () => {
@@ -109,6 +132,58 @@ const restoreViewportCoverSnapshot = (key = tableViewportKey.value) => {
   }
 
   preloadPriorityCovers(snapshot);
+};
+
+const syncVisibleCoverUrls = (paths: string[]) => {
+  const nextVisiblePaths = new Set(paths.filter(Boolean));
+  visibleCoverPaths = nextVisiblePaths;
+
+  for (const path of Array.from(displayedCoverUrls.keys())) {
+    if (!nextVisiblePaths.has(path)) {
+      displayedCoverUrls.delete(path);
+    }
+  }
+
+  const visiblePaths = Array.from(nextVisiblePaths);
+  touchCoverPaths(visiblePaths);
+
+  visiblePaths.forEach((path) => {
+    const cachedUrl = coverCache.get(path);
+    if (cachedUrl) {
+      displayedCoverUrls.set(path, cachedUrl);
+      return;
+    }
+
+    void loadCover(path).then((coverUrl) => {
+      if (!coverUrl || !visibleCoverPaths.has(path)) {
+        return;
+      }
+
+      displayedCoverUrls.set(path, coverUrl);
+    });
+  });
+};
+
+const preloadVirtualViewportCovers = () => {
+  const paths = virtualItems.value.map(song => song.path);
+  syncVisibleCoverUrls(paths);
+  preloadPriorityCovers(paths);
+};
+
+const restoreActiveViewportCovers = async () => {
+  await restoreScrollPosition();
+  await nextTick();
+  syncScrollTopFromContainer();
+  updateContainerHeight();
+  restoreViewportCoverSnapshot();
+  preloadVirtualViewportCovers();
+
+  requestAnimationFrame(() => {
+    syncScrollTopFromContainer();
+    updateContainerHeight();
+    restoreViewportCoverSnapshot();
+    preloadVirtualViewportCovers();
+  });
 };
 
 const saveViewportCoverSnapshot = (key = tableViewportKey.value) => {
@@ -138,7 +213,7 @@ const saveViewportCoverSnapshot = (key = tableViewportKey.value) => {
       return;
     }
 
-    if (!coverCache.get(path)) {
+    if (!displayedCoverUrls.get(path) && !coverCache.get(path)) {
       return;
     }
 
@@ -154,7 +229,10 @@ const saveViewportCoverSnapshot = (key = tableViewportKey.value) => {
   songTableViewportCoverSnapshotCache.delete(key);
 };
 
-useListScrollMemory(tableViewportKey, containerRef);
+const {
+  saveScrollPosition,
+  restoreScrollPosition,
+} = useListScrollMemory(tableViewportKey, containerRef);
 
 const virtualData = computed(() => {
   const songs = Array.isArray(props.songs) ? props.songs : [];
@@ -217,7 +295,11 @@ const {
 
 watch(
   () => virtualData.value.items,
-  newItems => preloadPriorityCovers(newItems.map(song => song.path)),
+  (newItems) => {
+    const paths = newItems.map(song => song.path);
+    syncVisibleCoverUrls(paths);
+    preloadPriorityCovers(paths);
+  },
   { immediate: true },
 );
 
@@ -342,10 +424,23 @@ const handleArtistClick = (artistName: string) => {
 onMounted(() => {
   window.addEventListener('resize', updateContainerHeight);
   updateContainerHeight();
+  void restoreActiveViewportCovers();
+});
+
+onActivated(() => {
+  void restoreActiveViewportCovers();
+});
+
+onDeactivated(() => {
+  saveScrollPosition();
+  saveViewportCoverSnapshot();
 });
 
 onBeforeUnmount(() => {
+  saveScrollPosition();
   saveViewportCoverSnapshot();
+  displayedCoverUrls.clear();
+  visibleCoverPaths = new Set<string>();
 });
 
 onUnmounted(() => {

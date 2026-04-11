@@ -138,9 +138,6 @@ export function useHomeRouteSync({
       }
 
       if (path !== '/') {
-        if (path === '/artists' || path === '/albums' || path === '/settings') {
-          resetToDefaultHomeState();
-        }
         return;
       }
 

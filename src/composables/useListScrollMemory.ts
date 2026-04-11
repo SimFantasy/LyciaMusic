@@ -1,7 +1,7 @@
 import { nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, unref, watch, type Ref } from 'vue';
 import { listScrollCache } from '../caches/imageCaches';
 
-const RESTORE_MAX_ATTEMPTS = 12;
+const RESTORE_MAX_ATTEMPTS = 30;
 
 export function useListScrollMemory(
   keySource: string | Ref<string>,
@@ -62,26 +62,41 @@ export function useListScrollMemory(
       return;
     }
 
-    let attempts = 0;
+    await new Promise<void>((resolve) => {
+      let attempts = 0;
 
-    const applyScrollPosition = () => {
-      const element = containerRef.value;
-      if (!element) {
-        return;
-      }
+      const applyScrollPosition = () => {
+        const element = containerRef.value;
+        if (!element) {
+          resolve();
+          return;
+        }
 
-      element.scrollTop = savedTop;
-      element.dispatchEvent(new Event('scroll'));
+        if (savedTop > 0 && (element.clientHeight <= 0 || element.scrollHeight <= element.clientHeight)) {
+          if (attempts >= RESTORE_MAX_ATTEMPTS) {
+            resolve();
+            return;
+          }
 
-      if (Math.abs(element.scrollTop - savedTop) < 2 || attempts >= RESTORE_MAX_ATTEMPTS) {
-        return;
-      }
+          attempts += 1;
+          requestAnimationFrame(applyScrollPosition);
+          return;
+        }
 
-      attempts += 1;
+        element.scrollTop = savedTop;
+        element.dispatchEvent(new Event('scroll'));
+
+        if (Math.abs(element.scrollTop - savedTop) < 2 || attempts >= RESTORE_MAX_ATTEMPTS) {
+          resolve();
+          return;
+        }
+
+        attempts += 1;
+        requestAnimationFrame(applyScrollPosition);
+      };
+
       requestAnimationFrame(applyScrollPosition);
-    };
-
-    requestAnimationFrame(applyScrollPosition);
+    });
   };
 
   onMounted(() => {

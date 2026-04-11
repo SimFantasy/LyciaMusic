@@ -32,7 +32,10 @@ let backgroundPreloadTimer: ReturnType<typeof setTimeout> | null = null;
 let backgroundPreloadIdleId: number | null = null;
 let cachePruneTimer: ReturnType<typeof setTimeout> | null = null;
 let hasRegisteredVisibilityCleanup = false;
-let cacheEpoch = 0;
+const cacheEpochs: Record<CoverKind, number> = {
+  thumbnail: 0,
+  full: 0,
+};
 
 const getCacheForKind = (kind: CoverKind) =>
   kind === 'full' ? fullCoverCache : thumbnailCache;
@@ -176,12 +179,23 @@ const hasRecentFailure = (path: string, kind: CoverKind) => {
   return recentFailureCache.has(cacheKey);
 };
 
-const bumpCacheEpoch = () => {
-  cacheEpoch += 1;
+const bumpCacheEpoch = (kind?: CoverKind) => {
+  if (kind) {
+    cacheEpochs[kind] += 1;
+    return;
+  }
+
+  cacheEpochs.thumbnail += 1;
+  cacheEpochs.full += 1;
+};
+
+const getCacheEpoch = (kind: CoverKind) => {
+  return cacheEpochs[kind];
 };
 
 const trimTransientCoverState = () => {
-  bumpCacheEpoch();
+  bumpCacheEpoch('thumbnail');
+  bumpCacheEpoch('full');
   pruneCache(thumbnailCache, thumbnailCacheExpiry, HIDDEN_THUMBNAIL_CACHE_LIMIT);
   clearCacheEntries(fullCoverCache, fullCoverCacheExpiry);
   priorityPreloadQueue.length = 0;
@@ -214,14 +228,14 @@ const loadCoverInternal = (path: string, kind: CoverKind): Promise<string> => {
   if (existingRequest) {
     return existingRequest;
   }
-  const requestEpoch = cacheEpoch;
+  const requestEpoch = getCacheEpoch(kind);
 
   const request = (async () => {
     loadingSet.add(requestKey);
     try {
       const command = kind === 'full' ? 'get_song_cover' : 'get_song_cover_thumbnail';
       const coverPath = await invoke<string>(command, { path });
-      if (requestEpoch !== cacheEpoch) {
+      if (requestEpoch !== getCacheEpoch(kind)) {
         return '';
       }
       const finalUrl = coverPath ? convertFileSrc(coverPath) : '';
@@ -231,7 +245,7 @@ const loadCoverInternal = (path: string, kind: CoverKind): Promise<string> => {
       }
       return finalUrl;
     } catch {
-      if (requestEpoch !== cacheEpoch) {
+      if (requestEpoch !== getCacheEpoch(kind)) {
         return '';
       }
       recentFailureCache.set(requestKey, true);
@@ -461,7 +475,7 @@ export function useCoverCache() {
   };
 
   const retainFullCoverPaths = (fullPaths: string[]) => {
-    bumpCacheEpoch();
+    bumpCacheEpoch('full');
 
     const retainedFullPaths = new Set(fullPaths.filter(Boolean));
     retainCacheEntries(fullCoverCache, fullCoverCacheExpiry, retainedFullPaths);
