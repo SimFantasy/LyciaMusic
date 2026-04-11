@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import StatsOverviewCards from './StatsOverviewCards.vue';
 import BehaviorStatsSection from './BehaviorStatsSection.vue';
@@ -171,7 +171,12 @@ function hideCard(cardTitle: string) {
 
 onMounted(async () => {
   loadHiddenSettings();
+  statisticsStore.cancelHeavyDataRelease();
   await statisticsStore.ensureLoaded(currentBehaviorTimeRange.value);
+});
+
+onUnmounted(() => {
+  statisticsStore.scheduleHeavyDataRelease();
 });
 </script>
 

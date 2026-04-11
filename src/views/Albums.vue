@@ -32,6 +32,7 @@ const VIEWPORT_SNAPSHOT_LIMIT = 72;
 const ALBUM_GRID_GAP_X = 24;
 const ALBUM_GRID_GAP_Y = 40;
 const ALBUM_CARD_EXTRA_HEIGHT = 108;
+const ALBUM_SECTION_HEADER_HEIGHT = 72;
 const ALBUM_OVERSCAN_ROWS = 2;
 
 const handleAlbumClick = (albumKey: string) => {
@@ -182,6 +183,78 @@ const albumSections = computed(() => {
   return sections;
 });
 
+type AlbumSectionEntry = { album: AlbumListItem; index: number };
+type AlbumVirtualHeaderRow = { type: 'header'; key: string; title: string };
+type AlbumVirtualItemsRow = { type: 'items'; key: string; items: AlbumSectionEntry[] };
+type AlbumVirtualRow = AlbumVirtualHeaderRow | AlbumVirtualItemsRow;
+
+const groupedAlbumRows = computed<AlbumVirtualRow[]>(() => {
+  const rows: AlbumVirtualRow[] = [];
+
+  albumSections.value.forEach((section) => {
+    rows.push({
+      type: 'header',
+      key: `header::${section.key}`,
+      title: section.key,
+    });
+
+    for (let start = 0; start < section.items.length; start += albumGridColumns.value) {
+      rows.push({
+        type: 'items',
+        key: `items::${section.key}::${start}`,
+        items: section.items.slice(start, start + albumGridColumns.value),
+      });
+    }
+  });
+
+  return rows;
+});
+
+const groupedAlbumVirtualState = computed(() => {
+  const overscanPx = albumRowSpan.value * ALBUM_OVERSCAN_ROWS;
+  const startBoundary = Math.max(0, containerScrollTop.value - overscanPx);
+  const endBoundary = containerScrollTop.value + containerHeight.value + overscanPx;
+
+  let totalHeight = 0;
+  let startIndex = 0;
+  let endIndex = groupedAlbumRows.value.length;
+
+  const measuredRows = groupedAlbumRows.value.map((row) => {
+    const height = row.type === 'header' ? ALBUM_SECTION_HEADER_HEIGHT : albumRowSpan.value;
+    const top = totalHeight;
+    totalHeight += height;
+    return {
+      ...row,
+      top,
+      height,
+    };
+  });
+
+  while (
+    startIndex < measuredRows.length
+    && measuredRows[startIndex].top + measuredRows[startIndex].height <= startBoundary
+  ) {
+    startIndex += 1;
+  }
+
+  endIndex = startIndex;
+  while (endIndex < measuredRows.length && measuredRows[endIndex].top < endBoundary) {
+    endIndex += 1;
+  }
+
+  const visibleRows = measuredRows.slice(startIndex, endIndex);
+  const firstTop = visibleRows[0]?.top ?? 0;
+  const lastBottom = visibleRows.length > 0
+    ? visibleRows[visibleRows.length - 1].top + visibleRows[visibleRows.length - 1].height
+    : 0;
+
+  return {
+    rows: visibleRows,
+    paddingTop: `${firstTop}px`,
+    paddingBottom: `${Math.max(0, totalHeight - lastBottom)}px`,
+  };
+});
+
 const flatAlbumVirtualState = computed(() => {
   const totalRows = Math.ceil(filteredAlbumList.value.length / albumGridColumns.value);
   const startRow = Math.max(0, Math.floor(containerScrollTop.value / albumRowSpan.value) - ALBUM_OVERSCAN_ROWS);
@@ -204,9 +277,15 @@ const flatAlbumVirtualState = computed(() => {
 
 const visibleAlbumCoverPaths = computed(() => {
   if (albumSortMode.value === 'name') {
-    return filteredAlbumList.value
-      .map(album => album.firstSongPath)
-      .filter((path): path is string => !!path);
+    return groupedAlbumVirtualState.value.rows.flatMap((row) => {
+      if (row.type !== 'items') {
+        return [];
+      }
+
+      return row.items
+        .map(item => item.album.firstSongPath)
+        .filter((path): path is string => !!path);
+    });
   }
 
   return flatAlbumVirtualState.value.items
@@ -455,18 +534,28 @@ onUnmounted(() => {
     </header>
 
     <section ref="containerRef" class="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 custom-scrollbar relative z-0" @scroll="handleContainerScroll">
-      <div v-if="albumSortMode === 'name'" class="space-y-8">
-        <section v-for="section in albumSections" :key="section.key" class="space-y-4">
-          <div class="flex items-center gap-3">
+      <div
+        v-if="albumSortMode === 'name'"
+        :style="{ paddingTop: groupedAlbumVirtualState.paddingTop, paddingBottom: groupedAlbumVirtualState.paddingBottom }"
+      >
+        <template v-for="row in groupedAlbumVirtualState.rows" :key="row.key">
+          <div
+            v-if="row.type === 'header'"
+            class="h-[72px] flex items-end gap-3 pb-4"
+          >
             <div class="text-xl md:text-2xl font-black tracking-[0.2em] text-gray-900 dark:text-white/90">
-              {{ section.key }}
+              {{ row.title }}
             </div>
             <div class="h-px flex-1 bg-gradient-to-r from-gray-300/80 via-gray-200/50 to-transparent dark:from-white/15 dark:via-white/8 dark:to-transparent"></div>
           </div>
 
-          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-x-6 gap-y-10">
+          <div
+            v-else
+            class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-x-6"
+            :style="{ paddingBottom: `${ALBUM_GRID_GAP_Y}px` }"
+          >
             <div
-              v-for="item in section.items"
+              v-for="item in row.items"
               :key="item.album.key"
               class="group cursor-pointer rounded-xl p-2 md:p-3 transition-all duration-300 flex flex-col relative select-none hover:bg-white/40 dark:hover:bg-white/5"
               :class="[
@@ -485,11 +574,15 @@ onUnmounted(() => {
                 </div>
 
                 <div class="absolute inset-0 z-10 bg-white dark:bg-gray-800 rounded-md shadow-md border border-gray-100 dark:border-white/10 p-1 flex items-center justify-center overflow-hidden group-hover:shadow-xl transition-shadow duration-300">
-                  <div
+                  <img
                     v-if="getDisplayedCoverUrl(item.album.firstSongPath)"
-                    class="w-full h-full bg-cover bg-center rounded-sm"
-                    :style="{ backgroundImage: `url(${getDisplayedCoverUrl(item.album.firstSongPath)})` }"
-                  ></div>
+                    :src="getDisplayedCoverUrl(item.album.firstSongPath)"
+                    :alt="item.album.name"
+                    loading="lazy"
+                    decoding="async"
+                    draggable="false"
+                    class="w-full h-full rounded-sm object-cover select-none"
+                  />
 
                   <div
                     v-else
@@ -513,7 +606,7 @@ onUnmounted(() => {
               </div>
             </div>
           </div>
-        </section>
+        </template>
       </div>
 
       <div
@@ -541,11 +634,15 @@ onUnmounted(() => {
             </div>
 
             <div class="absolute inset-0 z-10 bg-white dark:bg-gray-800 rounded-md shadow-md border border-gray-100 dark:border-white/10 p-1 flex items-center justify-center overflow-hidden group-hover:shadow-xl transition-shadow duration-300">
-              <div
+              <img
                 v-if="getDisplayedCoverUrl(item.album.firstSongPath)"
-                class="w-full h-full bg-cover bg-center rounded-sm"
-                :style="{ backgroundImage: `url(${getDisplayedCoverUrl(item.album.firstSongPath)})` }"
-              ></div>
+                :src="getDisplayedCoverUrl(item.album.firstSongPath)"
+                :alt="item.album.name"
+                loading="lazy"
+                decoding="async"
+                draggable="false"
+                class="w-full h-full rounded-sm object-cover select-none"
+              />
 
               <div
                 v-else

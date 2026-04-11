@@ -60,6 +60,7 @@ export interface FormatDistribution {
 
 export type TimeRangeType = 'All' | 'Days7' | 'Days30' | 'ThisYear';
 type TimeRange = { type: TimeRangeType };
+const HEAVY_DATA_RELEASE_DELAY_MS = 60_000;
 
 export const useStatisticsStore = defineStore('statistics', () => {
   const currentBehaviorTimeRange = ref<TimeRangeType>('Days7');
@@ -73,6 +74,7 @@ export const useStatisticsStore = defineStore('statistics', () => {
   const formatDistribution = ref<FormatDistribution | null>(null);
   const hasLoaded = ref(false);
   const isFirstEnter = ref(true);
+  let heavyDataReleaseTimer: ReturnType<typeof setTimeout> | null = null;
 
   const fetchStats = async () => {
     stats.value = await invoke<LibraryStats>('get_library_stats');
@@ -85,14 +87,24 @@ export const useStatisticsStore = defineStore('statistics', () => {
 
   const ensureLoaded = async (range: TimeRangeType = currentBehaviorTimeRange.value) => {
     currentBehaviorTimeRange.value = range;
-    if (hasLoaded.value) {
+    cancelHeavyDataRelease();
+
+    const tasks: Promise<unknown>[] = [];
+    if (!stats.value) {
+      tasks.push(fetchStats());
+    }
+    if (!behaviorStats.value) {
+      tasks.push(fetchBehaviorStats(range));
+    }
+
+    if (tasks.length === 0) {
       return;
     }
 
     loading.value = true;
     error.value = null;
     try {
-      await Promise.all([fetchStats(), fetchBehaviorStats(range)]);
+      await Promise.all(tasks);
       lastUpdated.value = new Date();
       hasLoaded.value = true;
     } catch (e) {
@@ -135,6 +147,7 @@ export const useStatisticsStore = defineStore('statistics', () => {
   };
 
   const ensureQualityDistribution = async () => {
+    cancelHeavyDataRelease();
     if (!qualityDistribution.value) {
       qualityDistribution.value = await invoke<QualityDistribution>('get_quality_distribution');
     }
@@ -142,10 +155,32 @@ export const useStatisticsStore = defineStore('statistics', () => {
   };
 
   const ensureFormatDistribution = async () => {
+    cancelHeavyDataRelease();
     if (!formatDistribution.value) {
       formatDistribution.value = await invoke<FormatDistribution>('get_format_distribution');
     }
     return formatDistribution.value;
+  };
+
+  const releaseHeavyData = () => {
+    behaviorStats.value = null;
+    qualityDistribution.value = null;
+    formatDistribution.value = null;
+  };
+
+  const cancelHeavyDataRelease = () => {
+    if (heavyDataReleaseTimer) {
+      clearTimeout(heavyDataReleaseTimer);
+      heavyDataReleaseTimer = null;
+    }
+  };
+
+  const scheduleHeavyDataRelease = (delayMs = HEAVY_DATA_RELEASE_DELAY_MS) => {
+    cancelHeavyDataRelease();
+    heavyDataReleaseTimer = setTimeout(() => {
+      heavyDataReleaseTimer = null;
+      releaseHeavyData();
+    }, delayMs);
   };
 
   const markEntered = () => {
@@ -171,5 +206,8 @@ export const useStatisticsStore = defineStore('statistics', () => {
     ensureQualityDistribution,
     ensureFormatDistribution,
     markEntered,
+    releaseHeavyData,
+    scheduleHeavyDataRelease,
+    cancelHeavyDataRelease,
   };
 });
