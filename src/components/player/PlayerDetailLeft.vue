@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { storeToRefs } from 'pinia';
 import { useCoverCache } from '../../composables/useCoverCache';
 import { usePlaybackController } from '../../features/playback/usePlaybackController';
+import { usePlaybackStore } from '../../features/playback/store';
 import FooterContextMenu from "../overlays/FooterContextMenu.vue";
 
 const props = defineProps<{
@@ -11,7 +13,9 @@ const props = defineProps<{
 const {
   currentSong, currentCover, currentCoverFull, isPlaying, dominantColors
 } = usePlaybackController();
-const { loadFullCover, retainFullCoverPaths } = useCoverCache();
+const { getFullCoverUrl, loadFullCover, preloadFullCovers, retainFullCoverPaths } = useCoverCache();
+const playbackStore = usePlaybackStore();
+const { playQueue, tempQueue } = storeToRefs(playbackStore);
 
 const showContextMenu = ref(false);
 const contextMenuX = ref(0);
@@ -37,20 +41,50 @@ const currentBigCoverUrl = computed(() => (
     : ''
 ));
 
+const getRetainedFullCoverPaths = (path: string) => {
+  if (!path) {
+    return [];
+  }
+
+  const retainedPaths: string[] = [path];
+  const pushUniquePath = (candidatePath: string | undefined) => {
+    if (!candidatePath || retainedPaths.includes(candidatePath)) {
+      return;
+    }
+
+    retainedPaths.push(candidatePath);
+  };
+
+  // Temp queue items will be played before the regular queue.
+  pushUniquePath(tempQueue.value[0]?.path);
+
+  const queue = playQueue.value;
+  const currentIndex = queue.findIndex(song => song.path === path);
+  if (currentIndex >= 0 && queue.length > 1) {
+    pushUniquePath(queue[(currentIndex - 1 + queue.length) % queue.length]?.path);
+    pushUniquePath(queue[(currentIndex + 1) % queue.length]?.path);
+  }
+
+  return retainedPaths.slice(0, 4);
+};
+
 watch(currentCover, (cover) => {
   localCoverUrl.value = cover || '';
 }, { immediate: true });
 
 watch([currentSongPath, () => props.isExpanded], async ([path, isExpanded]) => {
-  bigCoverLoaded.value = false;
+  bigCoverLoaded.value = Boolean(path && getFullCoverUrl(path));
 
   if (!path || !isExpanded) {
     fullCoverRequestId += 1;
     return;
   }
 
+  const retainedPaths = getRetainedFullCoverPaths(path);
+  retainFullCoverPaths(retainedPaths);
+  preloadFullCovers(retainedPaths.filter(candidatePath => candidatePath !== path));
+
   if (currentCoverFull.value && currentCoverFull.value !== currentCover.value) {
-    retainFullCoverPaths([path]);
     return;
   }
 
@@ -60,7 +94,6 @@ watch([currentSongPath, () => props.isExpanded], async ([path, isExpanded]) => {
     const fullCoverUrl = await loadFullCover(path);
     if (requestId !== fullCoverRequestId || path !== currentSongPath.value || !props.isExpanded) return;
     currentCoverFull.value = fullCoverUrl || currentCover.value;
-    retainFullCoverPaths(fullCoverUrl ? [path] : []);
   } catch {
     if (requestId !== fullCoverRequestId || path !== currentSongPath.value || !props.isExpanded) return;
     currentCoverFull.value = currentCover.value;

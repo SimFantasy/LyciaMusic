@@ -2,6 +2,7 @@ import { storeToRefs } from 'pinia';
 import type { Song } from '../types';
 import { playbackApi } from '../services/tauri/playbackApi';
 import { usePlaybackStore } from '../features/playback/store';
+import { useUiStore } from '../shared/stores/ui';
 import { useCoverCache } from './useCoverCache';
 
 interface PlaySongOptions {
@@ -41,7 +42,8 @@ export const createPlayerPlayback = ({
   onBeforePlay,
 }: CreatePlayerPlaybackDeps) => {
   const playbackStore = usePlaybackStore();
-  const { loadCover, retainFullCoverPaths } = useCoverCache();
+  const uiStore = useUiStore();
+  const { loadCover, loadFullCover, peekCoverUrl, getFullCoverUrl } = useCoverCache();
   const {
     currentCover,
     currentCoverFull,
@@ -51,6 +53,7 @@ export const createPlayerPlayback = ({
     isSongLoaded,
     playQueue,
   } = storeToRefs(playbackStore);
+  const { showPlayerDetail } = storeToRefs(uiStore);
 
   const stopPlaybackRuntime = () => {
     if (progressFrameId !== null) {
@@ -144,9 +147,13 @@ export const createPlayerPlayback = ({
 
     isPlaying.value = true;
     isSongLoaded.value = false;
-    currentCover.value = '';
-    currentCoverFull.value = '';
-    retainFullCoverPaths([]);
+    const cachedCover = peekCoverUrl(song.path);
+    const cachedFullCover = getFullCoverUrl(song.path);
+    currentCover.value = cachedCover;
+    currentCoverFull.value = cachedFullCover || '';
+    if (showPlayerDetail.value && !cachedFullCover) {
+      void loadFullCover(song.path).catch(() => {});
+    }
     stopPlaybackRuntime();
     reanchorPlaybackClock(0);
     accumulatedTime = 0;
@@ -178,8 +185,9 @@ export const createPlayerPlayback = ({
 
           const normalizedCover = cover || '';
           currentCover.value = normalizedCover;
-          currentCoverFull.value = normalizedCover;
-          retainFullCoverPaths([]);
+          if (!currentCoverFull.value) {
+            currentCoverFull.value = normalizedCover;
+          }
 
           await playbackApi.updatePlaybackMetadata({
             title: song.name,

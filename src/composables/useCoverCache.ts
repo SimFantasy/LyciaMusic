@@ -394,6 +394,19 @@ const enqueuePreload = (path: string, priority: PreloadPriority) => {
   }
 };
 
+const startFullPreload = (path: string) => {
+  if (
+    !path
+    || fullCoverCache.has(path)
+    || loadingSet.has(buildCacheKey(path, 'full'))
+    || hasRecentFailure(path, 'full')
+  ) {
+    return;
+  }
+
+  void loadCoverInternal(path, 'full');
+};
+
 export function useCoverCache() {
   registerVisibilityCleanup();
 
@@ -474,6 +487,13 @@ export function useCoverCache() {
     scheduleBackgroundPreload();
   };
 
+  const preloadFullCovers = (paths: string[]) => {
+    const uniquePaths = Array.from(new Set(paths.filter(Boolean)));
+    for (const path of uniquePaths) {
+      startFullPreload(path);
+    }
+  };
+
   const retainFullCoverPaths = (fullPaths: string[]) => {
     bumpCacheEpoch('full');
 
@@ -538,6 +558,7 @@ export function useCoverCache() {
     loadFullCover,
     preloadCovers,
     preloadPriorityCovers: (paths: string[]) => preloadCovers(paths, 'priority'),
+    preloadFullCovers,
     retainFullCoverPaths,
     clearCoverCaches,
   };

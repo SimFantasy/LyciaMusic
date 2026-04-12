@@ -14,7 +14,8 @@ use tauri::{AppHandle, Manager, State};
 
 const COVER_CACHE_MAX_SIZE_BYTES: u64 = 4 * 1024 * 1024 * 1024; // 4 GB
 const THUMBNAIL_EDGE_PX: u32 = 300;
-const FULL_COVER_CACHE_VERSION: &str = "v2";
+const FULL_COVER_EDGE_PX: u32 = 1400;
+const FULL_COVER_CACHE_VERSION: &str = "v3";
 const FULL_COVER_FALLBACK_EXT: &str = "png";
 const FULL_COVER_CACHE_EXTENSIONS: [&str; 5] = ["jpg", "png", "webp", "gif", "bmp"];
 const CACHE_ALIAS_EXT: &str = "ref";
@@ -117,7 +118,9 @@ fn generate_content_hash(bytes: &[u8]) -> String {
 }
 
 fn is_cached_cover_valid(path: &Path) -> bool {
-    fs::metadata(path).map(|metadata| metadata.is_file() && metadata.len() > 0).unwrap_or(false)
+    fs::metadata(path)
+        .map(|metadata| metadata.is_file() && metadata.len() > 0)
+        .unwrap_or(false)
 }
 
 fn is_cache_image_decodable(path: &Path) -> bool {
@@ -129,10 +132,7 @@ fn create_temp_cache_path(cache_path: &Path) -> PathBuf {
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    let file_name = cache_path
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy();
+    let file_name = cache_path.file_name().unwrap_or_default().to_string_lossy();
     cache_path.with_file_name(format!("{file_name}.{nonce}.tmp"))
 }
 
@@ -342,16 +342,42 @@ pub fn get_or_create_full_cover(path: &Path, app: &AppHandle) -> Option<String> 
 
             cleanup_invalid_full_cover_variants(&cache_dir, &cache_stem);
 
-            if let Some(ext) = full_cover_extension_from_mime(pic.mime_type()) {
-                let cache_path = cache_dir.join(format!("{cache_stem}.{ext}"));
-                let persisted = persist_bytes_atomically(pic.data(), &cache_path)?;
+            if let Ok(img) = image::load_from_memory(pic.data()) {
+                let should_resize =
+                    img.width() > FULL_COVER_EDGE_PX || img.height() > FULL_COVER_EDGE_PX;
+
+                if !should_resize {
+                    if let Some(ext) = full_cover_extension_from_mime(pic.mime_type()) {
+                        let cache_path = cache_dir.join(format!("{cache_stem}.{ext}"));
+                        let persisted = persist_bytes_atomically(pic.data(), &cache_path)?;
+                        let _ = persist_alias_target(&alias_path, &cache_path);
+                        return Some(persisted);
+                    }
+                }
+
+                // Clamp display covers to a high-quality edge length so the
+                // now-playing detail view stays sharp without decoding the
+                // original multi-thousand-pixel artwork into memory.
+                let display_img = if should_resize {
+                    img.resize(
+                        FULL_COVER_EDGE_PX,
+                        FULL_COVER_EDGE_PX,
+                        image::imageops::FilterType::Lanczos3,
+                    )
+                } else {
+                    img
+                };
+
+                let cache_path = cache_dir.join(format!("{cache_stem}.{FULL_COVER_FALLBACK_EXT}"));
+                let persisted =
+                    persist_image_atomically(&display_img, ImageFormat::Png, &cache_path)?;
                 let _ = persist_alias_target(&alias_path, &cache_path);
                 return Some(persisted);
             }
 
-            if let Ok(img) = image::load_from_memory(pic.data()) {
-                let cache_path = cache_dir.join(format!("{cache_stem}.{FULL_COVER_FALLBACK_EXT}"));
-                let persisted = persist_image_atomically(&img, ImageFormat::Png, &cache_path)?;
+            if let Some(ext) = full_cover_extension_from_mime(pic.mime_type()) {
+                let cache_path = cache_dir.join(format!("{cache_stem}.{ext}"));
+                let persisted = persist_bytes_atomically(pic.data(), &cache_path)?;
                 let _ = persist_alias_target(&alias_path, &cache_path);
                 return Some(persisted);
             }
