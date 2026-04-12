@@ -1,6 +1,12 @@
 import { MemoryCache } from '../utils/MemoryCache';
 
 export type ViewportCoverSnapshot = string[];
+export type ViewportCoverUrlSnapshotEntry = {
+  path: string;
+  url: string;
+};
+
+export type ViewportCoverUrlSnapshot = ViewportCoverUrlSnapshotEntry[];
 
 export const artistHeaderCache = new MemoryCache<string, string>({
   maxEntries: 32,
@@ -22,7 +28,7 @@ export const listScrollCache = new MemoryCache<string, number>({
   ttlMs: 30 * 60 * 1000,
 });
 
-export const artistViewportCoverSnapshotCache = new MemoryCache<string, ViewportCoverSnapshot>({
+export const artistViewportCoverSnapshotCache = new MemoryCache<string, ViewportCoverUrlSnapshot>({
   maxEntries: 1,
   ttlMs: 10 * 60 * 1000,
 });

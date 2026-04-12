@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'Albums' });
 
-import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { albumViewportCoverSnapshotCache } from '../caches/imageCaches';
 import { dragSession } from '../composables/dragState';
@@ -17,7 +17,7 @@ const router = useRouter();
 const route = useRoute();
 const { openHomeAlbum } = useHomeNavigation(router);
 const isSearchActive = computed(() => searchQuery.value.trim().length > 0);
-const { peekCoverUrl, touchCoverPaths, isCoverLoading, preloadPriorityCovers } = useCoverCache();
+const { coverCache, loadCover, touchCoverPaths, isCoverLoading, preloadPriorityCovers } = useCoverCache();
 
 const showSortMenu = ref(false);
 const dragOverKey = ref<string | null>(null);
@@ -26,9 +26,11 @@ const containerScrollTop = ref(0);
 const containerHeight = ref(720);
 const containerWidth = ref(1200);
 const measuredAlbumCardHeight = ref(0);
+const displayedCoverUrls = reactive(new Map<string, string>());
 let coverObserver: IntersectionObserver | null = null;
 let containerResizeObserver: ResizeObserver | null = null;
 let coverObserverRefreshFrame = 0;
+let visibleCoverPaths = new Set<string>();
 const VIEWPORT_SNAPSHOT_KEY = 'albums-current';
 const VIEWPORT_SNAPSHOT_LIMIT = 72;
 const ALBUM_GRID_GAP_X = 24;
@@ -117,7 +119,7 @@ const getDisplayedCoverUrl = (path: string | undefined) => {
     return '';
   }
 
-  return peekCoverUrl(path);
+  return displayedCoverUrls.get(path) ?? coverCache.get(path) ?? '';
 };
 
 const restoreViewportCoverSnapshot = () => {
@@ -173,6 +175,40 @@ const saveViewportCoverSnapshot = () => {
 };
 
 restoreViewportCoverSnapshot();
+
+const syncVisibleCoverUrls = (paths: string[]) => {
+  const nextVisiblePaths = new Set(paths.filter(Boolean));
+  visibleCoverPaths = nextVisiblePaths;
+
+  for (const path of Array.from(displayedCoverUrls.keys())) {
+    if (!nextVisiblePaths.has(path)) {
+      displayedCoverUrls.delete(path);
+    }
+  }
+
+  const nextPaths = Array.from(nextVisiblePaths);
+  touchCoverPaths(nextPaths);
+
+  nextPaths.forEach((path) => {
+    const cachedUrl = coverCache.get(path);
+    if (cachedUrl) {
+      displayedCoverUrls.set(path, cachedUrl);
+      return;
+    }
+
+    if (displayedCoverUrls.has(path)) {
+      return;
+    }
+
+    void loadCover(path).then((coverUrl) => {
+      if (!coverUrl || !visibleCoverPaths.has(path)) {
+        return;
+      }
+
+      displayedCoverUrls.set(path, coverUrl);
+    });
+  });
+};
 
 const albumSections = computed(() => {
   const sections: Array<{
@@ -365,7 +401,7 @@ useListScrollMemory(scrollMemoryKey, containerRef);
 watch(
   [visibleAlbumCoverPaths, albumSortMode],
   ([paths]) => {
-    touchCoverPaths(paths);
+    syncVisibleCoverUrls(paths);
     preloadPriorityCovers(paths);
     scheduleCoverObserverRefresh();
   },
@@ -482,6 +518,8 @@ onUnmounted(() => {
     cancelAnimationFrame(coverObserverRefreshFrame);
     coverObserverRefreshFrame = 0;
   }
+  displayedCoverUrls.clear();
+  visibleCoverPaths = new Set<string>();
 });
 </script>
 

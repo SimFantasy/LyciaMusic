@@ -42,3 +42,7 @@ image.png
 
 # --- 🛠️ 本地开发脚本 ---
 scripts/bump-version.js
+
+.codex/
+
+tools/

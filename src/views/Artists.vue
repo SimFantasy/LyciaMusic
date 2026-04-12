@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'Artists' });
 
-import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { artistViewportCoverSnapshotCache } from '../caches/imageCaches';
 import { dragSession } from '../composables/dragState';
@@ -17,15 +17,17 @@ const router = useRouter();
 const route = useRoute();
 const { openHomeArtist } = useHomeNavigation(router);
 const isSearchActive = computed(() => searchQuery.value.trim().length > 0);
-const { peekCoverUrl, touchCoverPaths, preloadPriorityCovers } = useCoverCache();
+const { coverCache, loadCover, touchCoverPaths, isCoverLoading, preloadPriorityCovers } = useCoverCache();
 
 const showSortMenu = ref(false);
 const dragOverName = ref<string | null>(null);
 const containerRef = ref<HTMLElement | null>(null);
 const containerScrollTop = ref(0);
 const containerHeight = ref(720);
+const displayedCoverUrls = reactive(new Map<string, string>());
 let coverObserver: IntersectionObserver | null = null;
 let containerResizeObserver: ResizeObserver | null = null;
+let visibleCoverPaths = new Set<string>();
 const VIEWPORT_SNAPSHOT_KEY = 'artists-current';
 const VIEWPORT_SNAPSHOT_LIMIT = 72;
 const ARTIST_GRID_GAP_Y = 16;
@@ -78,7 +80,7 @@ const getDisplayedCoverUrl = (path: string | undefined) => {
     return '';
   }
 
-  return peekCoverUrl(path);
+  return displayedCoverUrls.get(path) ?? coverCache.get(path) ?? '';
 };
 
 const restoreViewportCoverSnapshot = () => {
@@ -87,7 +89,13 @@ const restoreViewportCoverSnapshot = () => {
     return;
   }
 
-  preloadPriorityCovers(snapshot);
+  displayedCoverUrls.clear();
+  snapshot
+    .filter(entry => !!entry.path && !!entry.url)
+    .forEach((entry) => {
+      displayedCoverUrls.set(entry.path, entry.url);
+    });
+  preloadPriorityCovers(snapshot.map(entry => entry.path));
 };
 
 const saveViewportCoverSnapshot = () => {
@@ -99,7 +107,7 @@ const saveViewportCoverSnapshot = () => {
   const viewportBuffer = containerRef.value.clientHeight;
   const snapshotTop = containerRect.top - viewportBuffer;
   const snapshotBottom = containerRect.bottom + viewportBuffer;
-  const snapshot: string[] = [];
+  const snapshot: Array<{ path: string; url: string }> = [];
   const seenPaths = new Set<string>();
 
   containerRef.value.querySelectorAll<HTMLElement>('[data-cover-path]').forEach((element) => {
@@ -117,12 +125,13 @@ const saveViewportCoverSnapshot = () => {
       return;
     }
 
-    if (!getDisplayedCoverUrl(path)) {
+    const url = getDisplayedCoverUrl(path);
+    if (!url) {
       return;
     }
 
     seenPaths.add(path);
-    snapshot.push(path);
+    snapshot.push({ path, url });
   });
 
   if (snapshot.length > 0) {
@@ -134,6 +143,40 @@ const saveViewportCoverSnapshot = () => {
 };
 
 restoreViewportCoverSnapshot();
+
+const syncVisibleCoverUrls = (paths: string[]) => {
+  const nextVisiblePaths = new Set(paths.filter(Boolean));
+  visibleCoverPaths = nextVisiblePaths;
+
+  for (const path of Array.from(displayedCoverUrls.keys())) {
+    if (!nextVisiblePaths.has(path)) {
+      displayedCoverUrls.delete(path);
+    }
+  }
+
+  const nextPaths = Array.from(nextVisiblePaths);
+  touchCoverPaths(nextPaths);
+
+  nextPaths.forEach((path) => {
+    const cachedUrl = coverCache.get(path);
+    if (cachedUrl) {
+      displayedCoverUrls.set(path, cachedUrl);
+      return;
+    }
+
+    if (displayedCoverUrls.has(path)) {
+      return;
+    }
+
+    void loadCover(path).then((coverUrl) => {
+      if (!coverUrl || !visibleCoverPaths.has(path)) {
+        return;
+      }
+
+      displayedCoverUrls.set(path, coverUrl);
+    });
+  });
+};
 
 const artistSections = computed(() => {
   const sections: Array<{
@@ -315,7 +358,7 @@ useListScrollMemory(scrollMemoryKey, containerRef);
 watch(
   [visibleArtistCoverPaths, artistSortMode],
   ([paths]) => {
-    touchCoverPaths(paths);
+    syncVisibleCoverUrls(paths);
     preloadPriorityCovers(paths);
     void initCoverObserver();
   },
@@ -438,6 +481,8 @@ onUnmounted(() => {
     coverObserver.disconnect();
     coverObserver = null;
   }
+  displayedCoverUrls.clear();
+  visibleCoverPaths = new Set<string>();
 });
 </script>
 
@@ -529,7 +574,7 @@ onUnmounted(() => {
               >
                 <div class="w-full h-full rounded-full overflow-hidden shadow-sm group-hover:shadow transition-shadow duration-300 relative bg-gray-100 dark:bg-white/5 flex items-center justify-center">
                   <img v-if="getDisplayedCoverUrl(item.artist.firstSongPath)" :src="getDisplayedCoverUrl(item.artist.firstSongPath)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="item.artist.name">
-                  <div v-else class="w-full h-full flex items-center justify-center text-lg md:text-xl font-bold text-white bg-gradient-to-br animate-in fade-in duration-300" :class="getGradientForArtist(item.artist.name)">
+                  <div v-else class="w-full h-full flex items-center justify-center text-lg md:text-xl font-bold text-white bg-gradient-to-br animate-in fade-in duration-300" :class="[getGradientForArtist(item.artist.name), { 'animate-pulse': isCoverLoading(item.artist.firstSongPath) }]">
                     {{ item.artist.name.charAt(0).toUpperCase() }}
                   </div>
                   <div class="absolute inset-0 bg-white/0 group-hover:bg-white/10 dark:bg-black/5 dark:group-hover:bg-transparent transition-colors duration-300"></div>
@@ -569,7 +614,7 @@ onUnmounted(() => {
           >
             <div class="w-full h-full rounded-full overflow-hidden shadow-sm group-hover:shadow transition-shadow duration-300 relative bg-gray-100 dark:bg-white/5 flex items-center justify-center">
               <img v-if="getDisplayedCoverUrl(item.artist.firstSongPath)" :src="getDisplayedCoverUrl(item.artist.firstSongPath)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="item.artist.name">
-              <div v-else class="w-full h-full flex items-center justify-center text-lg md:text-xl font-bold text-white bg-gradient-to-br animate-in fade-in duration-300" :class="getGradientForArtist(item.artist.name)">
+              <div v-else class="w-full h-full flex items-center justify-center text-lg md:text-xl font-bold text-white bg-gradient-to-br animate-in fade-in duration-300" :class="[getGradientForArtist(item.artist.name), { 'animate-pulse': isCoverLoading(item.artist.firstSongPath) }]">
                 {{ item.artist.name.charAt(0).toUpperCase() }}
               </div>
               <div class="absolute inset-0 bg-white/0 group-hover:bg-white/10 dark:bg-black/5 dark:group-hover:bg-transparent transition-colors duration-300"></div>
