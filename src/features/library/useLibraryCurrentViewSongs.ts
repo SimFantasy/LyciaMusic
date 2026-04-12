@@ -82,7 +82,15 @@ export function useLibraryCurrentViewSongs({
       .filter(path => songLookup.value.has(path));
 
   watch(
-    [currentViewMode, searchQuery, localMusicTab, currentArtistFilter, currentAlbumFilter, localSortMode],
+    [
+      currentViewMode,
+      searchQuery,
+      localMusicTab,
+      currentArtistFilter,
+      currentAlbumFilter,
+      localSortMode,
+      canonicalSongPaths,
+    ],
     async ([viewMode, query, musicTab, artistFilter, albumFilter, sortMode]) => {
       const requestId = ++allViewRequestId;
 
@@ -116,7 +124,15 @@ export function useLibraryCurrentViewSongs({
   );
 
   watch(
-    [currentViewMode, favoriteSongPaths, searchQuery, favTab, favDetailFilter, localSortMode],
+    [
+      currentViewMode,
+      favoriteSongPaths,
+      searchQuery,
+      favTab,
+      favDetailFilter,
+      localSortMode,
+      canonicalSongPaths,
+    ],
     async ([viewMode, paths, query, currentFavTab, detailFilter, sortMode]) => {
       const requestId = ++favoriteViewRequestId;
 
@@ -162,7 +178,13 @@ export function useLibraryCurrentViewSongs({
   );
 
   watch(
-    [currentViewMode, recentSongs, searchQuery, localSortMode],
+    [
+      currentViewMode,
+      recentSongs,
+      searchQuery,
+      localSortMode,
+      canonicalSongPaths,
+    ],
     async ([viewMode, items, query, sortMode]) => {
       const requestId = ++recentViewRequestId;
 
@@ -200,7 +222,13 @@ export function useLibraryCurrentViewSongs({
   );
 
   watch(
-    [currentViewMode, currentFolderFilter, searchQuery, folderSortMode],
+    [
+      currentViewMode,
+      currentFolderFilter,
+      searchQuery,
+      folderSortMode,
+      currentFolderSongPaths,
+    ],
     async ([viewMode, folderFilter, query, sortMode]) => {
       const requestId = ++folderViewRequestId;
 
@@ -233,7 +261,12 @@ export function useLibraryCurrentViewSongs({
   );
 
   watch(
-    [currentViewMode, localMusicTab, currentArtistFilter],
+    [
+      currentViewMode,
+      localMusicTab,
+      currentArtistFilter,
+      canonicalSongPaths,
+    ],
     async ([viewMode, musicTab, artistFilter]) => {
       const requestId = ++localArtistRequestId;
 
@@ -261,7 +294,12 @@ export function useLibraryCurrentViewSongs({
   );
 
   watch(
-    [currentViewMode, localMusicTab, currentAlbumFilter],
+    [
+      currentViewMode,
+      localMusicTab,
+      currentAlbumFilter,
+      canonicalSongPaths,
+    ],
     async ([viewMode, musicTab, albumFilter]) => {
       const requestId = ++localAlbumRequestId;
 
@@ -289,7 +327,11 @@ export function useLibraryCurrentViewSongs({
   );
 
   watch(
-    [currentViewMode, filterCondition],
+    [
+      currentViewMode,
+      filterCondition,
+      canonicalSongPaths,
+    ],
     async ([viewMode, filter]) => {
       const requestId = ++detailViewRequestId;
 
