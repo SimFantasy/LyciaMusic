@@ -24,6 +24,10 @@ type SongMenuEntry =
   | { type: 'divider'; key: string }
   | { type: 'action'; key: SongMenuAction; label: string; danger?: boolean };
 
+type SongMenuRenderEntry =
+  | ({ type: 'divider'; key: string; motionIndex: number })
+  | ({ type: 'action'; key: SongMenuAction; label: string; danger?: boolean; motionIndex: number });
+
 interface SongMenuIcon {
   fill?: boolean;
   viewBox?: string;
@@ -63,7 +67,7 @@ const menuIcons: Record<SongMenuAction, SongMenuIcon> = {
     viewBox: '0 0 24 24',
     paths: [
       {
-        d: 'M8 5v14l11-7z',
+        d: 'M8 5.5v13l10.5-6.5z',
       },
     ],
   },
@@ -72,7 +76,7 @@ const menuIcons: Record<SongMenuAction, SongMenuIcon> = {
     viewBox: '0 0 24 24',
     paths: [
       {
-        d: 'M5 7.5A1.5 1.5 0 017.26 6.2L16 12l-8.74 5.8A1.5 1.5 0 015 16.5v-9zM18 6h2v12h-2z',
+        d: 'M4.8 7.1c0-.95 1.06-1.52 1.86-1l5.04 3.36c.72.48.72 1.56 0 2.04L6.66 14.86c-.8.53-1.86-.05-1.86-1V7.1zm7.5 0c0-.95 1.06-1.52 1.86-1l5.04 3.36c.72.48.72 1.56 0 2.04l-5.04 3.36c-.8.53-1.86-.05-1.86-1V7.1z',
       },
     ],
   },
@@ -80,64 +84,57 @@ const menuIcons: Record<SongMenuAction, SongMenuIcon> = {
     fill: false,
     viewBox: '0 0 24 24',
     paths: [
-      { d: 'M4 7h10', fillRule: 'evenodd', clipRule: 'evenodd' },
-      { d: 'M4 12h10', fillRule: 'evenodd', clipRule: 'evenodd' },
-      { d: 'M4 17h6', fillRule: 'evenodd', clipRule: 'evenodd' },
-      { d: 'M16 14v6', fillRule: 'evenodd', clipRule: 'evenodd' },
-      { d: 'M13 17h6', fillRule: 'evenodd', clipRule: 'evenodd' },
+      { d: 'M5 7.5h14' },
+      { d: 'M5 12h14' },
+      { d: 'M5 16.5h14' },
     ],
   },
   addToPlaylist: {
     fill: false,
     viewBox: '0 0 24 24',
     paths: [
-      { d: 'M4 12h8', fillRule: 'evenodd', clipRule: 'evenodd' },
-      { d: 'M8 8v8', fillRule: 'evenodd', clipRule: 'evenodd' },
-      { d: 'M4 6h14', fillRule: 'evenodd', clipRule: 'evenodd' },
-      { d: 'M14 12h4' },
-      { d: 'M14 18h6' },
+      { d: 'M12 5.5v13' },
+      { d: 'M5.5 12h13' },
     ],
   },
   viewArtist: {
     fill: false,
     viewBox: '0 0 24 24',
     paths: [
-      { d: 'M12 12a3.5 3.5 0 100-7 3.5 3.5 0 000 7z' },
-      { d: 'M5 19a7 7 0 0114 0' },
+      { d: 'M12 11a3 3 0 100-6 3 3 0 000 6z' },
+      { d: 'M6.5 18.5a5.5 5.5 0 0111 0' },
     ],
   },
   viewAlbum: {
     fill: false,
     viewBox: '0 0 24 24',
     paths: [
-      { d: 'M12 19a7 7 0 100-14 7 7 0 000 14z' },
-      { d: 'M12 14.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z' },
-      { d: 'M12 7.5v-1' },
+      { d: 'M12 18.5a6.5 6.5 0 100-13 6.5 6.5 0 000 13z' },
+      { d: 'M12 13.75a1.75 1.75 0 100-3.5 1.75 1.75 0 000 3.5z' },
     ],
   },
   openFolder: {
-    fill: false,
+    fill: true,
     viewBox: '0 0 24 24',
     paths: [
-      { d: 'M3.75 7.5A2.25 2.25 0 016 5.25h4.19c.4 0 .78.16 1.06.44l1.06 1.06c.28.28.66.44 1.06.44H18A2.25 2.25 0 0120.25 9.5v7A2.25 2.25 0 0118 18.75H6a2.25 2.25 0 01-2.25-2.25v-9z' },
+      { d: 'M3.5 8.25A2.25 2.25 0 015.75 6h4.07c.48 0 .93.19 1.27.53l1.02 1.02c.34.34.79.53 1.27.53h4.87a2.25 2.25 0 012.25 2.25v5.42A2.25 2.25 0 0118.25 18H5.75A2.25 2.25 0 013.5 15.75v-7.5z' },
     ],
   },
   viewSongInfo: {
     fill: false,
     viewBox: '0 0 24 24',
     paths: [
-      { d: 'M12 10.5v5' },
-      { d: 'M12 7.75h.01' },
-      { d: 'M12 20a8 8 0 100-16 8 8 0 000 16z' },
+      { d: 'M12 10.5v4.75' },
+      { d: 'M12 8h.01' },
+      { d: 'M12 19a7 7 0 100-14 7 7 0 000 14z' },
     ],
   },
   removeFromList: {
     fill: false,
     viewBox: '0 0 24 24',
     paths: [
-      { d: 'M5 12h14', fillRule: 'evenodd', clipRule: 'evenodd' },
-      { d: 'M4.5 7h15' },
-      { d: 'M4.5 17h15' },
+      { d: 'M7 7l10 10' },
+      { d: 'M17 7L7 17' },
     ],
   },
   deleteFromDisk: {
@@ -177,6 +174,10 @@ const menuEntries = computed<SongMenuEntry[]>(() => {
   return entries;
 });
 
+const renderEntries = computed<SongMenuRenderEntry[]>(() =>
+  menuEntries.value.map((entry, motionIndex) => ({ ...entry, motionIndex })),
+);
+
 watch(
   () => props.visible,
   async (visible) => {
@@ -202,19 +203,24 @@ const menuStyle = computed<CSSProperties>(() => {
 
   let top = props.y;
   let left = props.x;
+  let verticalOrigin = 'top';
+  let horizontalOrigin = 'left';
 
   if (top + menuSize.value.height > window.innerHeight) {
     top = props.y - menuSize.value.height;
+    verticalOrigin = 'bottom';
   }
 
   if (left + menuSize.value.width > window.innerWidth) {
     left = props.x - menuSize.value.width;
+    horizontalOrigin = 'right';
   }
 
   return {
     left: `${Math.max(8, left)}px`,
     top: `${Math.max(8, top)}px`,
     visibility: menuSize.value.height === 0 ? 'hidden' : 'visible',
+    transformOrigin: `${horizontalOrigin} ${verticalOrigin}`,
   };
 });
 
@@ -293,44 +299,128 @@ const handleAction = (action: SongMenuAction) => {
 
 <template>
   <Teleport to="body">
-    <div
-      v-if="visible"
-      ref="menuRef"
-      class="fixed z-[9999] min-w-[220px] select-none rounded-lg border border-gray-100/50 bg-white/80 py-1.5 text-sm text-gray-700 shadow-xl backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-75"
-      :style="menuStyle"
-      @contextmenu.prevent
-    >
-      <template v-for="entry in menuEntries" :key="entry.key">
-        <div v-if="entry.type === 'divider'" class="my-1 h-px bg-gray-100"></div>
-        <div
-          v-else
-          class="flex cursor-pointer items-center px-4 py-2.5 transition-colors hover:bg-gray-100"
-          :class="entry.danger ? 'text-[#EC4141] hover:text-[#d73a3a]' : ''"
-          @click="handleAction(entry.key)"
-        >
-          <div class="mr-3 flex h-4 w-4 shrink-0 items-center justify-center">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-4 w-4"
-              :viewBox="menuIcons[entry.key].viewBox || '0 0 24 24'"
-              :fill="menuIcons[entry.key].fill ? 'currentColor' : 'none'"
-              :stroke="menuIcons[entry.key].fill ? 'none' : 'currentColor'"
-              :stroke-width="menuIcons[entry.key].fill ? undefined : '1.8'"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path
-                v-for="(path, pathIndex) in menuIcons[entry.key].paths"
-                :key="`${entry.key}-${pathIndex}`"
-                :d="path.d"
-                :fill-rule="path.fillRule"
-                :clip-rule="path.clipRule"
-              />
-            </svg>
+    <Transition name="song-menu-pop" appear>
+      <div
+        v-if="visible"
+        ref="menuRef"
+        class="fixed z-[9999] min-w-[220px] select-none rounded-[18px] border border-white/65 bg-white/78 py-1.5 text-sm text-gray-700 shadow-[0_20px_45px_rgba(15,23,42,0.16),0_6px_18px_rgba(15,23,42,0.08)] backdrop-blur-[22px] supports-[backdrop-filter]:bg-white/72"
+        :style="menuStyle"
+        @contextmenu.prevent
+      >
+        <template v-for="entry in renderEntries" :key="entry.key">
+          <div
+            v-if="entry.type === 'divider'"
+            class="song-menu-divider"
+            :style="{ '--menu-item-delay': `${entry.motionIndex * 14}ms` }"
+          ></div>
+          <div
+            v-else
+            class="song-menu-item flex cursor-pointer items-center px-4 py-2.5 transition-colors"
+            :class="entry.danger ? 'text-[#EC4141] hover:text-[#d73a3a]' : ''"
+            :style="{ '--menu-item-delay': `${entry.motionIndex * 14}ms` }"
+            @click="handleAction(entry.key)"
+          >
+            <div class="mr-3 flex h-5 w-5 shrink-0 items-center justify-center text-[#6b778c]">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5"
+                :viewBox="menuIcons[entry.key].viewBox || '0 0 24 24'"
+                :fill="menuIcons[entry.key].fill ? 'currentColor' : 'none'"
+                :stroke="menuIcons[entry.key].fill ? 'none' : 'currentColor'"
+                :stroke-width="menuIcons[entry.key].fill ? undefined : '1.7'"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  v-for="(path, pathIndex) in menuIcons[entry.key].paths"
+                  :key="`${entry.key}-${pathIndex}`"
+                  :d="path.d"
+                  :fill-rule="path.fillRule"
+                  :clip-rule="path.clipRule"
+                />
+              </svg>
+            </div>
+            <span>{{ entry.label }}</span>
           </div>
-          <span>{{ entry.label }}</span>
-        </div>
-      </template>
-    </div>
+        </template>
+      </div>
+    </Transition>
   </Teleport>
 </template>
+
+<style scoped>
+.song-menu-item {
+  margin: 0 0.375rem;
+  border-radius: 12px;
+}
+
+.song-menu-item:hover {
+  background: rgba(15, 23, 42, 0.055);
+}
+
+.song-menu-divider {
+  height: 1px;
+  margin: 0.34rem 0.85rem;
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0), rgba(148, 163, 184, 0.34), rgba(148, 163, 184, 0));
+}
+
+.song-menu-pop-enter-active,
+.song-menu-pop-leave-active {
+  will-change: opacity, transform;
+}
+
+.song-menu-pop-enter-active {
+  animation: song-menu-enter 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.song-menu-pop-leave-active {
+  animation: song-menu-leave 140ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.song-menu-pop-enter-active .song-menu-item,
+.song-menu-pop-enter-active .song-menu-divider {
+  animation: song-menu-item-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--menu-item-delay, 0ms);
+}
+
+@keyframes song-menu-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.965);
+  }
+
+  72% {
+    opacity: 1;
+    transform: translateY(-1px) scale(1.008);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes song-menu-leave {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
+  }
+}
+
+@keyframes song-menu-item-in {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+</style>
