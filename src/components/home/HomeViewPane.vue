@@ -51,6 +51,7 @@ const emit = defineEmits<{
   (event: 'batchDelete'): void;
   (event: 'folderBatchDelete'): void;
   (event: 'batchMove'): void;
+  (event: 'rootCreatePlaylist', path: string, name: string): void;
   (event: 'addFolder'): void;
   (event: 'refreshFolder'): void;
   (event: 'removeFolder', path: string, name?: string): void;
@@ -116,6 +117,7 @@ const songTableMemoryScopeKey = computed(() =>
         @playAll="$emit('playAll')"
         @batchPlay="$emit('batchPlay')"
         @showAddToPlaylist="$emit('showAddToPlaylist')"
+        @rootCreatePlaylist="(path, name) => $emit('rootCreatePlaylist', path, name)"
         @batchDelete="$emit('batchDelete')"
         @folderBatchDelete="$emit('folderBatchDelete')"
         @batchMove="$emit('batchMove')"

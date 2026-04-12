@@ -34,6 +34,7 @@ const emit = defineEmits<{
   (event: 'batchDelete'): void;
   (event: 'folderBatchDelete'): void;
   (event: 'batchMove'): void;
+  (event: 'rootCreatePlaylist', path: string, name: string): void;
   (event: 'addFolder'): void;
   (event: 'refreshFolder'): void;
   (event: 'removeFolder', path: string, name?: string): void;
@@ -66,6 +67,7 @@ const isManagementModeModel = computed({
     @playAll="$emit('playAll')"
     @batchPlay="$emit('batchPlay')"
     @addToPlaylist="$emit('showAddToPlaylist')"
+    @rootCreatePlaylist="(path, name) => $emit('rootCreatePlaylist', path, name)"
     @batchDelete="$emit('folderBatchDelete')"
     @batchMove="$emit('batchMove')"
     @addFolder="$emit('addFolder')"

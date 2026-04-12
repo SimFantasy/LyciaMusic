@@ -53,6 +53,7 @@ export function useHomePageModel() {
     refreshAllFolders,
     deleteFromDisk,
     addLibraryFolder,
+    getSongsInFolder,
     createFolder,
     deleteFolder,
     expandFolderPath,
@@ -61,6 +62,7 @@ export function useHomePageModel() {
     refreshFolder,
   } = useLibraryRuntimeActions();
   const {
+    createPlaylist,
     addSongsToPlaylist,
     favoritePaths,
     removeFromHistory,
@@ -243,6 +245,17 @@ export function useHomePageModel() {
     showToast('Refresh completed', 'success');
   };
 
+  const handleRootCreatePlaylistRequest = (folderPath: string, folderName: string) => {
+    const songs = getSongsInFolder(folderPath);
+    if (songs.length === 0) {
+      showToast('该文件夹下没有可用于创建歌单的歌曲', 'info');
+      return;
+    }
+
+    createPlaylist(folderName, songs.map(song => song.path));
+    showToast('已根据文件夹创建歌单', 'success');
+  };
+
   const handleArtistAlbumClick = (albumKey: string) => {
     void openHomeAlbum(albumKey);
   };
@@ -272,6 +285,7 @@ export function useHomePageModel() {
     requestBatchDelete,
     handleFolderBatchDelete,
     handleBatchMove,
+    handleRootCreatePlaylistRequest,
     handleAddFolder,
     handleRefreshFolder,
     handleRemoveFolderWithConfirm,

@@ -25,6 +25,7 @@ const emit = defineEmits([
   'batchDelete',
   'batchMove',
   'addToPlaylist',
+  'rootCreatePlaylist',
   'addFolder',
   'refreshFolder',
   'removeFolder',
@@ -105,6 +106,17 @@ const isRootDropTarget = (path: string) =>
   dragSession.type === 'song' &&
   dragSession.targetFolder?.path === path;
 
+const emitRootCreatePlaylist = () => {
+  const rootNode = props.folderTree.find(node => node.path === targetRootPath.value);
+  if (!rootNode) {
+    showRootMenu.value = false;
+    return;
+  }
+
+  showRootMenu.value = false;
+  emit('rootCreatePlaylist', rootNode.path, rootNode.name);
+};
+
 onMounted(() => window.addEventListener('click', handleGlobalClick));
 onUnmounted(() => {
   window.removeEventListener('click', handleGlobalClick);
@@ -152,6 +164,7 @@ onUnmounted(() => {
           :selected-count="1"
           :isManagementMode="isManagementMode"
           @close="showRootMenu = false"
+          @create-playlist="emitRootCreatePlaylist"
           @remove="path => emit('removeFolder', path)"
           @new-folder="showRootMenu = false; emit('newFolder', targetRootPath)"
           @delete-disk="showRootMenu = false; emit('deleteFolderDisk', targetRootPath)"
