@@ -43,7 +43,7 @@ export const createPlayerPlayback = ({
 }: CreatePlayerPlaybackDeps) => {
   const playbackStore = usePlaybackStore();
   const uiStore = useUiStore();
-  const { loadCover, loadFullCover, peekCoverUrl, getFullCoverUrl } = useCoverCache();
+  const { loadCover, loadCoverPath, loadFullCover, peekCoverUrl, peekCoverPath, getFullCoverUrl } = useCoverCache();
   const {
     currentCover,
     currentCoverFull,
@@ -148,6 +148,7 @@ export const createPlayerPlayback = ({
     isPlaying.value = true;
     isSongLoaded.value = false;
     const cachedCover = peekCoverUrl(song.path);
+    const cachedCoverPath = peekCoverPath(song.path);
     const cachedFullCover = getFullCoverUrl(song.path);
     currentCover.value = cachedCover;
     currentCoverFull.value = cachedFullCover || '';
@@ -167,7 +168,7 @@ export const createPlayerPlayback = ({
         title: song.name,
         artist: song.artist || 'Unknown Artist',
         album: song.album || 'Unknown Album',
-        cover: '',
+        cover: cachedCoverPath,
         duration: Math.floor(song.duration),
       });
       if (requestId !== playRequestId || currentSong.value?.path !== song.path) return;
@@ -177,13 +178,14 @@ export const createPlayerPlayback = ({
       loadLyrics();
       startPlaybackRuntime();
 
-      void loadCover(song.path)
-        .then(async cover => {
+      void Promise.all([loadCover(song.path), loadCoverPath(song.path)])
+        .then(async ([cover, coverPath]) => {
           if (requestId !== playRequestId || currentSong.value?.path !== song.path) {
             return;
           }
 
           const normalizedCover = cover || '';
+          const normalizedCoverPath = coverPath || '';
           currentCover.value = normalizedCover;
           if (!currentCoverFull.value) {
             currentCoverFull.value = normalizedCover;
@@ -193,7 +195,7 @@ export const createPlayerPlayback = ({
             title: song.name,
             artist: song.artist || 'Unknown Artist',
             album: song.album || 'Unknown Album',
-            cover: normalizedCover,
+            cover: normalizedCoverPath,
             duration: Math.floor(song.duration),
             isPlaying: isPlaying.value,
           }).catch(() => {});

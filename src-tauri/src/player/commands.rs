@@ -3,6 +3,24 @@ use souvlaki::{MediaMetadata, MediaPlayback, MediaPosition};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
+fn normalize_cover_for_smtc(cover: &str) -> Option<String> {
+    let trimmed = cover.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if trimmed.starts_with("file://")
+        || trimmed.starts_with("http://")
+        || trimmed.starts_with("https://")
+        || trimmed.starts_with("data:")
+    {
+        return Some(trimmed.to_string());
+    }
+
+    let normalized = trimmed.replace('/', "\\");
+    Some(format!("file://{normalized}"))
+}
+
 #[tauri::command]
 pub fn play_audio(
     path: String,
@@ -13,6 +31,7 @@ pub fn play_audio(
     duration: u32,
     state: tauri::State<PlayerState>,
 ) -> Result<(), String> {
+    let normalized_cover = normalize_cover_for_smtc(&cover);
     let tx = state.tx.lock().map_err(|e| e.to_string())?;
     tx.send(AudioCommand::Play(path))
         .map_err(|e| e.to_string())?;
@@ -23,7 +42,7 @@ pub fn play_audio(
                 title: Some(&title),
                 artist: Some(&artist),
                 album: Some(&album),
-                cover_url: if cover.is_empty() { None } else { Some(&cover) },
+                cover_url: normalized_cover.as_deref(),
                 duration: if duration > 0 {
                     Some(Duration::from_secs(duration as u64))
                 } else {
@@ -49,13 +68,14 @@ pub fn update_playback_metadata(
     is_playing: bool,
     state: tauri::State<PlayerState>,
 ) -> Result<(), String> {
+    let normalized_cover = normalize_cover_for_smtc(&cover);
     if let Ok(mut controls) = state.controls.lock() {
         if let Some(mc) = controls.as_mut() {
             let _ = mc.set_metadata(MediaMetadata {
                 title: Some(&title),
                 artist: Some(&artist),
                 album: Some(&album),
-                cover_url: if cover.is_empty() { None } else { Some(&cover) },
+                cover_url: normalized_cover.as_deref(),
                 duration: if duration > 0 {
                     Some(Duration::from_secs(duration as u64))
                 } else {
