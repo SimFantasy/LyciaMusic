@@ -459,7 +459,7 @@ onUnmounted(() => {
             class="flex flex-col items-center justify-center py-10 text-gray-400 dark:text-gray-500 space-y-2 text-center px-4"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            <span class="text-xs leading-relaxed">No subfolders under the active root.</span>
+            <span class="text-xs leading-relaxed">当前根目录下没有子文件夹。</span>
           </div>
 
           <div
@@ -467,7 +467,7 @@ onUnmounted(() => {
             class="flex flex-col items-center justify-center py-10 text-gray-400 dark:text-gray-500 space-y-2"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 00-2-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" /></svg>
-            <span class="text-xs">No library folders yet.</span>
+            <span class="text-xs">还没有添加音乐库文件夹。</span>
           </div>
         </div>
       </div>
