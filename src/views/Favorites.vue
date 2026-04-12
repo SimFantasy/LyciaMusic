@@ -20,7 +20,7 @@
           :isBatchMode="isBatchMode"
           :selectedPaths="selectedPaths"
           memoryScopeKey="favorites-view"
-          @play="playSong"
+          @play="handlePlaySong"
           @contextmenu="handleContextMenu"
           @update:selectedPaths="selectedPaths = $event"
           @drag-start="handleTableDragStart"
@@ -77,7 +77,7 @@ import SongContextMenu from '../components/overlays/SongContextMenu.vue';
 import ModernModal from '../components/common/ModernModal.vue';
 import { useSongDrag } from '../composables/useSongDrag';
 
-const { displaySongList } = usePlayerLibraryView();
+const { displaySongList, searchQuery } = usePlayerLibraryView();
 const { playSong, addSongsToQueue } = usePlaybackController();
 const {
   addSongsToPlaylist,
@@ -116,6 +116,11 @@ const handlePlayAll = () => {
   if (localSongList.value.length > 0) {
     void playSong(localSongList.value[0]);
   }
+};
+
+const handlePlaySong = (song: Song) => {
+  const shouldInsertAfterCurrent = searchQuery.value.trim().length > 0;
+  void playSong(song, shouldInsertAfterCurrent ? { insertAfterCurrent: true } : undefined);
 };
 
 const handleAddAllToQueue = () => {

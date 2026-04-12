@@ -1,6 +1,7 @@
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
+import type { Song } from '../types';
 
 import { useCoverCache } from './useCoverCache';
 import { useHomeArtistAlbums } from './useHomeArtistAlbums';
@@ -44,6 +45,7 @@ export function useHomePageModel() {
     displaySongList,
     librarySongs,
     folderTree,
+    searchQuery,
   } = usePlayerLibraryView();
   const { playSong } = usePlaybackController();
   const {
@@ -221,6 +223,14 @@ export function useHomePageModel() {
     }
   };
 
+  const handlePlaySong = (song: Song) => {
+    const shouldInsertAfterCurrent =
+      searchQuery.value.trim().length > 0 &&
+      ['all', 'artist', 'album', 'folder'].includes(currentViewMode.value);
+
+    void playSong(song, shouldInsertAfterCurrent ? { insertAfterCurrent: true } : undefined);
+  };
+
   const handleBatchPlay = () => {
     const selectedSongs = localSongList.value.filter(song => selectedPaths.value.has(song.path));
     if (selectedSongs.length > 0) {
@@ -270,7 +280,7 @@ export function useHomePageModel() {
     handleActiveRootChange,
     handleRenamePlaylist,
     handleRefreshAll,
-    playSong,
+    playSong: handlePlaySong,
     handleContextMenu,
     handleTableDragStart,
     handleArtistAlbumClick,

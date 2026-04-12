@@ -16,7 +16,11 @@ vi.mock('../services/tauri/playbackApi', () => ({
 vi.mock('./useCoverCache', () => ({
   useCoverCache: () => ({
     loadCover: vi.fn().mockResolvedValue(''),
+    loadCoverPath: vi.fn().mockResolvedValue(''),
     loadFullCover: vi.fn().mockResolvedValue(''),
+    peekCoverUrl: vi.fn().mockReturnValue(''),
+    peekCoverPath: vi.fn().mockReturnValue(''),
+    getFullCoverUrl: vi.fn().mockReturnValue(''),
   }),
 }));
 
@@ -61,6 +65,36 @@ describe('player playback domain', () => {
     await playerPlayback.playSong(firstSong);
 
     expect(playbackStore.playQueue.map(song => song.path)).toEqual(displaySongList.map(song => song.path));
+    playerPlayback.dispose();
+  });
+
+  it('inserts a searched song directly after the previously playing song', async () => {
+    const playbackStore = usePlaybackStore();
+    const songA = makeSong({ path: '/music/a.flac', title: 'A' });
+    const songB = makeSong({ path: '/music/b.flac', title: 'B' });
+    const songC = makeSong({ path: '/music/c.flac', title: 'C' });
+    const songD = makeSong({ path: '/music/d.flac', title: 'D' });
+    const searchedSong = makeSong({ path: '/music/search.flac', title: 'Search' });
+    playbackStore.currentSong = songA;
+    playbackStore.playQueue = [songA, songB, songC, songD];
+
+    const playerPlayback = createPlayerPlayback({
+      getDisplaySongList: () => [searchedSong],
+      addToHistory: vi.fn(),
+      loadLyrics: vi.fn(),
+      handleAutoNext: vi.fn(),
+    });
+
+    await playerPlayback.playSong(searchedSong, { insertAfterCurrent: true });
+
+    expect(playbackStore.currentSong?.path).toBe(searchedSong.path);
+    expect(playbackStore.playQueue.map(song => song.path)).toEqual([
+      songA.path,
+      searchedSong.path,
+      songB.path,
+      songC.path,
+      songD.path,
+    ]);
     playerPlayback.dispose();
   });
 });

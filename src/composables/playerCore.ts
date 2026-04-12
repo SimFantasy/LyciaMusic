@@ -35,6 +35,7 @@ interface PlaySongOptions {
   updateShuffleHistory?: boolean;
   clearShuffleFuture?: boolean;
   preserveQueue?: boolean;
+  insertAfterCurrent?: boolean;
 }
 
 const PLAYER_PLAYLIST_PATHS_KEY = 'player_playlist_paths';

@@ -9,6 +9,7 @@ interface QueuePlaySongOptions {
   updateShuffleHistory?: boolean;
   clearShuffleFuture?: boolean;
   preserveQueue?: boolean;
+  insertAfterCurrent?: boolean;
 }
 
 interface CreatePlayerQueueDeps {

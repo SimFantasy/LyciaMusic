@@ -12,6 +12,7 @@ interface ProcessExternalPathsOptions {
 
 interface PlaySongOptions {
   preserveQueue?: boolean;
+  insertAfterCurrent?: boolean;
 }
 
 interface CreatePlayerLibraryManagerDeps {

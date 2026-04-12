@@ -3,7 +3,12 @@ import type { Ref } from 'vue';
 import type { Song } from '../../types';
 
 interface PlayerPlaybackApi {
-  playSong: (song: Song, options?: { updateShuffleHistory?: boolean; clearShuffleFuture?: boolean; preserveQueue?: boolean }) => Promise<unknown>;
+  playSong: (song: Song, options?: {
+    updateShuffleHistory?: boolean;
+    clearShuffleFuture?: boolean;
+    preserveQueue?: boolean;
+    insertAfterCurrent?: boolean;
+  }) => Promise<unknown>;
   pauseSong: () => Promise<unknown>;
   togglePlay: () => Promise<unknown>;
   seekTo: (newTime: number) => Promise<unknown>;
@@ -66,7 +71,12 @@ export function usePlaybackActions({
   const handleScan = () => playerUiShell.handleScan();
   const playNext = (song: Song) => getPlayerQueue().playNext(song);
   const removeSongFromList = (song: Song) => playerUiShell.removeSongFromList(song);
-  const playSong = (song: Song, options?: { updateShuffleHistory?: boolean; clearShuffleFuture?: boolean; preserveQueue?: boolean }) =>
+  const playSong = (song: Song, options?: {
+    updateShuffleHistory?: boolean;
+    clearShuffleFuture?: boolean;
+    preserveQueue?: boolean;
+    insertAfterCurrent?: boolean;
+  }) =>
     getPlayerPlayback().playSong(song, options);
   const pauseSong = () => getPlayerPlayback().pauseSong();
   const togglePlay = () => getPlayerPlayback().togglePlay();

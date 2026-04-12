@@ -9,6 +9,7 @@ interface PlaySongOptions {
   updateShuffleHistory?: boolean;
   clearShuffleFuture?: boolean;
   preserveQueue?: boolean;
+  insertAfterCurrent?: boolean;
 }
 
 interface SeekCompletedPayload {
@@ -54,6 +55,31 @@ export const createPlayerPlayback = ({
     playQueue,
   } = storeToRefs(playbackStore);
   const { showPlayerDetail } = storeToRefs(uiStore);
+
+  const buildQueueWithInsertedSong = (song: Song, previousSong: Song | null, queue: Song[]) => {
+    if (previousSong?.path === song.path) {
+      return queue.length > 0 ? [...queue] : [song];
+    }
+
+    const queueWithoutSong = queue.filter(item => item.path !== song.path);
+
+    if (!previousSong) {
+      return [song];
+    }
+
+    const baseQueue = queueWithoutSong.length > 0 ? queueWithoutSong : [previousSong];
+    const currentIndex = baseQueue.findIndex(item => item.path === previousSong.path);
+
+    if (currentIndex === -1) {
+      return [previousSong, song, ...baseQueue];
+    }
+
+    return [
+      ...baseQueue.slice(0, currentIndex + 1),
+      song,
+      ...baseQueue.slice(currentIndex + 1),
+    ];
+  };
 
   const stopPlaybackRuntime = () => {
     if (progressFrameId !== null) {
@@ -125,6 +151,7 @@ export const createPlayerPlayback = ({
 
   const playSong = async (song: Song, options: PlaySongOptions = {}) => {
     const requestId = ++playRequestId;
+    const previousSong = currentSong.value;
 
     flushPlaySession();
     onBeforePlay?.(song, options);
@@ -133,14 +160,18 @@ export const createPlayerPlayback = ({
     currentSong.value = song;
 
     if (!preserveQueue) {
-      const displaySongList = getDisplaySongList();
-      if (displaySongList.some(item => item.path === song.path)) {
-        playQueue.value = displaySongList;
-      } else if (!playQueue.value.some(item => item.path === song.path)) {
-        if (playQueue.value.length === 0) {
-          playQueue.value = [song];
-        } else {
-          playQueue.value = [...playQueue.value, song];
+      if (options.insertAfterCurrent) {
+        playQueue.value = buildQueueWithInsertedSong(song, previousSong, playQueue.value);
+      } else {
+        const displaySongList = getDisplaySongList();
+        if (displaySongList.some(item => item.path === song.path)) {
+          playQueue.value = displaySongList;
+        } else if (!playQueue.value.some(item => item.path === song.path)) {
+          if (playQueue.value.length === 0) {
+            playQueue.value = [song];
+          } else {
+            playQueue.value = [...playQueue.value, song];
+          }
         }
       }
     }
