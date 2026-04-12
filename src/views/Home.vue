@@ -25,7 +25,7 @@
       @update:selectedPaths="selectedPaths = $event"
       @playAll="handlePlayAll"
       @batchPlay="handleBatchPlay"
-      @showAddToPlaylist="showAddToPlaylistModal = true"
+      @showAddToPlaylist="handleAddToPlaylistRequest"
       @batchDelete="requestBatchDelete"
       @folderBatchDelete="handleFolderBatchDelete"
       @batchMove="handleBatchMove"
@@ -46,13 +46,6 @@
 
     <DragGhost />
 
-    <AddToPlaylistModal
-      :visible="showAddToPlaylistModal"
-      :selectedCount="isBatchMode ? selectedPaths.size : 1"
-      @close="showAddToPlaylistModal = false"
-      @add="handleAddToPlaylist"
-    />
-
     <MoveToFolderModal
       :visible="showMoveToFolderModal"
       :selectedCount="selectedPaths.size"
@@ -69,7 +62,7 @@
       :is-folder-view="localViewMode === 'folder'"
       :isManagementMode="isManagementMode"
       @close="showContextMenu = false"
-      @add-to-playlist="showAddToPlaylistModal = true"
+      @add-to-playlist="handleAddToPlaylistRequest"
       @delete-disk="handleSongPhysicalDelete"
     />
 
@@ -125,7 +118,6 @@ import DragGhost from '../components/common/DragGhost.vue';
 import HomeViewPane from '../components/home/HomeViewPane.vue';
 import ModernInputModal from '../components/common/ModernInputModal.vue';
 import ModernModal from '../components/common/ModernModal.vue';
-import AddToPlaylistModal from '../components/overlays/AddToPlaylistModal.vue';
 import MoveToFolderModal from '../components/overlays/MoveToFolderModal.vue';
 import SongContextMenu from '../components/overlays/SongContextMenu.vue';
 import { useHomePageModel } from '../composables/useHomePageModel';
@@ -150,7 +142,7 @@ const {
   setSongTableRef,
   handlePlayAll,
   handleBatchPlay,
-  showAddToPlaylistModal,
+  handleAddToPlaylistRequest,
   requestBatchDelete,
   handleFolderBatchDelete,
   handleBatchMove,
@@ -190,7 +182,6 @@ const {
   showRenameModal,
   renameInitialValue,
   confirmRename,
-  handleAddToPlaylist,
 } = useHomePageModel();
 </script>
 

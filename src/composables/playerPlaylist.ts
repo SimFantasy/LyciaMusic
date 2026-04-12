@@ -32,8 +32,8 @@ export const createPlayerPlaylist = () => {
     return libraryCollections.getSongsFromPlaylist(playlistId);
   };
 
-  const openAddToPlaylistDialog = (songPath: string) => {
-    libraryCollections.openAddToPlaylistDialog(songPath);
+  const openAddToPlaylistDialog = (songPaths: string | string[]) => {
+    libraryCollections.openAddToPlaylistDialog(songPaths);
   };
 
   return {

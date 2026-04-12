@@ -7,13 +7,13 @@ import { useRoute, useRouter } from 'vue-router';
 import SongTable from './SongTable.vue'; 
 import SongListHeader from './SongListHeader.vue';
 import MasterPanel from './MasterPanel.vue';
-import AddToPlaylistModal from '../overlays/AddToPlaylistModal.vue';
 import SongContextMenu from '../overlays/SongContextMenu.vue';
 import ModernModal from '../common/ModernModal.vue';
 import FavoritesGrid from '../common/FavoritesGrid.vue';
 import DragGhost from '../common/DragGhost.vue';
 import MoveToFolderModal from '../overlays/MoveToFolderModal.vue';
 import { useToast } from '../../composables/toast';
+import { useAddToPlaylistDialog } from '../../features/collections/addToPlaylistDialog';
 
 // 🟢 新增 props: 允许隐藏内部 header
 defineProps<{
@@ -22,11 +22,12 @@ defineProps<{
 
 const route = useRoute();
 const router = useRouter();
+const { openAddToPlaylistDialog } = useAddToPlaylistDialog();
 
 const { 
   songList, displaySongList, currentViewMode, 
   favTab, favDetailFilter, playSong, 
-  addSongsToPlaylist, favoritePaths, moveFilesToFolder
+  favoritePaths, moveFilesToFolder
 } = usePlayer();
 
 // 状态管理
@@ -35,7 +36,6 @@ const selectedPaths = ref<Set<string>>(new Set());
 
 
 // --- 弹窗与右键菜单状态 ---
-const showAddToPlaylistModal = ref(false);
 const showMoveToFolderModal = ref(false);
 const showConfirm = ref(false);
 const confirmMessage = ref('');
@@ -94,12 +94,11 @@ const confirmBatchMove = async (targetFolder: string, folderName: string) => {
   }
 };
 
-const handleAddToPlaylist = (playlistId: string) => {
-  const songsToAdd = isBatchMode.value ? Array.from(selectedPaths.value) : (contextMenuTargetSong.value ? [contextMenuTargetSong.value.path] : []);
-  const addedCount = addSongsToPlaylist(playlistId, songsToAdd);
-  showAddToPlaylistModal.value = false;
-  const msg = addedCount === 0 ? "歌单内歌曲重复" : "已加入歌单";
-  useToast().showToast(msg, addedCount === 0 ? 'info' : 'success');
+const openAddToPlaylistSelection = () => {
+  const songPaths = isBatchMode.value
+    ? Array.from(selectedPaths.value)
+    : (contextMenuTargetSong.value ? [contextMenuTargetSong.value.path] : []);
+  openAddToPlaylistDialog(songPaths);
 };
 
 // NOTE: 拖拽逻辑已统一迁移到 composables/useSongDrag.ts
@@ -156,7 +155,6 @@ defineExpose({
   handleBatchPlay,
   requestBatchDelete,
   handleBatchMove,
-  showAddToPlaylistModal
 });
 </script>
 
@@ -167,7 +165,7 @@ defineExpose({
       v-if="!hideHeader"
       v-model:isBatchMode="isBatchMode" 
       @batchPlay="handleBatchPlay" 
-      @openAddToPlaylist="showAddToPlaylistModal = true" 
+      @openAddToPlaylist="openAddToPlaylistSelection" 
       @batchDelete="requestBatchDelete" 
       @batchMove="handleBatchMove" 
     />
@@ -190,7 +188,6 @@ defineExpose({
       </section>
     </div>
     
-    <AddToPlaylistModal :visible="showAddToPlaylistModal" :selectedCount="isBatchMode ? selectedPaths.size : 1" @close="showAddToPlaylistModal = false" @add="handleAddToPlaylist"/>
     <MoveToFolderModal :visible="showMoveToFolderModal" :selectedCount="selectedPaths.size" @close="showMoveToFolderModal = false" @confirm="confirmBatchMove" />
     <SongContextMenu 
       :visible="showContextMenu" 
@@ -200,7 +197,7 @@ defineExpose({
       :is-playlist-view="currentViewMode === 'playlist'" 
       :is-folder-view="currentViewMode === 'folder'"
       @close="showContextMenu = false" 
-      @add-to-playlist="showAddToPlaylistModal = true"
+      @add-to-playlist="openAddToPlaylistSelection"
       @delete-disk="handleSongPhysicalDelete"
     />
     <ModernModal :visible="showConfirm" title="移除歌曲" :content="confirmMessage" type="danger" confirm-text="移除" @confirm="executeBatchDelete" @cancel="showConfirm = false" />

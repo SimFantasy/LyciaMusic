@@ -18,9 +18,6 @@ interface UseHomeBatchActionsOptions {
   sourceSongs: Ref<Song[]>;
   favoritePaths: Ref<string[]>;
   playlists: Ref<Playlist[]>;
-  contextMenuTargetSong: Ref<Song | null>;
-  showAddToPlaylistModal: Ref<boolean>;
-  addSongsToPlaylist: (playlistId: string, songPaths: string[]) => number;
   moveFilesToFolder: (paths: string[], targetFolder: string) => Promise<number>;
   removeFromHistory: (songPaths: string[]) => Promise<void>;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
@@ -36,9 +33,6 @@ export function useHomeBatchActions({
   sourceSongs,
   favoritePaths,
   playlists,
-  contextMenuTargetSong,
-  showAddToPlaylistModal,
-  addSongsToPlaylist,
   moveFilesToFolder,
   removeFromHistory,
   showToast,
@@ -170,20 +164,6 @@ export function useHomeBatchActions({
     }
   };
 
-  const handleAddToPlaylist = (playlistId: string) => {
-    const songsToAdd = isBatchMode.value
-      ? Array.from(selectedPaths.value)
-      : (contextMenuTargetSong.value ? [contextMenuTargetSong.value.path] : []);
-    const addedCount = addSongsToPlaylist(playlistId, songsToAdd);
-
-    if (isBatchMode.value) {
-      isBatchMode.value = false;
-    }
-
-    showAddToPlaylistModal.value = false;
-    showToast(addedCount === 0 ? '歌单内歌曲重复' : '已加入歌单', addedCount === 0 ? 'info' : 'success');
-  };
-
   return {
     showMoveToFolderModal,
     showConfirm,
@@ -195,7 +175,6 @@ export function useHomeBatchActions({
     executeConfirmAction,
     handleBatchMove,
     confirmBatchMove,
-    handleAddToPlaylist,
     openConfirm,
   };
 }

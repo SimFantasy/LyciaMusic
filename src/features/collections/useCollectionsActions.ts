@@ -8,7 +8,7 @@ interface PlayerPlaylistApi {
   addSongsToPlaylist: (playlistId: string, songPaths: string[]) => number;
   viewPlaylist: (id: string) => void;
   getSongsFromPlaylist: (playlistId: string) => Song[];
-  openAddToPlaylistDialog: (songPath: string) => void;
+  openAddToPlaylistDialog: (songPaths: string | string[]) => void;
 }
 
 interface PlayerHistoryFavoritesApi {
@@ -38,7 +38,7 @@ export function useCollectionsActions({
     playerPlaylist.addSongsToPlaylist(playlistId, songPaths);
   const viewPlaylist = (id: string) => playerPlaylist.viewPlaylist(id);
   const getSongsFromPlaylist = (playlistId: string) => playerPlaylist.getSongsFromPlaylist(playlistId);
-  const openAddToPlaylistDialog = (songPath: string) => playerPlaylist.openAddToPlaylistDialog(songPath);
+  const openAddToPlaylistDialog = (songPaths: string | string[]) => playerPlaylist.openAddToPlaylistDialog(songPaths);
   const isFavorite = (song: Song | null) => playerHistoryFavorites.isFavorite(song);
   const toggleFavorite = (song: Song) => playerHistoryFavorites.toggleFavorite(song);
   const addToHistory = (song: Song) => playerHistoryFavorites.addToHistory(song);

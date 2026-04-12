@@ -5,7 +5,7 @@
       :selectedCount="selectedPaths.size"
       @playAll="handlePlayAll"
       @batchPlay="handleBatchPlay"
-      @addToPlaylist="showAddToPlaylistModal = true"
+      @addToPlaylist="openAddToPlaylistSelection"
       @batchDelete="requestBatchDelete"
       @clearAll="handleClearAll"
       @addAllToQueue="handleAddAllToQueue"
@@ -31,13 +31,6 @@
     <!-- 弹窗组件 -->
     <DragGhost />
     
-    <AddToPlaylistModal 
-      :visible="showAddToPlaylistModal" 
-      :selectedCount="isBatchMode ? selectedPaths.size : 1" 
-      @close="showAddToPlaylistModal = false" 
-      @add="handleAddToPlaylist"
-    />
-    
     <SongContextMenu 
       :visible="showContextMenu" 
       :x="contextMenuX" 
@@ -45,7 +38,7 @@
       :song="contextMenuTargetSong" 
       :is-playlist-view="false" 
       @close="showContextMenu = false" 
-      @add-to-playlist="showAddToPlaylistModal = true"
+      @add-to-playlist="openAddToPlaylistSelection"
     />
     
     <ModernModal 
@@ -63,24 +56,23 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { Song } from '../types';
+import { useAddToPlaylistDialog } from '../features/collections/addToPlaylistDialog';
 import { useLibraryCollections } from '../features/collections/useLibraryCollections';
 import { usePlaybackController } from '../features/playback/usePlaybackController';
 import { usePlayerLibraryView } from '../features/library/usePlayerLibraryView';
-import { useToast } from '../composables/toast';
 
 // 组件导入
 import FavoritesHeader from '../components/headers/FavoritesHeader.vue';
 import SongTable from '../components/song-list/SongTable.vue';
 import DragGhost from '../components/common/DragGhost.vue';
-import AddToPlaylistModal from '../components/overlays/AddToPlaylistModal.vue';
 import SongContextMenu from '../components/overlays/SongContextMenu.vue';
 import ModernModal from '../components/common/ModernModal.vue';
 import { useSongDrag } from '../composables/useSongDrag';
 
 const { displaySongList, searchQuery } = usePlayerLibraryView();
 const { playSong, addSongsToQueue } = usePlaybackController();
+const { openAddToPlaylistDialog } = useAddToPlaylistDialog();
 const {
-  addSongsToPlaylist,
   favoritePaths,
   clearFavorites,
 } = useLibraryCollections();
@@ -96,7 +88,6 @@ const songTableRef = ref<any>(null);
 const { handleTableDragStart } = useSongDrag(localSongList, isBatchMode, selectedPaths, songTableRef);
 
 // 弹窗状态
-const showAddToPlaylistModal = ref(false);
 const showConfirm = ref(false);
 const confirmMessage = ref('');
 const confirmAction = ref<() => void>(() => {});
@@ -162,15 +153,11 @@ const handleClearAll = () => {
   showConfirm.value = true;
 };
 
-// 添加到歌单
-const handleAddToPlaylist = (playlistId: string) => {
-  const songsToAdd = isBatchMode.value 
-    ? Array.from(selectedPaths.value) 
+const openAddToPlaylistSelection = () => {
+  const songPaths = isBatchMode.value
+    ? Array.from(selectedPaths.value)
     : (contextMenuTargetSong.value ? [contextMenuTargetSong.value.path] : []);
-  const addedCount = addSongsToPlaylist(playlistId, songsToAdd);
-  showAddToPlaylistModal.value = false;
-  const msg = addedCount === 0 ? "歌单内歌曲重复" : "已加入歌单";
-  useToast().showToast(msg, addedCount === 0 ? 'info' : 'success');
+  openAddToPlaylistDialog(songPaths);
 };
 
 // 右键菜单

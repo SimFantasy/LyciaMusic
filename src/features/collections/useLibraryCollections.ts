@@ -5,16 +5,15 @@ import { historyApi } from '../../services/tauri/historyApi';
 import { useCollectionsStore } from './store';
 import router from '../../router';
 import { useHomeNavigation } from '../../composables/useHomeNavigation';
-import { useUiStore } from '../../shared/stores/ui';
+import { useAddToPlaylistDialog } from './addToPlaylistDialog';
 
 const LEGACY_PLAYER_HISTORY_KEY = 'player_history';
 
 export function useLibraryCollections() {
   const collectionsStore = useCollectionsStore();
-  const uiStore = useUiStore();
   const { openHomeAll, openHomePlaylist } = useHomeNavigation(router);
   const collectionsRefs = storeToRefs(collectionsStore);
-  const uiRefs = storeToRefs(uiStore);
+  const { openAddToPlaylistDialog: openDialog } = useAddToPlaylistDialog();
 
   const createPlaylist = (name: string, initialSongs: string[] = []) =>
     collectionsStore.createPlaylist(name, initialSongs);
@@ -116,15 +115,10 @@ export function useLibraryCollections() {
     }
   };
 
-  const openAddToPlaylistDialog = (songPath: string) => {
-    uiStore.playlistAddTargetSongs = [songPath];
-    uiStore.showAddToPlaylistModal = true;
-  };
+  const openAddToPlaylistDialog = (songPaths: string | string[]) => openDialog(songPaths);
 
   return {
     ...collectionsRefs,
-    showAddToPlaylistModal: uiRefs.showAddToPlaylistModal,
-    playlistAddTargetSongs: uiRefs.playlistAddTargetSongs,
     createPlaylist,
     deletePlaylist,
     addToPlaylist,

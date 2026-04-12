@@ -42,14 +42,10 @@ describe('playback and ui stores', () => {
     const uiStore = useUiStore();
 
     uiStore.showQueue = true;
-    uiStore.showAddToPlaylistModal = true;
-    uiStore.playlistAddTargetSongs = ['/music/demo.flac'];
     uiStore.dominantColors = ['#111111', '#222222', '#333333', '#444444'];
     uiStore.isMiniMode = true;
 
     expect(uiStore.showQueue).toBe(true);
-    expect(uiStore.showAddToPlaylistModal).toBe(true);
-    expect(uiStore.playlistAddTargetSongs).toEqual(['/music/demo.flac']);
     expect(uiStore.dominantColors).toEqual(['#111111', '#222222', '#333333', '#444444']);
     expect(uiStore.isMiniMode).toBe(true);
   });
@@ -61,6 +57,6 @@ describe('playback and ui stores', () => {
     expect(playbackStore.isPlaying).toBe(false);
     expect(playbackStore.playQueue).toEqual([]);
     expect(uiStore.showQueue).toBe(false);
-    expect(uiStore.showAddToPlaylistModal).toBe(false);
+    expect(uiStore.showPlayerDetail).toBe(false);
   });
 });

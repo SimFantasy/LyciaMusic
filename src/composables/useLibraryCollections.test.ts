@@ -31,8 +31,8 @@ import { playerStorage } from '../services/storage/playerStorage';
 import { historyApi } from '../services/tauri/historyApi';
 import router from '../router';
 import type { Song } from '../types';
+import { useAddToPlaylistDialog } from '../features/collections/addToPlaylistDialog';
 import { useCollectionsStore } from '../features/collections/store';
-import { useUiStore } from '../shared/stores/ui';
 import { useLibraryCollections } from '../features/collections/useLibraryCollections';
 
 const makeSong = (overrides: Partial<Song> = {}): Song => ({
@@ -55,6 +55,7 @@ describe('library collections domain', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.clearAllMocks();
+    useAddToPlaylistDialog().closeAddToPlaylistDialog();
     (router.currentRoute as any).value = {
       path: '/',
       query: {},
@@ -102,9 +103,9 @@ describe('library collections domain', () => {
     });
   });
 
-  it('dedupes playlist additions and opens the add-to-playlist modal through ui state', () => {
+  it('dedupes playlist additions and opens the add-to-playlist modal through feature dialog state', () => {
     const collectionsStore = useCollectionsStore();
-    const uiStore = useUiStore();
+    const dialog = useAddToPlaylistDialog();
     const { createPlaylist, addSongsToPlaylist, openAddToPlaylistDialog } = useLibraryCollections();
 
     const playlistId = createPlaylist('Daily Mix', ['/music/a.flac']);
@@ -113,8 +114,8 @@ describe('library collections domain', () => {
 
     expect(added).toBe(1);
     expect(collectionsStore.playlists[0]?.songPaths).toEqual(['/music/a.flac', '/music/b.flac']);
-    expect(uiStore.playlistAddTargetSongs).toEqual(['/music/c.flac']);
-    expect(uiStore.showAddToPlaylistModal).toBe(true);
+    expect(dialog.playlistAddTargetSongs.value).toEqual(['/music/c.flac']);
+    expect(dialog.showAddToPlaylistModal.value).toBe(true);
   });
 
   it('updates favorites and recent history while forwarding persistence side effects', async () => {

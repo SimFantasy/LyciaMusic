@@ -15,6 +15,7 @@ import { usePlayerViewState } from './usePlayerViewState';
 import { useSongContextActions } from './useSongContextActions';
 import { useSongDrag } from './useSongDrag';
 import { useToast } from './toast';
+import { useAddToPlaylistDialog } from '../features/collections/addToPlaylistDialog';
 import { useLibraryCollections } from '../features/collections/useLibraryCollections';
 import { useLibraryRuntimeActions } from '../features/library/useLibraryRuntimeActions';
 import { usePlayerLibraryView } from '../features/library/usePlayerLibraryView';
@@ -26,6 +27,7 @@ export function useHomePageModel() {
   const router = useRouter();
   const { openHomeAlbum } = useHomeNavigation(router);
   const { showToast } = useToast();
+  const { openAddToPlaylistDialog } = useAddToPlaylistDialog();
 
   const libraryStore = useLibraryStore();
   const {
@@ -63,7 +65,6 @@ export function useHomePageModel() {
   } = useLibraryRuntimeActions();
   const {
     createPlaylist,
-    addSongsToPlaylist,
     favoritePaths,
     removeFromHistory,
     playlists,
@@ -74,7 +75,6 @@ export function useHomePageModel() {
   const isManagementMode = ref(false);
   const selectedPaths = ref<Set<string>>(new Set());
   const songTableRef = ref<any>(null);
-  const showAddToPlaylistModal = ref(false);
   const setSongTableRef = (instance: any | null) => {
     songTableRef.value = instance;
   };
@@ -132,7 +132,6 @@ export function useHomePageModel() {
     executeConfirmAction,
     handleBatchMove,
     confirmBatchMove,
-    handleAddToPlaylist,
     openConfirm,
   } = useHomeBatchActions({
     currentViewMode,
@@ -143,9 +142,6 @@ export function useHomePageModel() {
     sourceSongs,
     favoritePaths,
     playlists,
-    contextMenuTargetSong,
-    showAddToPlaylistModal,
-    addSongsToPlaylist,
     moveFilesToFolder,
     removeFromHistory,
     showToast,
@@ -240,6 +236,20 @@ export function useHomePageModel() {
     }
   };
 
+  const handleAddToPlaylistRequest = () => {
+    const songPaths = isBatchMode.value
+      ? Array.from(selectedPaths.value)
+      : (contextMenuTargetSong.value ? [contextMenuTargetSong.value.path] : []);
+
+    openAddToPlaylistDialog(songPaths, {
+      onAdded: () => {
+        if (isBatchMode.value) {
+          isBatchMode.value = false;
+        }
+      },
+    });
+  };
+
   const handleRefreshAll = async () => {
     await refreshAllFolders();
     showToast('Refresh completed', 'success');
@@ -281,7 +291,7 @@ export function useHomePageModel() {
     setSongTableRef,
     handlePlayAll,
     handleBatchPlay,
-    showAddToPlaylistModal,
+    handleAddToPlaylistRequest,
     requestBatchDelete,
     handleFolderBatchDelete,
     handleBatchMove,
@@ -321,6 +331,5 @@ export function useHomePageModel() {
     showRenameModal,
     renameInitialValue,
     confirmRename,
-    handleAddToPlaylist,
   };
 }

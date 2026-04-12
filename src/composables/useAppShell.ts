@@ -6,7 +6,7 @@ import { useExternalPathBridge } from './useExternalPathBridge';
 import { useAppShellTheme } from './useAppShellTheme';
 import { useMiniModeWindow } from './useMiniModeWindow';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
-import { useLibraryCollections } from '../features/collections/useLibraryCollections';
+import { useAddToPlaylistDialog } from '../features/collections/addToPlaylistDialog';
 import { useHomeRouteSync } from './useHomeRouteSync';
 import { usePlayerViewState } from './usePlayerViewState';
 import { usePlayerLibraryView } from '../features/library/usePlayerLibraryView';
@@ -28,8 +28,9 @@ export function useAppShell() {
   const {
     showAddToPlaylistModal,
     playlistAddTargetSongs,
-    addSongsToPlaylist,
-  } = useLibraryCollections();
+    closeAddToPlaylistDialog,
+    addSelectedSongsToPlaylist,
+  } = useAddToPlaylistDialog();
 
   const { hasWindowMaterial, isMicaWindowMaterial, syncWindowMaterial } = useAppThemeSync();
   const { mainBlurStyle, mainContainerClass } = useAppShellTheme({
@@ -99,8 +100,7 @@ export function useAppShell() {
   });
 
   const handleGlobalAdd = (playlistId: string) => {
-    addSongsToPlaylist(playlistId, playlistAddTargetSongs.value);
-    showAddToPlaylistModal.value = false;
+    addSelectedSongsToPlaylist(playlistId);
   };
 
   return {
@@ -116,6 +116,7 @@ export function useAppShell() {
     mainBlurStyle,
     showAddToPlaylistModal,
     playlistAddTargetSongs,
+    closeAddToPlaylistDialog,
     handleGlobalAdd,
   };
 }

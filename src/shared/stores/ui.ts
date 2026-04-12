@@ -10,8 +10,6 @@ export const useUiStore = defineStore('ui', () => {
   const showQueue = ref(false);
   const isMiniMode = ref(false);
   const showVolumePopover = ref(false);
-  const showAddToPlaylistModal = ref(false);
-  const playlistAddTargetSongs = ref<string[]>([]);
   const dominantColors = ref<string[]>([...defaultDominantColors]);
 
   return {
@@ -21,8 +19,6 @@ export const useUiStore = defineStore('ui', () => {
     showQueue,
     isMiniMode,
     showVolumePopover,
-    showAddToPlaylistModal,
-    playlistAddTargetSongs,
     dominantColors,
   };
 });

@@ -26,6 +26,7 @@ const {
   mainBlurStyle,
   showAddToPlaylistModal,
   playlistAddTargetSongs,
+  closeAddToPlaylistDialog,
   handleGlobalAdd,
 } = useAppShell();
 
@@ -141,7 +142,7 @@ useDesktopLyricsWindowBridge();
       v-if="!isMiniMode"
       :visible="showAddToPlaylistModal"
       :selectedCount="playlistAddTargetSongs.length"
-      @close="showAddToPlaylistModal = false"
+      @close="closeAddToPlaylistDialog"
       @add="handleGlobalAdd"
     />
 
