@@ -3,7 +3,7 @@ defineOptions({ name: 'Artists' });
 
 import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { artistViewportCoverSnapshotCache } from '../caches/imageCaches';
+import { artistHeaderCache, artistViewportCoverSnapshotCache } from '../caches/imageCaches';
 import { dragSession } from '../composables/dragState';
 import { useCoverCache } from '../composables/useCoverCache';
 import { useHomeNavigation } from '../composables/useHomeNavigation';
@@ -36,7 +36,11 @@ const ARTIST_ROW_SPAN = ARTIST_ITEM_HEIGHT + ARTIST_GRID_GAP_Y;
 const ARTIST_SECTION_HEADER_HEIGHT = 56;
 const ARTIST_OVERSCAN_ROWS = 2;
 
-const handleArtistClick = (artistName: string) => {
+const handleArtistClick = (artistName: string, firstSongPath?: string) => {
+  const cachedCover = getDisplayedCoverUrl(firstSongPath);
+  if (cachedCover) {
+    artistHeaderCache.set(artistName, cachedCover);
+  }
   void openHomeArtist(artistName);
 };
 
@@ -565,7 +569,7 @@ onUnmounted(() => {
               ]"
               @mousedown="handleMouseDown($event, item.index, item.artist)"
               @mousemove="handleItemMouseMove($event, item.artist.name)"
-              @click="handleArtistClick(item.artist.name)"
+              @click="handleArtistClick(item.artist.name, item.artist.firstSongPath)"
             >
               <div
                 class="relative w-12 h-12 md:w-14 md:h-14 shrink-0"
@@ -605,7 +609,7 @@ onUnmounted(() => {
           ]"
           @mousedown="handleMouseDown($event, item.index, item.artist)"
           @mousemove="handleItemMouseMove($event, item.artist.name)"
-          @click="handleArtistClick(item.artist.name)"
+          @click="handleArtistClick(item.artist.name, item.artist.firstSongPath)"
         >
           <div
             class="relative w-12 h-12 md:w-14 md:h-14 shrink-0"

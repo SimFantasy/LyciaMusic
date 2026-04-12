@@ -24,50 +24,54 @@ const coverUrl = ref('');
 const isLoading = ref(false);
 const artistName = computed(() => props.albumArtist || '未知歌手');
 const albumCacheKey = computed(() => `${props.albumName}::${props.albumArtist || '未知歌手'}`);
-const { loadCover, loadFullCover } = useCoverCache();
+const { loadCover, peekCoverUrl } = useCoverCache();
 let coverRequestId = 0;
 
-watch(() => props.songs, async (newSongs) => {
+watch([albumCacheKey, () => props.songs], async ([cacheKey, newSongs]) => {
   const requestId = ++coverRequestId;
 
   if (!newSongs || newSongs.length === 0) {
     coverUrl.value = '';
+    isLoading.value = false;
     return;
   }
 
   const firstSongPath = newSongs[0]?.path;
   if (!firstSongPath) {
     coverUrl.value = '';
+    isLoading.value = false;
     return;
   }
 
-  const cachedCover = albumHeaderCache.get(albumCacheKey.value);
-  if (cachedCover !== undefined) {
+  const cachedCover = albumHeaderCache.get(cacheKey);
+  if (cachedCover) {
     coverUrl.value = cachedCover;
+    isLoading.value = false;
+    return;
+  }
+
+  const cachedThumbnail = peekCoverUrl(firstSongPath);
+  if (cachedThumbnail) {
+    coverUrl.value = cachedThumbnail;
+    albumHeaderCache.set(cacheKey, cachedThumbnail);
     isLoading.value = false;
     return;
   }
 
   isLoading.value = true;
   try {
-    let resolvedCover = await loadFullCover(firstSongPath);
+    const resolvedCover = await loadCover(firstSongPath);
     if (requestId !== coverRequestId) return;
-    if (!resolvedCover) {
-      resolvedCover = await loadCover(firstSongPath);
-      if (requestId !== coverRequestId) return;
-    }
 
     if (resolvedCover) {
       coverUrl.value = resolvedCover;
-      albumHeaderCache.set(albumCacheKey.value, resolvedCover);
+      albumHeaderCache.set(cacheKey, resolvedCover);
     } else {
       coverUrl.value = '';
-      albumHeaderCache.set(albumCacheKey.value, '');
     }
   } catch {
     if (requestId !== coverRequestId) return;
     coverUrl.value = '';
-    albumHeaderCache.set(albumCacheKey.value, '');
   } finally {
     if (requestId === coverRequestId) {
       isLoading.value = false;

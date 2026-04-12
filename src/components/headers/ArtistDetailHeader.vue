@@ -23,52 +23,60 @@ const emit = defineEmits([
 
 const coverUrl = ref<string>('');
 const isLoading = ref<boolean>(false);
-const { loadCover, loadFullCover } = useCoverCache();
+const { loadCover, peekCoverUrl } = useCoverCache();
 let coverRequestId = 0;
 
-watch(() => props.songs, async (newSongs) => {
+watch([() => props.artistName, () => props.songs], async ([artistName, newSongs]) => {
   const requestId = ++coverRequestId;
-  if (newSongs && newSongs.length > 0) {
-    const firstSongPath = newSongs[0].path;
-    if (firstSongPath) {
-      const cachedCover = artistHeaderCache.get(props.artistName);
-      if (cachedCover !== undefined) {
-        coverUrl.value = cachedCover;
-        isLoading.value = false;
-        return;
-      }
 
-      isLoading.value = true;
-      try {
-        let resolvedCover = await loadFullCover(firstSongPath);
-        if (requestId !== coverRequestId) return;
-        if (!resolvedCover) {
-           resolvedCover = await loadCover(firstSongPath);
-           if (requestId !== coverRequestId) return;
-        }
-        if (resolvedCover) {
-          coverUrl.value = resolvedCover;
-          artistHeaderCache.set(props.artistName, resolvedCover);
-        } else {
-          coverUrl.value = '';
-          artistHeaderCache.set(props.artistName, '');
-        }
-      } catch {
-        if (requestId !== coverRequestId) return;
-        coverUrl.value = '';
-        artistHeaderCache.set(props.artistName, '');
-      } finally {
-        if (requestId === coverRequestId) {
-          isLoading.value = false;
-        }
-      }
-    } else {
-      if (requestId !== coverRequestId) return;
-      coverUrl.value = '';
-    }
-  } else {
+  if (!newSongs || newSongs.length === 0) {
     if (requestId !== coverRequestId) return;
     coverUrl.value = '';
+    isLoading.value = false;
+    return;
+  }
+
+  const firstSongPath = newSongs[0]?.path;
+  if (!firstSongPath) {
+    if (requestId !== coverRequestId) return;
+    coverUrl.value = '';
+    isLoading.value = false;
+    return;
+  }
+
+  const cachedHeaderCover = artistHeaderCache.get(artistName);
+  if (cachedHeaderCover) {
+    coverUrl.value = cachedHeaderCover;
+    isLoading.value = false;
+    return;
+  }
+
+  const cachedThumbnail = peekCoverUrl(firstSongPath);
+  if (cachedThumbnail) {
+    coverUrl.value = cachedThumbnail;
+    artistHeaderCache.set(artistName, cachedThumbnail);
+    isLoading.value = false;
+    return;
+  }
+
+  isLoading.value = true;
+  try {
+    const resolvedCover = await loadCover(firstSongPath);
+    if (requestId !== coverRequestId) return;
+
+    if (resolvedCover) {
+      coverUrl.value = resolvedCover;
+      artistHeaderCache.set(artistName, resolvedCover);
+    } else {
+      coverUrl.value = '';
+    }
+  } catch {
+    if (requestId !== coverRequestId) return;
+    coverUrl.value = '';
+  } finally {
+    if (requestId === coverRequestId) {
+      isLoading.value = false;
+    }
   }
 }, { immediate: true });
 
