@@ -58,6 +58,7 @@ const folderToPhysicalDelete = ref<string | null>(null);
 const showMoveConfirm = ref(false);
 const dragPendingFiles = ref<string[]>([]);
 const moveTarget = ref<{ name: string; path: string } | null>(null);
+let skipNextSelectionExpand = false;
 
 const activeTreeNodes = computed(() => {
   if (!activeRootPath.value) {
@@ -77,7 +78,7 @@ const {
 } = useListScrollMemory(treeScrollMemoryKey, treeContainerRef);
 
 watch(
-  () => folderTree.value,
+  folderTree,
   async newTree => {
     if (newTree.length === 0) {
       activeRootPath.value = null;
@@ -98,7 +99,7 @@ watch(
       }
     }
   },
-  { immediate: true, deep: true },
+  { immediate: true },
 );
 
 watch(currentFolderFilter, async newPath => {
@@ -106,11 +107,15 @@ watch(currentFolderFilter, async newPath => {
     return;
   }
 
+  if (skipNextSelectionExpand) {
+    skipNextSelectionExpand = false;
+    return;
+  }
+
   try {
     await expandFolderPath(newPath);
-    await refreshFolder(newPath);
   } catch (error) {
-    console.error('Failed to load songs for folder:', error);
+    console.error('Failed to expand folder path:', error);
   }
 });
 
@@ -147,6 +152,7 @@ const restoreFolderViewState = async () => {
 };
 
 const handleTreeSelect = (node: FolderNode) => {
+  skipNextSelectionExpand = true;
   currentFolderFilter.value = node.path;
 };
 

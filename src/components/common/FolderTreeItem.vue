@@ -8,12 +8,30 @@
         isSelected ? 'bg-blue-500/10 text-blue-500 dark:text-blue-400' : 'hover:bg-black/5 dark:hover:bg-white/5',
         isTarget ? 'ring-2 ring-blue-500 bg-blue-50/50 dark:bg-blue-900/20 z-10' : '',
       ]"
-      @click.stop="handleSelectAndExpand"
+      @click.stop="handleSelect"
       @mousemove="handleMouseMoveDrag"
       @mouseleave="handleMouseLeaveDrag"
       @contextmenu.prevent.stop="handleContextMenu"
     >
       <div :style="{ width: `${depth * 16}px` }" class="shrink-0 transition-all"></div>
+      <button
+        v-if="node.child_count > 0"
+        type="button"
+        class="mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 transition-colors hover:bg-black/5 hover:text-gray-700 dark:text-white/50 dark:hover:bg-white/5 dark:hover:text-white/80"
+        :aria-label="node.is_expanded ? '折叠文件夹' : '展开文件夹'"
+        @click.stop="handleToggle"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-4 w-4 transition-transform duration-200"
+          :class="node.is_expanded ? 'rotate-90' : ''"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
+          <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 111.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+        </svg>
+      </button>
+      <div v-else class="mr-1 h-6 w-6 shrink-0"></div>
 
       <div class="w-9 h-9 rounded shrink-0 mr-2 overflow-hidden bg-gray-200 dark:bg-gray-700 flex items-center justify-center border border-black/5 dark:border-white/5 relative">
         <img v-if="coverUrl" :src="coverUrl" class="w-full h-full object-cover transition-opacity duration-300" />
@@ -117,8 +135,13 @@ const handleMouseLeaveDrag = () => {
   }
 };
 
-const handleSelectAndExpand = () => {
+const shouldAnimateExpansion = computed(() => props.node.child_count <= 16);
+
+const handleSelect = () => {
   emit('select', props.node);
+};
+
+const handleToggle = () => {
   emit('toggle', props.node);
 };
 
@@ -152,12 +175,26 @@ watch(() => props.node.cover_song_path, loadFolderCover);
 
 const beforeEnter = (element: Element) => {
   const htmlElement = element as HTMLElement;
+  if (!shouldAnimateExpansion.value) {
+    htmlElement.style.height = 'auto';
+    htmlElement.style.opacity = '1';
+    return;
+  }
+
   htmlElement.style.height = '0';
   htmlElement.style.opacity = '0';
 };
 
 const enter = (element: Element, done: () => void) => {
   const htmlElement = element as HTMLElement;
+  if (!shouldAnimateExpansion.value) {
+    htmlElement.style.height = 'auto';
+    htmlElement.style.opacity = '1';
+    htmlElement.style.transition = '';
+    done();
+    return;
+  }
+
   htmlElement.offsetHeight;
   htmlElement.style.transition = 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)';
   htmlElement.style.height = `${htmlElement.scrollHeight}px`;
@@ -182,6 +219,13 @@ const afterEnter = (element: Element) => {
 
 const leave = (element: Element) => {
   const htmlElement = element as HTMLElement;
+  if (!shouldAnimateExpansion.value) {
+    htmlElement.style.transition = '';
+    htmlElement.style.height = '';
+    htmlElement.style.opacity = '';
+    return;
+  }
+
   htmlElement.style.height = `${htmlElement.offsetHeight}px`;
   htmlElement.offsetHeight;
 
