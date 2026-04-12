@@ -66,6 +66,7 @@
       :y="contextMenuY"
       :song="contextMenuTargetSong"
       :is-playlist-view="localViewMode === 'playlist'"
+      :is-folder-view="localViewMode === 'folder'"
       :isManagementMode="isManagementMode"
       @close="showContextMenu = false"
       @add-to-playlist="showAddToPlaylistModal = true"

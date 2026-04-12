@@ -198,6 +198,7 @@ defineExpose({
       :y="contextMenuY" 
       :song="contextMenuTargetSong" 
       :is-playlist-view="currentViewMode === 'playlist'" 
+      :is-folder-view="currentViewMode === 'folder'"
       @close="showContextMenu = false" 
       @add-to-playlist="showAddToPlaylistModal = true"
       @delete-disk="handleSongPhysicalDelete"

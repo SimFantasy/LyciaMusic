@@ -1,77 +1,225 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed, watch, nextTick } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type CSSProperties } from 'vue';
+import { useRoute } from 'vue-router';
+
 import { usePlayer } from '../../composables/player';
-import type { Song } from '../../types';
-import { useLibraryCollections } from '../../features/collections/useLibraryCollections';
 import { usePlayerViewState } from '../../composables/usePlayerViewState';
+import { useToast } from '../../composables/toast';
+import { useLibraryCollections } from '../../features/collections/useLibraryCollections';
+import type { Song } from '../../types';
+
+type SongMenuAction =
+  | 'play'
+  | 'playNext'
+  | 'addToQueueTail'
+  | 'addToPlaylist'
+  | 'viewArtist'
+  | 'viewAlbum'
+  | 'openFolder'
+  | 'viewSongInfo'
+  | 'removeFromList'
+  | 'deleteFromDisk';
+
+type SongMenuEntry =
+  | { type: 'divider'; key: string }
+  | { type: 'action'; key: SongMenuAction; label: string; danger?: boolean };
+
+interface SongMenuIcon {
+  fill?: boolean;
+  viewBox?: string;
+  paths: Array<{
+    d: string;
+    fillRule?: 'evenodd' | 'nonzero' | 'inherit';
+    clipRule?: 'evenodd' | 'nonzero' | 'inherit';
+  }>;
+}
 
 const props = defineProps<{
-  visible: boolean,
-  x: number,
-  y: number,
-  song: Song | null,
-  isPlaylistView: boolean,
-  isManagementMode?: boolean // 🟢 Prop
+  visible: boolean;
+  x: number;
+  y: number;
+  song: Song | null;
+  isPlaylistView: boolean;
+  isFolderView?: boolean;
+  isManagementMode?: boolean;
 }>();
 
-const emit = defineEmits(['close', 'addToPlaylist', 'delete-disk']);
+const emit = defineEmits(['close', 'add-to-playlist', 'delete-disk']);
 
-// 引入需要的操作
-const { playSong, playNext, addSongToQueue, removeSongFromList, openInFinder } = usePlayer();
+const route = useRoute();
+const { showToast } = useToast();
+const { playSong, playNext, addSongToQueue, removeSongFromList, openInFinder, currentViewMode } = usePlayer();
 const { removeFromPlaylist } = useLibraryCollections();
 const { filterCondition } = usePlayerViewState();
 
 const menuRef = ref<HTMLElement | null>(null);
-
-// 存储菜单尺寸
 const menuSize = ref({ width: 0, height: 0 });
 
-// 当菜单显示时，立即测量其尺寸
-watch(() => props.visible, async (newVal) => {
-  if (newVal) {
-    await nextTick();
-    if (menuRef.value) {
-      menuSize.value = {
-        width: menuRef.value.offsetWidth,
-        height: menuRef.value.offsetHeight
-      };
-    }
-  } else {
-    // 隐藏时重置，确保下次弹出时重新计算
-    menuSize.value = { width: 0, height: 0 };
+const showDeleteFromDisk = computed(() => Boolean(props.isFolderView && props.isManagementMode));
+
+const menuIcons: Record<SongMenuAction, SongMenuIcon> = {
+  play: {
+    fill: true,
+    viewBox: '0 0 24 24',
+    paths: [
+      {
+        d: 'M8 5v14l11-7z',
+      },
+    ],
+  },
+  playNext: {
+    fill: true,
+    viewBox: '0 0 24 24',
+    paths: [
+      {
+        d: 'M5 7.5A1.5 1.5 0 017.26 6.2L16 12l-8.74 5.8A1.5 1.5 0 015 16.5v-9zM18 6h2v12h-2z',
+      },
+    ],
+  },
+  addToQueueTail: {
+    fill: false,
+    viewBox: '0 0 24 24',
+    paths: [
+      { d: 'M4 7h10', fillRule: 'evenodd', clipRule: 'evenodd' },
+      { d: 'M4 12h10', fillRule: 'evenodd', clipRule: 'evenodd' },
+      { d: 'M4 17h6', fillRule: 'evenodd', clipRule: 'evenodd' },
+      { d: 'M16 14v6', fillRule: 'evenodd', clipRule: 'evenodd' },
+      { d: 'M13 17h6', fillRule: 'evenodd', clipRule: 'evenodd' },
+    ],
+  },
+  addToPlaylist: {
+    fill: false,
+    viewBox: '0 0 24 24',
+    paths: [
+      { d: 'M4 12h8', fillRule: 'evenodd', clipRule: 'evenodd' },
+      { d: 'M8 8v8', fillRule: 'evenodd', clipRule: 'evenodd' },
+      { d: 'M4 6h14', fillRule: 'evenodd', clipRule: 'evenodd' },
+      { d: 'M14 12h4' },
+      { d: 'M14 18h6' },
+    ],
+  },
+  viewArtist: {
+    fill: false,
+    viewBox: '0 0 24 24',
+    paths: [
+      { d: 'M12 12a3.5 3.5 0 100-7 3.5 3.5 0 000 7z' },
+      { d: 'M5 19a7 7 0 0114 0' },
+    ],
+  },
+  viewAlbum: {
+    fill: false,
+    viewBox: '0 0 24 24',
+    paths: [
+      { d: 'M12 19a7 7 0 100-14 7 7 0 000 14z' },
+      { d: 'M12 14.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z' },
+      { d: 'M12 7.5v-1' },
+    ],
+  },
+  openFolder: {
+    fill: false,
+    viewBox: '0 0 24 24',
+    paths: [
+      { d: 'M3.75 7.5A2.25 2.25 0 016 5.25h4.19c.4 0 .78.16 1.06.44l1.06 1.06c.28.28.66.44 1.06.44H18A2.25 2.25 0 0120.25 9.5v7A2.25 2.25 0 0118 18.75H6a2.25 2.25 0 01-2.25-2.25v-9z' },
+    ],
+  },
+  viewSongInfo: {
+    fill: false,
+    viewBox: '0 0 24 24',
+    paths: [
+      { d: 'M12 10.5v5' },
+      { d: 'M12 7.75h.01' },
+      { d: 'M12 20a8 8 0 100-16 8 8 0 000 16z' },
+    ],
+  },
+  removeFromList: {
+    fill: false,
+    viewBox: '0 0 24 24',
+    paths: [
+      { d: 'M5 12h14', fillRule: 'evenodd', clipRule: 'evenodd' },
+      { d: 'M4.5 7h15' },
+      { d: 'M4.5 17h15' },
+    ],
+  },
+  deleteFromDisk: {
+    fill: false,
+    viewBox: '0 0 24 24',
+    paths: [
+      { d: 'M5 7h14' },
+      { d: 'M9 7V5.75A1.75 1.75 0 0110.75 4h2.5A1.75 1.75 0 0115 5.75V7' },
+      { d: 'M8 10.5v5.5' },
+      { d: 'M12 10.5v5.5' },
+      { d: 'M16 10.5v5.5' },
+      { d: 'M6.5 7l.7 10.3A2 2 0 009.2 19h5.6a2 2 0 001.99-1.7L17.5 7' },
+    ],
+  },
+};
+
+const menuEntries = computed<SongMenuEntry[]>(() => {
+  const entries: SongMenuEntry[] = [
+    { type: 'action', key: 'play', label: '播放' },
+    { type: 'action', key: 'playNext', label: '下一首播放' },
+    { type: 'action', key: 'addToQueueTail', label: '添加到队尾' },
+    { type: 'divider', key: 'divider-primary' },
+    { type: 'action', key: 'addToPlaylist', label: '收藏到歌单' },
+    { type: 'action', key: 'viewArtist', label: '查看艺人' },
+    { type: 'action', key: 'viewAlbum', label: '查看专辑' },
+    { type: 'divider', key: 'divider-secondary' },
+    { type: 'action', key: 'openFolder', label: '打开文件所在目录' },
+    { type: 'action', key: 'viewSongInfo', label: '查看歌曲信息' },
+    { type: 'divider', key: 'divider-danger' },
+    { type: 'action', key: 'removeFromList', label: '从列表移除' },
+  ];
+
+  if (showDeleteFromDisk.value) {
+    entries.push({ type: 'action', key: 'deleteFromDisk', label: '从本地移除', danger: true });
   }
+
+  return entries;
 });
 
-const menuStyle = computed(() => {
-  if (!props.visible) return {};
+watch(
+  () => props.visible,
+  async (visible) => {
+    if (visible) {
+      await nextTick();
+      if (menuRef.value) {
+        menuSize.value = {
+          width: menuRef.value.offsetWidth,
+          height: menuRef.value.offsetHeight,
+        };
+      }
+      return;
+    }
+
+    menuSize.value = { width: 0, height: 0 };
+  },
+);
+
+const menuStyle = computed<CSSProperties>(() => {
+  if (!props.visible) {
+    return {};
+  }
 
   let top = props.y;
   let left = props.x;
 
-  // 边界检查 - 垂直方向
   if (top + menuSize.value.height > window.innerHeight) {
     top = props.y - menuSize.value.height;
   }
 
-  // 边界检查 - 水平方向
   if (left + menuSize.value.width > window.innerWidth) {
     left = props.x - menuSize.value.width;
   }
 
-  // 极致兜底：确保不溢出屏幕顶端或左侧
-  top = Math.max(8, top);
-  left = Math.max(8, left);
-
   return {
-    left: `${left}px`,
-    top: `${top}px`,
-    visibility: (menuSize.value.height === 0 ? 'hidden' : 'visible') as any
+    left: `${Math.max(8, left)}px`,
+    top: `${Math.max(8, top)}px`,
+    visibility: menuSize.value.height === 0 ? 'hidden' : 'visible',
   };
 });
 
-// 点击外部自动关闭
-const handleGlobalClick = (e: MouseEvent) => {
-  if (props.visible && menuRef.value && !menuRef.value.contains(e.target as Node)) {
+const handleGlobalClick = (event: MouseEvent) => {
+  if (props.visible && menuRef.value && !menuRef.value.contains(event.target as Node)) {
     emit('close');
   }
 };
@@ -79,126 +227,108 @@ const handleGlobalClick = (e: MouseEvent) => {
 onMounted(() => window.addEventListener('mousedown', handleGlobalClick));
 onUnmounted(() => window.removeEventListener('mousedown', handleGlobalClick));
 
-const handleAction = (action: string) => {
-  if (!props.song) return;
-  
-  switch(action) {
+const showPlaceholderToast = (label: string) => {
+  showToast(`${label}功能暂未开放`, 'info');
+};
+
+const handleRemoveFromList = () => {
+  if (!props.song) {
+    return;
+  }
+
+  if (props.isPlaylistView) {
+    removeFromPlaylist(filterCondition.value, props.song.path);
+    return;
+  }
+
+  if (route.path === '/favorites' || route.path === '/recent' || currentViewMode.value === 'all') {
+    void removeSongFromList(props.song);
+    return;
+  }
+
+  showToast('当前页面暂不支持从列表移除', 'info');
+};
+
+const handleAction = (action: SongMenuAction) => {
+  if (!props.song) {
+    return;
+  }
+
+  switch (action) {
     case 'play':
-      playSong(props.song);
+      void playSong(props.song);
       break;
     case 'playNext':
       playNext(props.song);
       break;
-    case 'addToQueue': // 🟢 新增
+    case 'addToQueueTail':
       addSongToQueue(props.song);
       break;
     case 'addToPlaylist':
-      emit('addToPlaylist'); // 触发父组件弹窗
+      emit('add-to-playlist');
       break;
-    case 'removeFromList':
-      removeSongFromList(props.song);
+    case 'viewArtist':
+      showPlaceholderToast('查看艺人');
       break;
-    case 'removeFromPlaylist':
-      if (props.isPlaylistView) {
-        removeFromPlaylist(filterCondition.value, props.song.path);
-      }
+    case 'viewAlbum':
+      showPlaceholderToast('查看专辑');
       break;
     case 'openFolder':
-      openInFinder(props.song.path);
+      void openInFinder(props.song.path);
+      break;
+    case 'viewSongInfo':
+      showPlaceholderToast('查看歌曲信息');
+      break;
+    case 'removeFromList':
+      handleRemoveFromList();
       break;
     case 'deleteFromDisk':
       emit('delete-disk', props.song);
       break;
   }
+
   emit('close');
 };
 </script>
 
 <template>
   <Teleport to="body">
-    <div 
-      v-if="visible" 
+    <div
+      v-if="visible"
       ref="menuRef"
-      class="fixed z-[9999] bg-white/80 backdrop-blur-2xl rounded-lg shadow-xl border border-gray-100/50 py-1.5 text-sm text-gray-700 min-w-[180px] animate-in fade-in zoom-in-95 duration-75 select-none"
+      class="fixed z-[9999] min-w-[220px] select-none rounded-lg border border-gray-100/50 bg-white/80 py-1.5 text-sm text-gray-700 shadow-xl backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-75"
       :style="menuStyle"
       @contextmenu.prevent
     >
-      <div @click="handleAction('play')" class="px-4 py-2.5 hover:bg-gray-100 cursor-pointer flex items-center group transition-colors">
-        <div class="w-5 h-5 mr-3 flex items-center justify-center text-gray-500 group-hover:text-gray-800">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
-            <path fill-rule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clip-rule="evenodd" />
-          </svg>
-        </div>
-        <span>播放</span>
-      </div>
-
-      <div @click="handleAction('playNext')" class="px-4 py-2.5 hover:bg-gray-100 cursor-pointer flex items-center group transition-colors">
-        <div class="w-5 h-5 mr-3 flex items-center justify-center text-gray-500 group-hover:text-gray-800">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
-            <path d="M5.055 7.06c-1.25-.714-2.805.189-2.805 1.628v8.123c0 1.44 1.555 2.342 2.805 1.628L12 14.471v2.34c0 1.44 1.555 2.342 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256L14.805 7.06C13.555 6.346 12 7.25 12 8.688v2.34L5.055 7.06z" />
-          </svg>
-        </div>
-        <span>下一首播放</span>
-      </div>
-
-      <!-- 🟢 新增：添加到播放队列 -->
-      <div @click="handleAction('addToQueue')" class="px-4 py-2.5 hover:bg-gray-100 cursor-pointer flex items-center group transition-colors">
-        <div class="w-5 h-5 mr-3 flex items-center justify-center text-gray-500 group-hover:text-gray-800">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
-            <path fill-rule="evenodd" d="M3.75 12a.75.75 0 01.75-.75h15a.75.75 0 010 1.5h-15a.75.75 0 01-.75-.75z" clip-rule="evenodd" />
-            <path fill-rule="evenodd" d="M3.75 6a.75.75 0 01.75-.75h15a.75.75 0 010 1.5h-15a.75.75 0 01-.75-.75z" clip-rule="evenodd" />
-            <path fill-rule="evenodd" d="M3.75 18a.75.75 0 01.75-.75h7.5a.75.75 0 010 1.5h-7.5a.75.75 0 01-.75-.75z" clip-rule="evenodd" />
-          </svg>
-        </div>
-        <span>添加到播放队列</span>
-      </div>
-
-      <div @click="handleAction('addToPlaylist')" class="px-4 py-2.5 hover:bg-gray-100 cursor-pointer flex items-center group transition-colors border-b border-gray-100 mb-1">
-        <div class="w-5 h-5 mr-3 flex items-center justify-center text-gray-500 group-hover:text-gray-800">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
-            <path fill-rule="evenodd" d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5h-6.75v6.75a.75.75 0 01-1.5 0v-6.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z" clip-rule="evenodd" />
-          </svg>
-        </div>
-        <span>收藏到歌单</span>
-      </div>
-
-      <template v-if="isPlaylistView">
-        <div @click="handleAction('removeFromPlaylist')" class="px-4 py-2.5 hover:bg-gray-100 cursor-pointer flex items-center group transition-colors">
-          <div class="w-5 h-5 mr-3 flex items-center justify-center text-gray-500 group-hover:text-gray-800">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
-              <path fill-rule="evenodd" d="M5.47 5.47a.75.75 0 011.06 0L12 10.94l5.47-5.47a.75.75 0 111.06 1.06L13.06 12l5.47 5.47a.75.75 0 11-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 01-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 010-1.06z" clip-rule="evenodd" />
+      <template v-for="entry in menuEntries" :key="entry.key">
+        <div v-if="entry.type === 'divider'" class="my-1 h-px bg-gray-100"></div>
+        <div
+          v-else
+          class="flex cursor-pointer items-center px-4 py-2.5 transition-colors hover:bg-gray-100"
+          :class="entry.danger ? 'text-[#EC4141] hover:text-[#d73a3a]' : ''"
+          @click="handleAction(entry.key)"
+        >
+          <div class="mr-3 flex h-4 w-4 shrink-0 items-center justify-center">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4"
+              :viewBox="menuIcons[entry.key].viewBox || '0 0 24 24'"
+              :fill="menuIcons[entry.key].fill ? 'currentColor' : 'none'"
+              :stroke="menuIcons[entry.key].fill ? 'none' : 'currentColor'"
+              :stroke-width="menuIcons[entry.key].fill ? undefined : '1.8'"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                v-for="(path, pathIndex) in menuIcons[entry.key].paths"
+                :key="`${entry.key}-${pathIndex}`"
+                :d="path.d"
+                :fill-rule="path.fillRule"
+                :clip-rule="path.clipRule"
+              />
             </svg>
           </div>
-          <span>从歌单中删除</span>
-        </div>
-      </template>
-
-      <template v-else>
-        <div @click="handleAction('removeFromList')" class="px-4 py-2.5 hover:bg-gray-100 cursor-pointer flex items-center group transition-colors">
-          <div class="w-5 h-5 mr-3 flex items-center justify-center text-gray-500 group-hover:text-gray-800">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
-              <path fill-rule="evenodd" d="M5.47 5.47a.75.75 0 011.06 0L12 10.94l5.47-5.47a.75.75 0 111.06 1.06L13.06 12l5.47 5.47a.75.75 0 11-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 01-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 010-1.06z" clip-rule="evenodd" />
-            </svg>
-          </div>
-          <span>从列表删除</span>
-        </div>
-
-        <div @click="handleAction('openFolder')" class="px-4 py-2.5 hover:bg-gray-100 cursor-pointer flex items-center group transition-colors">
-          <div class="w-5 h-5 mr-3 flex items-center justify-center text-gray-500 group-hover:text-gray-800">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
-              <path d="M19.5 21a3 3 0 003-3v-4.5a3 3 0 00-3-3h-15a3 3 0 00-3 3V18a3 3 0 003 3h15zM1.5 10.146V6a3 3 0 013-3h5.379a2.25 2.25 0 011.59.659l2.122 2.121c.14.141.331.22.53.22H19.5a3 3 0 013 3v1.146A4.483 4.483 0 0019.5 9h-15a4.483 4.483 0 00-3 1.146z" />
-            </svg>
-          </div>
-          <span>打开文件所在目录</span>
-        </div>
-
-        <div v-if="isManagementMode" @click="handleAction('deleteFromDisk')" class="px-4 py-2.5 hover:bg-gray-100 cursor-pointer flex items-center group transition-colors text-red-500 hover:text-red-600 border-t border-gray-100 mt-1">
-          <div class="w-5 h-5 mr-3 flex items-center justify-center text-red-500 group-hover:text-red-600">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
-              <path fill-rule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clip-rule="evenodd" />
-            </svg>
-          </div>
-          <span>从本地磁盘删除</span>
+          <span>{{ entry.label }}</span>
         </div>
       </template>
     </div>
