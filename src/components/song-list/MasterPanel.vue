@@ -4,8 +4,9 @@ import { computed, nextTick, onActivated, onMounted, onUnmounted, ref, watch } f
 import { usePlayer } from '../../composables/player';
 import { useToast } from '../../composables/toast';
 import { dragSession } from '../../composables/dragState';
+import { useLibraryFolderSongPathCache } from '../../composables/useLibraryFolderSongPathCache';
 import { useListScrollMemory } from '../../composables/useListScrollMemory';
-import type { FolderNode } from '../../types';
+import type { FolderNode, Song } from '../../types';
 import FolderTreeItem from '../common/FolderTreeItem.vue';
 import ModernInputModal from '../common/ModernInputModal.vue';
 import ModernModal from '../common/ModernModal.vue';
@@ -21,6 +22,11 @@ const {
   folderTree,
   activeRootPath,
   currentFolderFilter,
+  currentViewMode,
+  searchQuery,
+  folderSortMode,
+  folderCustomOrder,
+  songLookup,
   fetchFolderTree,
   toggleFolderNode,
   expandFolderPath,
@@ -37,6 +43,7 @@ const {
 } = usePlayer();
 
 const toast = useToast();
+const { loadFolderViewSongPaths } = useLibraryFolderSongPathCache();
 
 const sidebarWidth = ref(240);
 const isResizing = ref(false);
@@ -198,35 +205,97 @@ const handleRefreshFolder = async () => {
   }
 };
 
-const playFolder = () => {
+const normalizeSearchText = (value: string) => value.trim().toLowerCase();
+
+const songMatchesFolderSearch = (path: string, query: string) => {
+  const song = songLookup.value.get(path);
+  if (!song) {
+    return false;
+  }
+
+  const loweredQuery = normalizeSearchText(query);
+  if (!loweredQuery) {
+    return true;
+  }
+
+  return song.name.toLowerCase().includes(loweredQuery)
+    || (song.title || '').toLowerCase().includes(loweredQuery)
+    || song.artist.toLowerCase().includes(loweredQuery)
+    || song.album.toLowerCase().includes(loweredQuery)
+    || path.toLowerCase().includes(loweredQuery)
+    || song.artist_names.some(name => name.toLowerCase().includes(loweredQuery))
+    || song.effective_artist_names.some(name => name.toLowerCase().includes(loweredQuery));
+};
+
+const resolveFolderMenuSongs = async (folderPath: string) => {
+  if (!folderPath) {
+    return [];
+  }
+
+  if (currentViewMode.value !== 'folder') {
+    return getSongsInFolder(folderPath);
+  }
+
+  if (folderSortMode.value !== 'custom') {
+    const sortedPaths = await loadFolderViewSongPaths({
+      folderPath,
+      query: searchQuery.value,
+      sortMode: folderSortMode.value,
+    });
+
+    return sortedPaths
+      .map(path => songLookup.value.get(path))
+      .filter((song): song is Song => !!song);
+  }
+
+  let songs = getSongsInFolder(folderPath);
+
+  if (searchQuery.value.trim()) {
+    songs = songs.filter(song => songMatchesFolderSearch(song.path, searchQuery.value));
+  }
+
+  const customOrder = folderCustomOrder.value[folderPath] || [];
+  if (customOrder.length > 0) {
+    const orderMap = new Map(customOrder.map((path, index) => [path, index]));
+    songs = [...songs].sort((left, right) => {
+      const leftIndex = orderMap.has(left.path) ? orderMap.get(left.path)! : Number.MAX_SAFE_INTEGER;
+      const rightIndex = orderMap.has(right.path) ? orderMap.get(right.path)! : Number.MAX_SAFE_INTEGER;
+      return leftIndex - rightIndex;
+    });
+  }
+
+  return songs;
+};
+
+const playFolder = async () => {
   if (!targetFolder.value) {
     return;
   }
 
-  const songs = getSongsInFolder(targetFolder.value.path);
+  const songs = await resolveFolderMenuSongs(targetFolder.value.path);
   if (songs.length > 0) {
-    playSong(songs[0]);
+    await playSong(songs[0]);
     currentFolderFilter.value = targetFolder.value.path;
   }
 
   showMenu.value = false;
 };
 
-const addToQueue = () => {
+const addToQueue = async () => {
   if (!targetFolder.value) {
     return;
   }
 
-  addSongsToQueue(getSongsInFolder(targetFolder.value.path));
+  addSongsToQueue(await resolveFolderMenuSongs(targetFolder.value.path));
   showMenu.value = false;
 };
 
-const createPlaylistFromFolder = () => {
+const createPlaylistFromFolder = async () => {
   if (!targetFolder.value) {
     return;
   }
 
-  const songs = getSongsInFolder(targetFolder.value.path);
+  const songs = await resolveFolderMenuSongs(targetFolder.value.path);
   if (songs.length > 0) {
     createPlaylist(targetFolder.value.name, songs.map(song => song.path));
     toast.showToast('Playlist created from folder', 'success');
