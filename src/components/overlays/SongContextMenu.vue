@@ -6,6 +6,7 @@ import { usePlayer } from '../../composables/player';
 import { usePlayerViewState } from '../../composables/usePlayerViewState';
 import { useToast } from '../../composables/toast';
 import { useLibraryCollections } from '../../features/collections/useLibraryCollections';
+import { useSongInfoDialog } from '../../composables/useSongInfoDialog';
 import type { Song } from '../../types';
 
 type SongMenuAction =
@@ -55,6 +56,7 @@ const { showToast } = useToast();
 const { playSong, playNext, addSongToQueue, removeSongFromList, openInFinder, currentViewMode } = usePlayer();
 const { removeFromPlaylist } = useLibraryCollections();
 const { filterCondition } = usePlayerViewState();
+const { openSongInfo } = useSongInfoDialog();
 
 const menuRef = ref<HTMLElement | null>(null);
 const menuSize = ref({ width: 0, height: 0 });
@@ -283,7 +285,7 @@ const handleAction = (action: SongMenuAction) => {
       void openInFinder(props.song.path);
       break;
     case 'viewSongInfo':
-      showPlaceholderToast('查看歌曲信息');
+      openSongInfo(props.song);
       break;
     case 'removeFromList':
       handleRemoveFromList();

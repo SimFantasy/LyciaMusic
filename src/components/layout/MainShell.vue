@@ -13,6 +13,7 @@ const PlayerDetail = defineAsyncComponent(() => import('../player/PlayerDetail.v
 const AddToPlaylistModal = defineAsyncComponent(() => import('../overlays/AddToPlaylistModal.vue'));
 const Toast = defineAsyncComponent(() => import('../common/Toast.vue'));
 const MiniPlayer = defineAsyncComponent(() => import('./MiniPlayer.vue'));
+const SongInfoModal = defineAsyncComponent(() => import('../overlays/SongInfoModal.vue'));
 
 const {
   isMiniMode,
@@ -29,6 +30,9 @@ const {
   closeAddToPlaylistDialog,
   handleGlobalAdd,
 } = useAppShell();
+
+import { useSongInfoDialog } from '../../composables/useSongInfoDialog';
+const { isSongInfoVisible, currentSongInfo, closeSongInfo } = useSongInfoDialog();
 
 useDesktopLyricsWindowBridge();
 </script>
@@ -144,6 +148,13 @@ useDesktopLyricsWindowBridge();
       :selectedCount="playlistAddTargetSongs.length"
       @close="closeAddToPlaylistDialog"
       @add="handleGlobalAdd"
+    />
+
+    <SongInfoModal
+      v-if="!isMiniMode"
+      :visible="isSongInfoVisible"
+      :song="currentSongInfo"
+      @close="closeSongInfo"
     />
 
     <Toast />
