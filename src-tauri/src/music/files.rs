@@ -4,7 +4,7 @@ use super::tags::{extract_detail_metadata, extract_embedded_lyrics, read_tagged_
 use super::types::SongDetail;
 use crate::database::DbState;
 use crate::error::CommandError;
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use std::fs;
 use std::path::{Component, Path};
 use std::process::Command;
@@ -98,13 +98,36 @@ pub async fn get_song_lyrics(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn get_song_detail(path: String) -> Result<SongDetail, String> {
+pub async fn get_song_detail(path: String, db_state: State<'_, DbState>) -> Result<SongDetail, String> {
     let normalized_path = normalize_path(&path);
     let path_obj = Path::new(&path);
     let mut detail = SongDetail {
-        path: normalized_path,
+        path: normalized_path.clone(),
         ..SongDetail::default()
     };
+
+    {
+        let conn = db_state.conn.lock().map_err(|e| e.to_string())?;
+        if let Some((container, codec, file_size)) = conn
+            .query_row(
+                "SELECT container, codec, file_size FROM songs WHERE path = ?1 LIMIT 1",
+                params![&normalized_path],
+                |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|e| e.to_string())?
+        {
+            detail.container = container.filter(|value| !value.trim().is_empty());
+            detail.codec = codec.filter(|value| !value.trim().is_empty());
+            detail.file_size = file_size.and_then(|value| u64::try_from(value).ok());
+        }
+    }
 
     if let Ok(metadata) = fs::metadata(path_obj) {
         detail.file_size = Some(metadata.len());
@@ -115,6 +138,13 @@ pub async fn get_song_detail(path: String) -> Result<SongDetail, String> {
         detail.genre = tag_detail.genre;
         detail.year = tag_detail.year;
         detail.comment = tag_detail.comment;
+
+        if detail.container.is_none() {
+            detail.container = path_obj
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext.to_ascii_lowercase());
+        }
     }
 
     Ok(detail)
@@ -279,3 +309,9 @@ pub fn move_file_to_folder(
 pub fn is_directory(path: String) -> bool {
     Path::new(&path).is_dir()
 }
+
+
+
+
+
+

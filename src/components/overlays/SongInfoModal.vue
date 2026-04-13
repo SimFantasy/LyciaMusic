@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue';
-import type { Song } from '../../types';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import type { Song, SongDetail } from '../../types';
 import { useCoverCache } from '../../composables/useCoverCache';
 import { usePlayer } from '../../composables/player';
+import { useSongDetailCache } from '../../composables/useSongDetailCache';
 
 const props = defineProps<{
   visible: boolean;
@@ -12,10 +13,13 @@ const props = defineProps<{
 const emit = defineEmits(['close']);
 
 const { loadCover } = useCoverCache();
+const { loadSongDetail } = useSongDetailCache();
 const { openInFinder } = usePlayer();
 
 const coverUrl = ref('');
 const isClosing = ref(false);
+const currentSongDetail = ref<SongDetail | null>(null);
+let detailRequestId = 0;
 
 const handleClose = () => {
   if (isClosing.value) return;
@@ -27,18 +31,35 @@ const handleClose = () => {
 };
 
 watch(
-  () => props.visible,
-  async (newVal) => {
-    if (newVal && props.song?.path) {
-      isClosing.value = false;
-      const url = await loadCover(props.song.path);
-      coverUrl.value = url || '';
-    } else {
+  [() => props.visible, () => props.song?.path ?? ''],
+  async ([visible, path]) => {
+    const requestId = ++detailRequestId;
+
+    if (!visible || !path) {
+      currentSongDetail.value = null;
       setTimeout(() => {
-        coverUrl.value = '';
+        if (requestId === detailRequestId) {
+          coverUrl.value = '';
+        }
       }, 200);
+      return;
     }
-  }
+
+    isClosing.value = false;
+
+    const [url, detail] = await Promise.all([
+      loadCover(path),
+      loadSongDetail(path).catch(() => null),
+    ]);
+
+    if (requestId !== detailRequestId || !props.visible || path !== (props.song?.path ?? '')) {
+      return;
+    }
+
+    coverUrl.value = url || '';
+    currentSongDetail.value = detail;
+  },
+  { immediate: true },
 );
 
 const handleKeydown = (e: KeyboardEvent) => {
@@ -57,16 +78,41 @@ const handleOpenFolder = () => {
   }
 };
 
+const displaySong = computed(() => {
+  if (!props.song) {
+    return null;
+  }
+
+  return {
+    ...props.song,
+    genre: currentSongDetail.value?.genre ?? props.song.genre,
+    year: currentSongDetail.value?.year ?? props.song.year,
+    container: currentSongDetail.value?.container ?? props.song.container,
+    codec: currentSongDetail.value?.codec ?? props.song.codec,
+    file_size: currentSongDetail.value?.file_size ?? props.song.file_size,
+  };
+});
+
 // 格式化工具
 const formatSize = (bytes?: number) => {
-  if (!bytes) return '未知';
-  const mb = bytes / (1024 * 1024);
-  return `${mb.toFixed(2)} MB`;
+  if (bytes === undefined || bytes <= 0) return '无';
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  const precision = value >= 100 || unitIndex === 0 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(precision)} ${units[unitIndex]}`;
 };
 
-const formatDuration = (ms?: number) => {
-  if (!ms) return '未知';
-  const totalSeconds = Math.floor(ms / 1000);
+const formatDuration = (seconds?: number) => {
+  if (!seconds) return '无';
+  const totalSeconds = Math.floor(seconds);
   const m = Math.floor(totalSeconds / 60);
   const s = totalSeconds % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;
@@ -74,17 +120,17 @@ const formatDuration = (ms?: number) => {
 
 const formatBitrate = (bitrate?: number) => {
   if (!bitrate) return '待扫描';
-  return `${Math.round(bitrate / 1000)} kbps`;
+  return `${Math.round(bitrate)} kbps`;
 };
 
 const formatSampleRate = (rate?: number) => {
-  if (!rate) return '未知';
+  if (!rate) return '无';
   return `${(rate / 1000).toFixed(1)} kHz`;
 };
 
-const formatTime = (timestamp?: number) => {
-  if (!timestamp) return '未知';
-  const date = new Date(timestamp);
+const formatTime = (timestampSeconds?: number) => {
+  if (!timestampSeconds) return '无';
+  const date = new Date(timestampSeconds * 1000);
   return date.toLocaleString();
 };
 </script>
@@ -122,7 +168,7 @@ const formatTime = (timestamp?: number) => {
         </div>
 
         <!-- 内容区 -->
-        <div v-if="song" class="p-6 overflow-y-auto custom-scrollbar">
+        <div v-if="displaySong" class="p-6 overflow-y-auto custom-scrollbar">
           <!-- 上半部分：封面 + 基本信息 -->
           <div class="flex flex-col sm:flex-row gap-6 mb-8">
             <div class="w-32 h-32 shrink-0 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 shadow-md border border-gray-200/50 dark:border-gray-700/50 flex items-center justify-center">
@@ -133,18 +179,18 @@ const formatTime = (timestamp?: number) => {
             </div>
             
             <div class="flex-1 min-w-0 flex flex-col justify-center">
-              <h3 class="text-2xl font-bold text-gray-900 dark:text-white truncate" :title="song.title || song.name">{{ song.title || song.name }}</h3>
-              <p class="text-base text-gray-600 dark:text-gray-300 mt-2 truncate" :title="song.artist">{{ song.artist }}</p>
-              <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate" :title="song.album">专辑：{{ song.album }}</p>
+              <h3 class="text-2xl font-bold text-gray-900 dark:text-white truncate" :title="displaySong.title || displaySong.name">{{ displaySong.title || displaySong.name }}</h3>
+              <p class="text-base text-gray-600 dark:text-gray-300 mt-2 truncate" :title="displaySong.artist">{{ displaySong.artist }}</p>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate" :title="displaySong.album">专辑：{{ displaySong.album }}</p>
               
               <div class="flex flex-wrap gap-2 mt-3">
-                <span v-if="song.format || song.container" class="px-2 py-0.5 text-xs font-semibold uppercase rounded bg-gray-100/80 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border border-black/5 dark:border-white/10">
-                  {{ song.format || song.container }}
+                <span v-if="displaySong.format || displaySong.container" class="px-2 py-0.5 text-xs font-semibold uppercase rounded bg-gray-100/80 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border border-black/5 dark:border-white/10">
+                  {{ displaySong.format || displaySong.container }}
                 </span>
-                <span v-if="song.bit_depth || song.sample_rate" class="px-2 py-0.5 text-xs font-semibold rounded bg-[#ec4141]/10 text-[#ec4141] dark:bg-[#ec4141]/20 dark:text-[#ff8364] border border-[#ec4141]/20">
-                  {{ song.bit_depth ? song.bit_depth + 'bit' : '' }} {{ song.sample_rate ? (song.sample_rate / 1000).toFixed(1) + 'kHz' : '' }}
+                <span v-if="displaySong.bit_depth || displaySong.sample_rate" class="px-2 py-0.5 text-xs font-semibold rounded bg-[#ec4141]/10 text-[#ec4141] dark:bg-[#ec4141]/20 dark:text-[#ff8364] border border-[#ec4141]/20">
+                  {{ displaySong.bit_depth ? displaySong.bit_depth + 'bit' : '' }} {{ displaySong.sample_rate ? (displaySong.sample_rate / 1000).toFixed(1) + 'kHz' : '' }}
                 </span>
-                <span v-if="song.is_various_artists_album" class="px-2 py-0.5 text-xs font-semibold rounded bg-blue-100/80 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50">
+                <span v-if="displaySong.is_various_artists_album" class="px-2 py-0.5 text-xs font-semibold rounded bg-blue-100/80 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50">
                   群星合辑
                 </span>
               </div>
@@ -155,20 +201,20 @@ const formatTime = (timestamp?: number) => {
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800">
               <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">文件路径</div>
-              <div class="text-sm text-gray-800 dark:text-gray-200 break-all leading-snug">{{ song.path }}</div>
+              <div class="text-sm text-gray-800 dark:text-gray-200 break-all leading-snug">{{ displaySong.path }}</div>
             </div>
 
             <div class="bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800">
               <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">音频质量</div>
               <div class="flex gap-4">
                 <div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatBitrate(song.bitrate) }}</div>
+                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatBitrate(displaySong.bitrate) }}</div>
                 </div>
                 <div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatSampleRate(song.sample_rate) }}</div>
+                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatSampleRate(displaySong.sample_rate) }}</div>
                 </div>
                 <div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatSize(song.file_size) }}</div>
+                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatSize(displaySong.file_size) }}</div>
                 </div>
               </div>
             </div>
@@ -176,30 +222,30 @@ const formatTime = (timestamp?: number) => {
             <div class="bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800 sm:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
                 <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">音乐时长</div>
-                <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatDuration(song.duration) }}</div>
+                <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatDuration(displaySong.duration) }}</div>
               </div>
               <div>
                 <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">年份</div>
-                <div class="text-sm text-gray-800 dark:text-gray-200">{{ song.year || '未知' }}</div>
+                <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.year || '无' }}</div>
               </div>
               <div>
-                <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">流派</div>
-                <div class="text-sm text-gray-800 dark:text-gray-200 truncate" :title="song.genre">{{ song.genre || '未知' }}</div>
+                <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">风格</div>
+                <div class="text-sm text-gray-800 dark:text-gray-200 truncate" :title="displaySong.genre">{{ displaySong.genre || '无' }}</div>
               </div>
               <div>
                 <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">封装/编码</div>
-                <div class="text-sm text-gray-800 dark:text-gray-200">{{ song.container || '未知' }} / {{ song.codec || '未知' }}</div>
+                <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.container || '无' }} / {{ displaySong.codec || '无' }}</div>
               </div>
             </div>
 
             <div class="bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800 sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">添加时间</div>
-                <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatTime(song.added_at) }}</div>
+                <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatTime(displaySong.added_at) }}</div>
               </div>
               <div>
                 <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">文件修改时间</div>
-                <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatTime(song.file_modified_at) }}</div>
+                <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatTime(displaySong.file_modified_at) }}</div>
               </div>
             </div>
           </div>
