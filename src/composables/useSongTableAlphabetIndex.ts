@@ -25,6 +25,7 @@ type StringRef = Ref<string> | ComputedRef<string>;
 interface UseSongTableAlphabetIndexOptions {
   songs: Ref<Song[]>;
   scrollTop: Ref<number>;
+  containerHeight: Ref<number>;
   containerRef: Ref<HTMLElement | null>;
   rootRef: Ref<HTMLElement | null>;
   routePath: StringRef;
@@ -41,6 +42,7 @@ interface UseSongTableAlphabetIndexOptions {
 export function useSongTableAlphabetIndex({
   songs,
   scrollTop,
+  containerHeight,
   containerRef,
   rootRef,
   routePath,
@@ -150,6 +152,34 @@ export function useSongTableAlphabetIndex({
 
     return !!findOwningRootPath(getParentFolderPath(currentSong.value.path));
   });
+
+  const isCurrentSongVisibleInViewport = computed(() => {
+    if (currentSongIndex.value < 0) {
+      return false;
+    }
+
+    const viewportHeight = Math.max(
+      containerHeight.value,
+      containerRef.value?.clientHeight ?? 0,
+    );
+
+    if (viewportHeight <= 0) {
+      return false;
+    }
+
+    const viewportTop = scrollTop.value;
+    const viewportBottom = viewportTop + viewportHeight;
+    const currentRowTop = currentSongIndex.value * ROW_HEIGHT;
+    const currentRowBottom = currentRowTop + ROW_HEIGHT;
+
+    return currentRowBottom > viewportTop && currentRowTop < viewportBottom;
+  });
+
+  const showLocateCurrentSongButton = computed(() =>
+    routePath.value === '/' &&
+    canLocateCurrentSong.value &&
+    !isCurrentSongVisibleInViewport.value,
+  );
 
   const clearHideIndexBarTimer = () => {
     if (hideIndexBarTimer) {
@@ -399,6 +429,7 @@ export function useSongTableAlphabetIndex({
     hoverIndexKey,
     isIndexBarVisible,
     canLocateCurrentSong,
+    showLocateCurrentSongButton,
     handleIndexHotspotEnter,
     handleIndexHotspotMove,
     handleIndexHotspotLeave,

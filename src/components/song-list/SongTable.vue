@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { dragSession } from '../../composables/dragState';
@@ -266,6 +266,7 @@ const {
   hoverIndexKey,
   isIndexBarVisible,
   canLocateCurrentSong,
+  showLocateCurrentSongButton,
   handleIndexHotspotEnter,
   handleIndexHotspotMove,
   handleIndexHotspotLeave,
@@ -277,6 +278,7 @@ const {
 } = useSongTableAlphabetIndex({
   songs: computed(() => props.songs),
   scrollTop,
+  containerHeight,
   containerRef,
   rootRef,
   routePath: computed(() => route.path),
@@ -712,22 +714,25 @@ const getRowStyle = (songIndex: number, songPath: string) => {
             {{ key }}
           </button>
         </div>
-
-        <button
-          type="button"
-          class="index-locate-btn"
-          :class="{ 'index-locate-btn-disabled': !canLocateCurrentSong }"
-          :disabled="!canLocateCurrentSong"
-          title="&#23450;&#20301;&#24403;&#21069;&#25773;&#25918;&#27468;&#26354;"
-          @click="scrollToCurrentSong"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4" />
-            <circle cx="12" cy="12" r="3.25" stroke-width="1.8" />
-          </svg>
-        </button>
       </div>
     </div>
+
+    <transition name="locate-fab">
+      <button
+        v-if="showLocateCurrentSongButton"
+        type="button"
+        class="absolute right-6 bottom-6 z-30 flex items-center justify-center w-10 h-10 rounded-full bg-white/80 dark:bg-black/50 backdrop-blur-md border border-gray-200/50 dark:border-white/10 shadow-[0_4px_16px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.3)] text-gray-500 dark:text-gray-400 transition-all duration-300"
+        :class="canLocateCurrentSong ? 'hover:bg-white dark:hover:bg-gray-800 hover:text-[#ec4141] dark:hover:text-[#ec4141] hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(0,0,0,0.12)] cursor-pointer' : 'opacity-40 cursor-not-allowed'"
+        :disabled="!canLocateCurrentSong"
+        title="定位当前播放歌曲"
+        @click="scrollToCurrentSong"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4" />
+          <circle cx="12" cy="12" r="3.25" stroke-width="1.8" />
+        </svg>
+      </button>
+    </transition>
 
     <Teleport to="body">
       <transition name="index-bubble">
@@ -962,34 +967,6 @@ const getRowStyle = (songIndex: number, songPath: string) => {
   transform: scale(1.04);
 }
 
-.index-locate-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.8rem;
-  height: 1.8rem;
-  border-radius: 9999px;
-  background: rgb(255, 255, 255);
-  color: rgba(31, 41, 55, 0.88);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(10px);
-  transition:
-    background-color 0.18s ease,
-    color 0.18s ease,
-    transform 0.18s ease,
-    opacity 0.18s ease;
-}
-
-.index-locate-btn:hover {
-  background: rgba(255, 255, 255, 0.68);
-  color: #ec4141;
-  transform: scale(1.05);
-}
-
-.index-locate-btn-disabled {
-  opacity: 0.42;
-  cursor: not-allowed;
-}
 
 :global(.dark) .library-hero-backdrop {
   background: rgba(2, 6, 23, 0.68);
@@ -1058,15 +1035,6 @@ const getRowStyle = (songIndex: number, songPath: string) => {
   color: rgba(255, 255, 255, 0.98);
 }
 
-:global(.dark) .index-locate-btn {
-  background: rgb(0, 0, 0);
-  color: rgba(255, 255, 255, 0.86);
-}
-
-:global(.dark) .index-locate-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fda4af;
-}
 
 .index-bubble-enter-active,
 .index-bubble-leave-active {
@@ -1079,6 +1047,19 @@ const getRowStyle = (songIndex: number, songPath: string) => {
 .index-bubble-leave-to {
   opacity: 0;
   transform: scale(0.92);
+}
+
+.locate-fab-enter-active,
+.locate-fab-leave-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.locate-fab-enter-from,
+.locate-fab-leave-to {
+  opacity: 0;
+  transform: translateY(8px) scale(0.94);
 }
 
 .library-hero-enter-active,
