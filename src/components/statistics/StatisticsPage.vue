@@ -208,8 +208,8 @@ onUnmounted(() => {
             {{ TEXT.libraryOverview }}
             <button
               @click="showManager = !showManager"
-              class="text-[10px] font-normal not-italic px-1.5 py-0.5 rounded border border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white transition-colors"
-              :class="{ 'bg-blue-500/10 text-blue-500 border-blue-500/20': showManager }"
+              class="text-[10px] font-normal not-italic px-1.5 py-0.5 rounded text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+              :class="{ 'bg-blue-500/10 text-blue-500': showManager }"
             >
               {{ TEXT.manageCards }}
             </button>
