@@ -100,10 +100,14 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { storeToRefs } from 'pinia';
 
 import { dragSession } from '../../composables/dragState';
 import { useCoverCache } from '../../composables/useCoverCache';
-import type { FolderNode } from '../../types';
+import { useLibraryStore } from '../../features/library/store';
+import { sortItemsByAlphabetIndex } from '../../utils/alphabetIndex';
+import type { FolderNode, Song } from '../../types';
+import { getSongFileNameLabel, getSongTitleLabel, isDirectParent } from '../../features/library/playerLibraryViewShared';
 
 const props = defineProps<{
   node: FolderNode;
@@ -136,6 +140,8 @@ const handleMouseLeaveDrag = () => {
 };
 
 const shouldAnimateExpansion = computed(() => props.node.child_count <= 16);
+const libraryStore = useLibraryStore();
+const { sourceSongPaths, songLookup, folderSortMode, folderCustomOrder } = storeToRefs(libraryStore);
 
 const handleSelect = () => {
   emit('select', props.node);
@@ -153,15 +159,81 @@ const coverUrl = ref('');
 const { loadCover: loadThumbnailCover } = useCoverCache();
 let coverRequestId = 0;
 
+const sortedDirectFolderSongPaths = computed(() => {
+  const paths = sourceSongPaths.value.filter(path => isDirectParent(props.node.path, path));
+
+  if (paths.length === 0) {
+    return [];
+  }
+
+  if (folderSortMode.value === 'title') {
+    return sortItemsByAlphabetIndex(paths, (path) => getSongTitleLabel(songLookup.value.get(path)!));
+  }
+
+  if (folderSortMode.value === 'name') {
+    return sortItemsByAlphabetIndex(paths, (path) => getSongFileNameLabel(songLookup.value.get(path)!));
+  }
+
+  if (folderSortMode.value === 'artist') {
+    return [...paths].sort((left, right) =>
+      (songLookup.value.get(left)?.artist || '').localeCompare(
+        songLookup.value.get(right)?.artist || '',
+        'zh-CN',
+      ) || (getSongTitleLabel(songLookup.value.get(left) as Song) || '').localeCompare(
+        getSongTitleLabel(songLookup.value.get(right) as Song) || '',
+        'zh-CN',
+      ),
+    );
+  }
+
+  if (folderSortMode.value === 'added_at') {
+    return [...paths].sort((left, right) =>
+      ((songLookup.value.get(right)?.added_at || 0) - (songLookup.value.get(left)?.added_at || 0))
+      || (getSongTitleLabel(songLookup.value.get(left) as Song) || '').localeCompare(
+        getSongTitleLabel(songLookup.value.get(right) as Song) || '',
+        'zh-CN',
+      ),
+    );
+  }
+
+  if (folderSortMode.value === 'added_at_asc') {
+    return [...paths].sort((left, right) =>
+      ((songLookup.value.get(left)?.added_at || 0) - (songLookup.value.get(right)?.added_at || 0))
+      || (getSongTitleLabel(songLookup.value.get(left) as Song) || '').localeCompare(
+        getSongTitleLabel(songLookup.value.get(right) as Song) || '',
+        'zh-CN',
+      ),
+    );
+  }
+
+  if (folderSortMode.value === 'custom') {
+    const customOrder = folderCustomOrder.value[props.node.path] || [];
+    if (customOrder.length > 0) {
+      const orderMap = new Map(customOrder.map((path, index) => [path, index]));
+      return [...paths].sort((left, right) => {
+        const leftIndex = orderMap.has(left) ? orderMap.get(left)! : Number.MAX_SAFE_INTEGER;
+        const rightIndex = orderMap.has(right) ? orderMap.get(right)! : Number.MAX_SAFE_INTEGER;
+        return leftIndex - rightIndex;
+      });
+    }
+  }
+
+  return paths;
+});
+
+const effectiveCoverSongPath = computed(() =>
+  sortedDirectFolderSongPaths.value[0] || props.node.cover_song_path || '',
+);
+
 const loadFolderCover = async () => {
   const requestId = ++coverRequestId;
-  if (!props.node.cover_song_path) {
+  if (!effectiveCoverSongPath.value) {
     coverUrl.value = '';
     return;
   }
 
   try {
-    const resolvedCover = await loadThumbnailCover(props.node.cover_song_path);
+    const resolvedCover = await loadThumbnailCover(effectiveCoverSongPath.value);
     if (requestId !== coverRequestId) return;
     coverUrl.value = resolvedCover || '';
   } catch {
@@ -171,7 +243,14 @@ const loadFolderCover = async () => {
 };
 
 onMounted(loadFolderCover);
-watch(() => props.node.cover_song_path, loadFolderCover);
+watch(
+  () => [
+    effectiveCoverSongPath.value,
+    folderSortMode.value,
+    JSON.stringify(folderCustomOrder.value[props.node.path] || []),
+  ],
+  loadFolderCover,
+);
 
 const beforeEnter = (element: Element) => {
   const htmlElement = element as HTMLElement;
