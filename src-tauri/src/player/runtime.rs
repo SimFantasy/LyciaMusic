@@ -123,47 +123,55 @@ fn handle_seek(
     *is_playing_flag = is_playing;
 
     if let Some(sink) = current_sink {
-        if sink.try_seek(jump_target).is_ok() {
-            let rate = progress.sample_rate.load(Ordering::Relaxed);
-            let channels = progress.channels.load(Ordering::Relaxed);
-            let samples_at_target = (clamped_time * rate as f64 * channels as f64).round() as u64;
-            progress
-                .samples_played
-                .store(samples_at_target, Ordering::Relaxed);
+        match sink.try_seek(jump_target) {
+            Ok(()) => {
+                let rate = progress.sample_rate.load(Ordering::Relaxed);
+                let channels = progress.channels.load(Ordering::Relaxed);
+                let samples_at_target =
+                    (clamped_time * rate as f64 * channels as f64).round() as u64;
+                progress
+                    .samples_played
+                    .store(samples_at_target, Ordering::Relaxed);
 
-            if is_playing {
-                sink.play();
-            } else {
-                sink.pause();
+                if is_playing {
+                    sink.play();
+                } else {
+                    sink.pause();
+                }
             }
-        } else if !current_path.is_empty() {
-            if let Some((_, handle, _)) = stream_data {
-                sink.stop();
-                *current_sink = Sink::try_new(handle).ok();
+            Err(_) => {
+                if !current_path.is_empty() {
+                    if let Some((_, handle, _)) = stream_data {
+                        sink.stop();
+                        *current_sink = Sink::try_new(handle).ok();
 
-                if let Ok(file) = File::open(current_path) {
-                    let reader = BufReader::with_capacity(512 * 1024, file);
-                    if let Ok(source) = Decoder::new(reader) {
-                        let rate = source.sample_rate();
-                        let channels = source.channels();
-                        let samples_to_skip =
-                            (clamped_time * rate as f64 * channels as f64).round() as u64;
-                        progress
-                            .samples_played
-                            .store(samples_to_skip, Ordering::Relaxed);
+                        if let Ok(file) = File::open(current_path) {
+                            let reader = BufReader::with_capacity(512 * 1024, file);
+                            if let Ok(source) = Decoder::new(reader) {
+                                let rate = source.sample_rate();
+                                let channels = source.channels();
+                                let samples_to_skip =
+                                    (clamped_time * rate as f64 * channels as f64).round() as u64;
+                                progress
+                                    .samples_played
+                                    .store(samples_to_skip, Ordering::Relaxed);
 
-                        let timed_source = TimedSource {
-                            inner: source.convert_samples::<f32>().skip_duration(jump_target),
-                            samples_played: progress.samples_played.clone(),
-                        };
+                                let timed_source = TimedSource {
+                                    inner: source
+                                        .convert_samples::<f32>()
+                                        .skip_duration(jump_target),
+                                    samples_played: progress.samples_played.clone(),
+                                };
 
-                        if let Some(new_sink) = current_sink {
-                            new_sink.set_volume(current_volume);
-                            new_sink.append(timed_source);
-                            if is_playing {
-                                new_sink.play();
-                            } else {
-                                new_sink.pause();
+                                if let Some(new_sink) = current_sink {
+                                    new_sink.set_volume(current_volume);
+                                    new_sink.append(timed_source);
+                                    if is_playing {
+                                        new_sink.play();
+                                    } else {
+                                        new_sink.pause();
+                                    }
+                                }
                             }
                         }
                     }

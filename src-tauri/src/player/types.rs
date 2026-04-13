@@ -1,3 +1,4 @@
+use rodio::source::SeekError;
 use rodio::Source;
 use serde::Serialize;
 use souvlaki::MediaControls;
@@ -44,6 +45,10 @@ where
 
     fn total_duration(&self) -> Option<Duration> {
         self.inner.total_duration()
+    }
+
+    fn try_seek(&mut self, pos: Duration) -> Result<(), SeekError> {
+        self.inner.try_seek(pos)
     }
 }
 
