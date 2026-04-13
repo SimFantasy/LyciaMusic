@@ -2,7 +2,6 @@
 import { computed } from 'vue';
 
 import type { Playlist } from '../../types';
-import type { MemoryCache } from '../../utils/MemoryCache';
 
 interface DragState {
   active: boolean;
@@ -15,8 +14,8 @@ interface Props {
   isOpen: boolean;
   playlists: Playlist[];
   selectedPlaylistIds: Set<string>;
-  playlistCoverCache: MemoryCache<string, string>;
   playlistCoverCacheVersion: number;
+  getPlaylistCover: (playlistId: string) => string | undefined;
   dragState: DragState;
   dragOverId: string | null;
   dragPosition: 'top' | 'bottom' | null;
@@ -41,7 +40,7 @@ const isOpenModel = computed({
 
 const getPlaylistCover = (playlistId: string) => {
   void props.playlistCoverCacheVersion;
-  return props.playlistCoverCache.get(playlistId);
+  return props.getPlaylistCover(playlistId);
 };
 </script>
 

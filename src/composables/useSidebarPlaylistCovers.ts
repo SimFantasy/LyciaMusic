@@ -14,6 +14,7 @@ export function useSidebarPlaylistCovers({
 }: UseSidebarPlaylistCoversOptions) {
   const playlistRealFirstSongMap = new Map<string, string>();
   const playlistCoverCacheVersion = ref(0);
+  const pendingPlaylistCoverLoads = new Set<string>();
   let playlistCoverRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   let playlistCoverRefreshIdleId: number | null = null;
 
@@ -55,6 +56,38 @@ export function useSidebarPlaylistCovers({
     if (changes.some(Boolean)) {
       playlistCoverCacheVersion.value += 1;
     }
+  };
+
+  const refreshPlaylistCover = async (playlistId: string, firstSongPath: string) => {
+    if (!firstSongPath || pendingPlaylistCoverLoads.has(playlistId)) {
+      return;
+    }
+
+    pendingPlaylistCoverLoads.add(playlistId);
+
+    try {
+      const changed = await updateCoverIfChanged(playlistId, firstSongPath);
+      if (changed) {
+        playlistCoverCacheVersion.value += 1;
+      }
+    } finally {
+      pendingPlaylistCoverLoads.delete(playlistId);
+    }
+  };
+
+  const getPlaylistCover = (playlistId: string) => {
+    const cachedCover = sidebarPlaylistCoverCache.get(playlistId);
+    if (cachedCover) {
+      return cachedCover;
+    }
+
+    const playlist = playlists.value.find(item => item.id === playlistId);
+    const firstSongPath = playlist?.songPaths[0];
+    if (firstSongPath) {
+      void refreshPlaylistCover(playlistId, firstSongPath);
+    }
+
+    return undefined;
   };
 
   const schedulePlaylistCoverRefresh = () => {
@@ -103,5 +136,6 @@ export function useSidebarPlaylistCovers({
   return {
     playlistCoverCache: sidebarPlaylistCoverCache,
     playlistCoverCacheVersion,
+    getPlaylistCover,
   };
 }
