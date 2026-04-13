@@ -60,6 +60,8 @@ pub struct SongDetail {
     pub path: String,
     pub genre: Option<String>,
     pub year: Option<String>,
+    pub track_number: Option<String>,
+    pub disc_number: Option<String>,
     pub comment: Option<String>,
     pub container: Option<String>,
     pub codec: Option<String>,

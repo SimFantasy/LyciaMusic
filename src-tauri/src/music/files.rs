@@ -137,6 +137,8 @@ pub async fn get_song_detail(path: String, db_state: State<'_, DbState>) -> Resu
         let tag_detail = extract_detail_metadata(&tagged_file);
         detail.genre = tag_detail.genre;
         detail.year = tag_detail.year;
+        detail.track_number = tag_detail.track_number;
+        detail.disc_number = tag_detail.disc_number;
         detail.comment = tag_detail.comment;
 
         if detail.container.is_none() {

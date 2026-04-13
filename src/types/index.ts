@@ -34,6 +34,8 @@ export interface SongDetail {
   path: string;
   genre?: string;
   year?: string;
+  track_number?: string;
+  disc_number?: string;
   comment?: string;
   container?: string;
   codec?: string;

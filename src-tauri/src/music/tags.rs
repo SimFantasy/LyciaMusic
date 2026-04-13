@@ -21,6 +21,8 @@ pub struct TagTextMetadata {
 pub struct TagDetailMetadata {
     pub genre: Option<String>,
     pub year: Option<String>,
+    pub track_number: Option<String>,
+    pub disc_number: Option<String>,
     pub comment: Option<String>,
 }
 
@@ -108,6 +110,32 @@ where
                 .or_else(|| read_tag_text(tag, &[], &["DATE", "YEAR", "TYER", "TDRC", "ICRD"]));
         }
 
+        if metadata.track_number.is_none() {
+            metadata.track_number = tag
+                .track()
+                .map(|value| value.to_string())
+                .or_else(|| {
+                    read_tag_text(
+                        tag,
+                        &[ItemKey::TrackNumber],
+                        &["TRACKNUMBER", "TRCK", "TRACK", "ITRK", "IPRT"],
+                    )
+                });
+        }
+
+        if metadata.disc_number.is_none() {
+            metadata.disc_number = tag
+                .disk()
+                .map(|value| value.to_string())
+                .or_else(|| {
+                    read_tag_text(
+                        tag,
+                        &[ItemKey::DiscNumber],
+                        &["DISCNUMBER", "DISC", "DISK", "TPOS"],
+                    )
+                });
+        }
+
         if metadata.comment.is_none() {
             metadata.comment = tag
                 .get_string(&ItemKey::Comment)
@@ -128,7 +156,12 @@ where
                 });
         }
 
-        if metadata.genre.is_some() && metadata.year.is_some() && metadata.comment.is_some() {
+        if metadata.genre.is_some()
+            && metadata.year.is_some()
+            && metadata.track_number.is_some()
+            && metadata.disc_number.is_some()
+            && metadata.comment.is_some()
+        {
             break;
         }
     }
@@ -499,6 +532,11 @@ fn lofty_tag_from_id3(id3_tag: id3::Tag, read_cover_art: bool) -> Tag {
         ItemKey::TrackNumber,
         id3_tag.track().map(|value| value.to_string()).as_deref(),
     );
+    insert_optional_text(
+        &mut lofty_tag,
+        ItemKey::DiscNumber,
+        id3_tag.disc().map(|value| value.to_string()).as_deref(),
+    );
 
     for comment in id3_tag.comments() {
         let Some(text) = clean_text(&comment.text) else {
@@ -658,7 +696,7 @@ fn seems_like_lyrics_text(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_embedded_lyrics, extract_text_metadata, find_embedded_picture,
+        extract_detail_metadata, extract_embedded_lyrics, extract_text_metadata, find_embedded_picture,
         read_tagged_file_from_path, read_tagged_file_from_path_for_scan,
     };
     use id3::frame::{Picture as Id3Picture, PictureType as Id3PictureType};
@@ -763,6 +801,18 @@ mod tests {
             lyrics.as_deref(),
             Some("[00:01.00]line one\n[00:02.00]line two")
         );
+    }
+
+    #[test]
+    fn extracts_track_and_disc_numbers_from_detail_metadata() {
+        let mut id3 = Tag::new(TagType::Id3v2);
+        id3.insert_text(ItemKey::TrackNumber, "7".to_string());
+        id3.insert_text(ItemKey::DiscNumber, "2".to_string());
+
+        let metadata = extract_detail_metadata(&make_tagged_file(vec![id3]));
+
+        assert_eq!(metadata.track_number.as_deref(), Some("7"));
+        assert_eq!(metadata.disc_number.as_deref(), Some("2"));
     }
 
     #[test]

@@ -90,6 +90,8 @@ const displaySong = computed(() => {
     container: currentSongDetail.value?.container ?? props.song.container,
     codec: currentSongDetail.value?.codec ?? props.song.codec,
     file_size: currentSongDetail.value?.file_size ?? props.song.file_size,
+    track_number: currentSongDetail.value?.track_number,
+    disc_number: currentSongDetail.value?.disc_number,
   };
 });
 
@@ -170,7 +172,7 @@ const formatTime = (timestampSeconds?: number) => {
         <!-- 内容区 -->
         <div v-if="displaySong" class="p-6 overflow-y-auto custom-scrollbar">
           <!-- 上半部分：封面 + 基本信息 -->
-          <div class="flex flex-col sm:flex-row gap-6 mb-8">
+          <div class="flex flex-col sm:flex-row gap-6 mb-4">
             <div class="w-32 h-32 shrink-0 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 shadow-md border border-gray-200/50 dark:border-gray-700/50 flex items-center justify-center">
               <img v-if="coverUrl" :src="coverUrl" class="w-full h-full object-cover" />
               <svg v-else class="w-12 h-12 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -179,18 +181,12 @@ const formatTime = (timestampSeconds?: number) => {
             </div>
             
             <div class="flex-1 min-w-0 flex flex-col justify-center">
-              <h3 class="text-2xl font-bold text-gray-900 dark:text-white truncate" :title="displaySong.title || displaySong.name">{{ displaySong.title || displaySong.name }}</h3>
-              <p class="text-base text-gray-600 dark:text-gray-300 mt-2 truncate" :title="displaySong.artist">{{ displaySong.artist }}</p>
-              <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate" :title="displaySong.album">专辑：{{ displaySong.album }}</p>
+              <h3 class="text-3xl font-bold text-gray-900 dark:text-white truncate" :title="displaySong.title || displaySong.name">{{ displaySong.title || displaySong.name }}</h3>
+              <p class="text-lg text-gray-600 dark:text-gray-300 mt-3 truncate" :title="displaySong.artist">{{ displaySong.artist }}</p>
+              <p class="text-base text-gray-500 dark:text-gray-400 mt-2 truncate" :title="displaySong.album">专辑：{{ displaySong.album }}</p>
               
-              <div class="flex flex-wrap gap-2 mt-3">
-                <span v-if="displaySong.format || displaySong.container" class="px-2 py-0.5 text-xs font-semibold uppercase rounded bg-gray-100/80 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border border-black/5 dark:border-white/10">
-                  {{ displaySong.format || displaySong.container }}
-                </span>
-                <span v-if="displaySong.bit_depth || displaySong.sample_rate" class="px-2 py-0.5 text-xs font-semibold rounded bg-[#ec4141]/10 text-[#ec4141] dark:bg-[#ec4141]/20 dark:text-[#ff8364] border border-[#ec4141]/20">
-                  {{ displaySong.bit_depth ? displaySong.bit_depth + 'bit' : '' }} {{ displaySong.sample_rate ? (displaySong.sample_rate / 1000).toFixed(1) + 'kHz' : '' }}
-                </span>
-                <span v-if="displaySong.is_various_artists_album" class="px-2 py-0.5 text-xs font-semibold rounded bg-blue-100/80 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50">
+              <div v-if="displaySong.is_various_artists_album" class="flex flex-wrap gap-2 mt-4">
+                <span class="px-2 py-0.5 text-xs font-semibold rounded bg-blue-100/80 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50">
                   群星合辑
                 </span>
               </div>
@@ -198,47 +194,57 @@ const formatTime = (timestampSeconds?: number) => {
           </div>
 
           <!-- 下半部分：详细属性网格 -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div class="bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800">
-              <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">文件路径</div>
-              <div class="text-sm text-gray-800 dark:text-gray-200 break-all leading-snug">{{ displaySong.path }}</div>
-            </div>
-
-            <div class="bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800">
-              <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">音频质量</div>
-              <div class="flex gap-4">
-                <div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatBitrate(displaySong.bitrate) }}</div>
-                </div>
-                <div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatSampleRate(displaySong.sample_rate) }}</div>
-                </div>
-                <div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatSize(displaySong.file_size) }}</div>
-                </div>
-              </div>
-            </div>
-
-            <div class="bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800 sm:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div class="flex flex-col gap-4">
+            <div class="bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800 grid grid-cols-3 gap-y-6 gap-x-4">
+              <!-- 第一行 -->
               <div>
-                <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">音乐时长</div>
-                <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatDuration(displaySong.duration) }}</div>
+                <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">音轨号</div>
+                <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.track_number || '无' }}</div>
+              </div>
+              <div>
+                <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">碟号</div>
+                <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.disc_number || '无' }}</div>
               </div>
               <div>
                 <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">年份</div>
                 <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.year || '无' }}</div>
               </div>
+
+              <!-- 第二行 -->
               <div>
-                <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">风格</div>
-                <div class="text-sm text-gray-800 dark:text-gray-200 truncate" :title="displaySong.genre">{{ displaySong.genre || '无' }}</div>
+                <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">音乐时长</div>
+                <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatDuration(displaySong.duration) }}</div>
               </div>
               <div>
-                <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">封装/编码</div>
-                <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.container || '无' }} / {{ displaySong.codec || '无' }}</div>
+                <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">文件大小</div>
+                <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatSize(displaySong.file_size) }}</div>
+              </div>
+              <div>
+                <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">格式</div>
+                <div class="text-sm text-gray-800 dark:text-gray-200 uppercase">{{ displaySong.format || displaySong.container || '无' }}</div>
+              </div>
+
+              <!-- 第三行 -->
+              <div>
+                <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">位深</div>
+                <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.bit_depth ? displaySong.bit_depth + ' bit' : '无' }}</div>
+              </div>
+              <div>
+                <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">采样率</div>
+                <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatSampleRate(displaySong.sample_rate) }}</div>
+              </div>
+              <div>
+                <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">比特率</div>
+                <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatBitrate(displaySong.bitrate) }}</div>
               </div>
             </div>
 
-            <div class="bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800 sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800">
+              <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">文件路径</div>
+              <div class="text-sm text-gray-800 dark:text-gray-200 break-all leading-snug">{{ displaySong.path }}</div>
+            </div>
+
+            <div class="bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">添加时间</div>
                 <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatTime(displaySong.added_at) }}</div>
