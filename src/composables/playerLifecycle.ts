@@ -363,7 +363,8 @@ export const createPlayerLifecycle = ({
     };
 
     const updateDominantColors = async (cover: string) => {
-      if (!cover) {
+      if (settings.value.theme.dynamicBgType !== 'flow' || !cover) {
+        dominantColorTaskId += 1;
         dominantColorSignature = '';
         dominantColors.value = [...defaultDominantColors];
         return;
@@ -411,7 +412,11 @@ export const createPlayerLifecycle = ({
       (dynamicBgType) => {
         if (dynamicBgType !== 'flow') {
           clearPaletteCache();
+          void updateDominantColors('');
+          return;
         }
+
+        void updateDominantColors(currentCover.value);
       },
     );
 

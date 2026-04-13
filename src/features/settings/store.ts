@@ -26,7 +26,7 @@ export const normalizeForegroundStyle = (
 
 export const defaultThemeSettings: ThemeSettings = {
   mode: 'light',
-  dynamicBgType: 'flow',
+  dynamicBgType: 'none',
   windowMaterial: 'none',
   flowColorBoost: 25,
   flowDepth: 30,
