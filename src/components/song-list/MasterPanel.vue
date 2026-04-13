@@ -69,6 +69,16 @@ const activeTreeNodes = computed(() => {
   return rootNode?.children ?? [];
 });
 
+const isTargetFolderRoot = computed(() => {
+  if (!targetFolder.value) {
+    return false;
+  }
+
+  return folderTree.value.some(
+    node => normalizePath(node.path) === normalizePath(targetFolder.value?.path ?? ''),
+  );
+});
+
 const treeScrollMemoryKey = computed(() =>
   ['master-panel-tree', activeRootPath.value || ''].join('::'),
 );
@@ -161,6 +171,8 @@ const handleTreeToggle = async (node: FolderNode) => {
 };
 
 const handleTreeContextMenu = ({ event, node }: { event: MouseEvent; node: FolderNode }) => {
+  skipNextSelectionExpand = true;
+  currentFolderFilter.value = node.path;
   targetFolder.value = { name: node.name, path: node.path };
   menuX.value = event.clientX;
   menuY.value = event.clientY;
@@ -480,6 +492,7 @@ onUnmounted(() => {
       :folder-path="targetFolder?.path || ''"
       :selected-count="1"
       :isManagementMode="isManagementMode"
+      :is-root-folder="isTargetFolderRoot"
       @close="showMenu = false"
       @cancel="handleMenuCancel"
       @play="playFolder"
