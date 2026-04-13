@@ -29,7 +29,25 @@ export function useSettingsThemeControls() {
     () => capabilities.value.isWindows && (capabilities.value.windowsBuildNumber ?? 0) >= 22000,
   );
   const hasWindowMaterialSelected = computed(() => materialMode.value !== 'none');
-  const isWindowMaterialDisabled = computed(() => colorScheme.value === 'custom');
+  const hasWindowMaterialThemeConflict = computed(
+    () => colorScheme.value === 'custom' || theme.value.dynamicBgType !== 'none',
+  );
+  const windowMaterialDisabledReason = computed<'windows11' | 'transparency' | 'theme-conflict' | null>(() => {
+    if (!isWindows11.value) {
+      return 'windows11';
+    }
+
+    if (capabilities.value.systemTransparencyEnabled === false) {
+      return 'transparency';
+    }
+
+    if (hasWindowMaterialThemeConflict.value) {
+      return 'theme-conflict';
+    }
+
+    return null;
+  });
+  const isWindowMaterialDisabled = computed(() => windowMaterialDisabledReason.value !== null);
   const isDynamicBgDisabled = computed(
     () => colorScheme.value === 'custom' || hasWindowMaterialSelected.value,
   );
@@ -50,7 +68,7 @@ export function useSettingsThemeControls() {
   };
 
   const toggleWindowMaterial = (mode: Exclude<WindowMaterialMode, 'none'>) => {
-    if (!isWindows11.value || isWindowMaterialDisabled.value) {
+    if (isWindowMaterialDisabled.value) {
       return;
     }
 
@@ -108,6 +126,7 @@ export function useSettingsThemeControls() {
     isWindows11,
     hasWindowMaterialSelected,
     isWindowMaterialDisabled,
+    windowMaterialDisabledReason,
     isDynamicBgDisabled,
     showFlowTuning,
     setColorScheme,

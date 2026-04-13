@@ -17,7 +17,9 @@ const TEXT = {
   dynamicBlur: '\u9759\u6001\u6a21\u7cca',
   dynamicDisabledHint: '\u81ea\u5b9a\u4e49\u76ae\u80a4\u6216\u7a97\u53e3\u6750\u8d28\u542f\u7528\u65f6\uff0c\u52a8\u6001\u80cc\u666f\u4f1a\u81ea\u52a8\u505c\u7528\u3002',
   windowMaterialTitle: '\u7a97\u53e3\u6750\u8d28',
-  windowMaterialDisabledHint: '\u81ea\u5b9a\u4e49\u76ae\u80a4\u6216\u52a8\u6001\u80cc\u666f\u542f\u7528\u65f6\uff0c\u7a97\u53e3\u6750\u8d28\u4f1a\u81ea\u52a8\u505c\u7528\u3002',
+  windowMaterialUnsupportedHint: '\u4ec5 Windows 11 \u652f\u6301\u3002',
+  windowMaterialTransparencyHint: '\u9700\u5728\u7cfb\u7edf\u8bbe\u7f6e\u4e2d\u5f00\u542f\u900f\u660e\u6548\u679c\u540e\u624d\u53ef\u7528\u3002',
+  windowMaterialConflictHint: '\u5173\u95ed\u52a8\u6001\u80cc\u666f\u6216\u81ea\u5b9a\u4e49\u76ae\u80a4\u540e\u53ef\u7528\u3002',
 };
 
 const FLOW_TEXT = {
@@ -46,8 +48,8 @@ const {
   showCustomModal,
   colorScheme,
   materialMode,
-  isWindows11,
   isWindowMaterialDisabled,
+  windowMaterialDisabledReason,
   isDynamicBgDisabled,
   showFlowTuning,
   setColorScheme,
@@ -290,20 +292,20 @@ const {
       </div>
     </section>
 
-    <section v-if="isWindows11" class="space-y-3">
+    <section class="space-y-3">
       <h2 class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200">
         <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
         {{ TEXT.windowMaterialTitle }}
       </h2>
       <div
         class=""
-        :class="isWindowMaterialDisabled ? 'pointer-events-none opacity-50' : ''"
+        :class="isWindowMaterialDisabled ? 'opacity-50' : ''"
       >
         <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
           <button
             type="button"
             class="rounded-xl border px-4 py-3 text-left transition-all"
-            :class="!isWindowMaterialDisabled && materialMode === 'acrylic'
+            :class="materialMode === 'acrylic'
               ? 'border-[#EC4141] bg-[#EC4141]/8 shadow-sm'
               : 'border-gray-200/70 hover:border-[#EC4141]/40 hover:bg-white/40 dark:border-white/10 dark:hover:bg-white/10'"
             :disabled="isWindowMaterialDisabled"
@@ -324,7 +326,7 @@ const {
           <button
             type="button"
             class="rounded-xl border px-4 py-3 text-left transition-all"
-            :class="!isWindowMaterialDisabled && materialMode === 'mica'
+            :class="materialMode === 'mica'
               ? 'border-[#EC4141] bg-[#EC4141]/8 shadow-sm'
               : 'border-gray-200/70 hover:border-[#EC4141]/40 hover:bg-white/40 dark:border-white/10 dark:hover:bg-white/10'"
             :disabled="isWindowMaterialDisabled"
@@ -343,8 +345,14 @@ const {
           </button>
         </div>
       </div>
-      <p v-if="isWindowMaterialDisabled" class="text-xs text-amber-600 dark:text-amber-400">
-        {{ TEXT.windowMaterialDisabledHint }}
+      <p v-if="windowMaterialDisabledReason === 'windows11'" class="text-xs text-amber-600 dark:text-amber-400">
+        {{ TEXT.windowMaterialUnsupportedHint }}
+      </p>
+      <p v-else-if="windowMaterialDisabledReason === 'transparency'" class="text-xs text-amber-600 dark:text-amber-400">
+        {{ TEXT.windowMaterialTransparencyHint }}
+      </p>
+      <p v-else-if="windowMaterialDisabledReason === 'theme-conflict'" class="text-xs text-amber-600 dark:text-amber-400">
+        {{ TEXT.windowMaterialConflictHint }}
       </p>
     </section>
 
