@@ -109,13 +109,13 @@ watch(() => props.isExpanded, (isExpanded) => {
   reflectionCoverUrl.value = '';
 });
 
-watch([currentSongPath, currentLocalCoverUrl], ([path, localUrl]) => {
+watch([currentSongPath, currentLocalCoverUrl, () => props.isExpanded], ([path, localUrl, isExpanded]) => {
   if (!path) {
     reflectionCoverUrl.value = '';
     return;
   }
 
-  if (!props.isExpanded) {
+  if (!isExpanded) {
     reflectionCoverUrl.value = '';
     return;
   }
