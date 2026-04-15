@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type CSSProperties } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 import { usePlayer } from '../../composables/player';
+import { useHomeNavigation } from '../../composables/useHomeNavigation';
 import { usePlayerViewState } from '../../composables/usePlayerViewState';
 import { useToast } from '../../composables/toast';
 import { useLibraryCollections } from '../../features/collections/useLibraryCollections';
+import { getSongAlbumKey, getSongArtistNames } from '../../features/library/playerLibraryViewShared';
 import { useSongInfoDialog } from '../../composables/useSongInfoDialog';
 import type { Song } from '../../types';
 
@@ -52,11 +54,13 @@ const props = defineProps<{
 const emit = defineEmits(['close', 'add-to-playlist', 'delete-disk']);
 
 const route = useRoute();
+const router = useRouter();
 const { showToast } = useToast();
 const { playSong, playNext, addSongToQueue, removeSongFromList, openInFinder, currentViewMode } = usePlayer();
 const { removeFromPlaylist } = useLibraryCollections();
 const { filterCondition } = usePlayerViewState();
 const { openSongInfo } = useSongInfoDialog();
+const { openHomeArtist, openHomeAlbum } = useHomeNavigation(router);
 
 const menuRef = ref<HTMLElement | null>(null);
 const menuSize = ref({ width: 0, height: 0 });
@@ -160,7 +164,7 @@ const menuEntries = computed<SongMenuEntry[]>(() => {
     { type: 'action', key: 'addToQueueTail', label: '添加到队尾' },
     { type: 'divider', key: 'divider-primary' },
     { type: 'action', key: 'addToPlaylist', label: '收藏到歌单' },
-    { type: 'action', key: 'viewArtist', label: '查看艺人' },
+    { type: 'action', key: 'viewArtist', label: '查看歌手' },
     { type: 'action', key: 'viewAlbum', label: '查看专辑' },
     { type: 'divider', key: 'divider-secondary' },
     { type: 'action', key: 'openFolder', label: '打开文件所在目录' },
@@ -235,9 +239,29 @@ const handleGlobalClick = (event: MouseEvent) => {
 onMounted(() => window.addEventListener('mousedown', handleGlobalClick));
 onUnmounted(() => window.removeEventListener('mousedown', handleGlobalClick));
 
-const showPlaceholderToast = (label: string) => {
-  showToast(`${label}功能暂未开放`, 'info');
+const isMeaningfulMetadataValue = (value: string | undefined) => {
+  const normalized = value?.trim() || '';
+  return normalized !== '' && normalized.toLowerCase() !== 'unknown';
 };
+
+const resolvePrimaryArtistName = (song: Song) =>
+  getSongArtistNames(song)
+    .map(name => name.trim())
+    .find(isMeaningfulMetadataValue) || '';
+
+const hasArtistMetadata = (song: Song) =>
+  Boolean(
+    resolvePrimaryArtistName(song)
+    || song.artist_names.some(isMeaningfulMetadataValue)
+    || song.effective_artist_names.some(isMeaningfulMetadataValue),
+  );
+
+const hasAlbumMetadata = (song: Song) =>
+  isMeaningfulMetadataValue(song.album)
+  || (
+    Boolean(song.album_key?.trim())
+    && !song.album_key.trim().toLowerCase().startsWith('unknown::')
+  );
 
 const handleRemoveFromList = () => {
   if (!props.song) {
@@ -276,10 +300,18 @@ const handleAction = (action: SongMenuAction) => {
       emit('add-to-playlist');
       break;
     case 'viewArtist':
-      showPlaceholderToast('查看艺人');
+      if (!hasArtistMetadata(props.song)) {
+        showToast('当前歌曲缺少歌手信息', 'info');
+        break;
+      }
+      void openHomeArtist(resolvePrimaryArtistName(props.song));
       break;
     case 'viewAlbum':
-      showPlaceholderToast('查看专辑');
+      if (!hasAlbumMetadata(props.song)) {
+        showToast('当前歌曲缺少专辑信息', 'info');
+        break;
+      }
+      void openHomeAlbum(getSongAlbumKey(props.song));
       break;
     case 'openFolder':
       void openInFinder(props.song.path);
