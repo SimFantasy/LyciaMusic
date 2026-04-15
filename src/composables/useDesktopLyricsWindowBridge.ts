@@ -16,6 +16,7 @@ import {
   DESKTOP_LYRICS_BOUNDS_EVENT,
   DESKTOP_LYRICS_BOUNDS_KEY,
   DESKTOP_LYRICS_PLAYBACK_EVENT,
+  DESKTOP_LYRICS_RESET_BOUNDS_EVENT,
   DESKTOP_LYRICS_REVEAL_SURFACE_EVENT,
   DESKTOP_LYRICS_REQUEST_STATE_EVENT,
   DESKTOP_LYRICS_STATE_EVENT,
@@ -25,7 +26,7 @@ import {
   DESKTOP_LYRICS_WINDOW_LABEL,
   DESKTOP_LYRICS_WINDOW_MIN_HEIGHT,
   DESKTOP_LYRICS_WINDOW_MIN_WIDTH,
-  normalizeDesktopLyricsBounds,
+  restoreDesktopLyricsBounds,
   type DesktopLyricsAction,
   type DesktopLyricsPlaybackPayload,
   type DesktopLyricsStatePayload,
@@ -84,6 +85,11 @@ function writeDesktopLyricsBounds(bounds: DesktopLyricsWindowBounds) {
   }));
 }
 
+export function clearDesktopLyricsStoredBounds() {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.removeItem(DESKTOP_LYRICS_BOUNDS_KEY);
+}
+
 async function resolveDesktopLyricsBounds() {
   const bounds = readDesktopLyricsBounds();
   if (!bounds) return null;
@@ -100,7 +106,7 @@ async function resolveDesktopLyricsBounds() {
       return bounds;
     }
 
-    return normalizeDesktopLyricsBounds(bounds, workAreas);
+    return restoreDesktopLyricsBounds(bounds, workAreas);
   } catch {
     return bounds;
   }
@@ -260,6 +266,16 @@ export function useDesktopLyricsWindowBridge() {
     await targetWindow.setAlwaysOnTop(desktopLyricsSettings.isAlwaysOnTop);
   };
 
+  const openDesktopLyricsWindow = async () => {
+    const targetWindow = await ensureDesktopLyricsWindow(desktopLyricsSettings.isAlwaysOnTop);
+    await syncWindowFlags();
+    await emitStateToDesktopLyrics();
+    await emitPlaybackToDesktopLyrics();
+    await targetWindow.show();
+    await revealDesktopLyricsSurface();
+    startSyncLoop();
+  };
+
   const stopSyncLoop = () => {
     if (syncIntervalId !== null) {
       clearInterval(syncIntervalId);
@@ -362,6 +378,18 @@ export function useDesktopLyricsWindowBridge() {
     unlisteners.push(await listen<DesktopLyricsWindowBounds>(DESKTOP_LYRICS_BOUNDS_EVENT, (event) => {
       writeDesktopLyricsBounds(event.payload);
     }));
+
+    unlisteners.push(await listen(DESKTOP_LYRICS_RESET_BOUNDS_EVENT, async () => {
+      clearDesktopLyricsStoredBounds();
+
+      if (!showDesktopLyrics.value) {
+        return;
+      }
+
+      stopSyncLoop();
+      await destroyDesktopLyricsWindow();
+      await openDesktopLyricsWindow();
+    }));
   });
 
   onUnmounted(() => {
@@ -371,13 +399,7 @@ export function useDesktopLyricsWindowBridge() {
 
   watch(showDesktopLyrics, async (visible) => {
     if (visible) {
-      const targetWindow = await ensureDesktopLyricsWindow(desktopLyricsSettings.isAlwaysOnTop);
-      await syncWindowFlags();
-      await emitStateToDesktopLyrics();
-      await emitPlaybackToDesktopLyrics();
-      await targetWindow.show();
-      await revealDesktopLyricsSurface();
-      startSyncLoop();
+      await openDesktopLyricsWindow();
       return;
     }
 

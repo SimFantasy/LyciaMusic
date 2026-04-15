@@ -14,6 +14,7 @@ export const DESKTOP_LYRICS_ACTION_EVENT = 'desktop-lyrics:action';
 export const DESKTOP_LYRICS_VISIBILITY_EVENT = 'desktop-lyrics:visibility';
 export const DESKTOP_LYRICS_BOUNDS_EVENT = 'desktop-lyrics:bounds';
 export const DESKTOP_LYRICS_REVEAL_SURFACE_EVENT = 'desktop-lyrics:reveal-surface';
+export const DESKTOP_LYRICS_RESET_BOUNDS_EVENT = 'desktop-lyrics:reset-bounds';
 export const DESKTOP_LYRICS_BOUNDS_KEY = 'desktop_lyrics_window_bounds';
 
 export const DESKTOP_LYRICS_WINDOW_DEFAULT_WIDTH = 900;
@@ -183,6 +184,39 @@ export function normalizeDesktopLyricsBounds(
   const limits = getDesktopLyricsWindowSizeLimits(workArea);
   const width = clamp(bounds.width, limits.minWidth, limits.maxWidth);
   const height = clamp(bounds.height, limits.minHeight, limits.maxHeight);
+  const maxX = workArea.x + Math.max(0, workArea.width - width);
+  const maxY = workArea.y + Math.max(0, workArea.height - height);
+
+  return {
+    x: clamp(bounds.x, workArea.x, maxX),
+    y: clamp(bounds.y, workArea.y, maxY),
+    width,
+    height,
+  };
+}
+
+export function restoreDesktopLyricsBounds(
+  bounds: DesktopLyricsWindowBounds,
+  workAreas: DesktopLyricsWorkArea[],
+): DesktopLyricsWindowBounds | null {
+  const workArea = resolveDesktopLyricsWorkArea(workAreas, bounds);
+  if (!workArea) return null;
+
+  const limits = getDesktopLyricsWindowSizeLimits(workArea);
+  const width = clamp(bounds.width, limits.minWidth, limits.maxWidth);
+  const height = clamp(bounds.height, limits.minHeight, limits.maxHeight);
+  const restoredBounds = {
+    x: Math.round(bounds.x),
+    y: Math.round(bounds.y),
+    width,
+    height,
+  };
+
+  const hasVisibleIntersection = workAreas.some((candidate) => getIntersectionArea(restoredBounds, candidate) > 0);
+  if (hasVisibleIntersection) {
+    return restoredBounds;
+  }
+
   const maxX = workArea.x + Math.max(0, workArea.width - width);
   const maxY = workArea.y + Math.max(0, workArea.height - height);
 

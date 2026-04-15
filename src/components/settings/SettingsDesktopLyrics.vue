@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { emit } from '@tauri-apps/api/event';
 import { Check, ChevronDown, Type } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 
@@ -27,6 +28,7 @@ import {
   type LyricsPlayerAlignment,
   useLyrics,
 } from '../../composables/lyrics';
+import { DESKTOP_LYRICS_RESET_BOUNDS_EVENT } from '../../features/desktopLyrics/shared';
 import { useSettings } from '../../features/settings/useSettings';
 
 const FONT_SCALE_STEP = 0.05;
@@ -57,6 +59,7 @@ const { lyricsSettings, desktopLyricsSettings } = useLyrics();
 const fontPresetFieldRef = ref<HTMLElement | null>(null);
 const fontPresetMenuRef = ref<HTMLElement | null>(null);
 const isFontPresetMenuOpen = ref(false);
+const isResettingWindowBounds = ref(false);
 
 const availableFontOptions = computed(() => [
   ...LYRICS_FONT_OPTIONS,
@@ -157,6 +160,17 @@ async function toggleFontPresetMenu() {
 
   const activeItem = fontPresetMenuRef.value?.querySelector('.desktop-font-option--active') as HTMLElement | null;
   activeItem?.scrollIntoView({ block: 'nearest' });
+}
+
+async function resetDesktopLyricsWindowBounds() {
+  if (isResettingWindowBounds.value) return;
+
+  isResettingWindowBounds.value = true;
+  try {
+    await emit(DESKTOP_LYRICS_RESET_BOUNDS_EVENT);
+  } finally {
+    isResettingWindowBounds.value = false;
+  }
 }
 
 function closeFontPresetMenu() {
@@ -277,6 +291,21 @@ onUnmounted(() => {
             <span class="desktop-switch-thumb" :class="desktopLyricsSettings.persistLock ? 'translate-x-5' : ''" />
           </span>
         </button>
+
+        <div class="desktop-setting-row">
+          <div>
+            <div class="text-sm font-medium text-gray-800 dark:text-gray-200">重置窗口位置</div>
+            <div class="mt-0.5 text-xs text-gray-600 dark:text-white/60">当桌面歌词超出屏幕或难以找回时，将窗口位置恢复到默认状态</div>
+          </div>
+          <button
+            type="button"
+            class="desktop-action-button"
+            :disabled="isResettingWindowBounds"
+            @click="resetDesktopLyricsWindowBounds"
+          >
+            {{ isResettingWindowBounds ? '重置中...' : '立即重置' }}
+          </button>
+        </div>
 
         <button
           type="button"
@@ -906,6 +935,7 @@ onUnmounted(() => {
 
 .desktop-mini-button,
 .desktop-reset-button,
+.desktop-action-button,
 .desktop-chip {
   transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
 }
@@ -934,6 +964,21 @@ onUnmounted(() => {
   padding: 6px 10px;
   color: #ec4141;
   font-size: 12px;
+}
+
+.desktop-action-button {
+  flex-shrink: 0;
+  border: 1px solid rgba(236, 65, 65, 0.14);
+  border-radius: 999px;
+  background: rgba(236, 65, 65, 0.06);
+  padding: 8px 14px;
+  color: #ec4141;
+  font-size: 12px;
+}
+
+.desktop-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .desktop-chip {

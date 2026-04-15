@@ -6,6 +6,7 @@ import {
   DESKTOP_LYRICS_WINDOW_MIN_WIDTH,
   getDesktopLyricsWindowSizeLimits,
   normalizeDesktopLyricsBounds,
+  restoreDesktopLyricsBounds,
   resolveDesktopLyricsWorkArea,
   snapDesktopLyricsBounds,
   type DesktopLyricsWindowBounds,
@@ -42,6 +43,33 @@ describe('desktop lyrics shared helpers', () => {
       y: 0,
       width: DESKTOP_LYRICS_WINDOW_MAX_WIDTH,
       height: DESKTOP_LYRICS_WINDOW_MIN_HEIGHT,
+    });
+  });
+
+  it('restores persisted bounds without pulling partially visible windows back on screen', () => {
+    const bounds: DesktopLyricsWindowBounds = {
+      x: 40,
+      y: 930,
+      width: 900,
+      height: 280,
+    };
+
+    expect(restoreDesktopLyricsBounds(bounds, WORK_AREAS)).toEqual(bounds);
+  });
+
+  it('falls back to a safe visible position when persisted bounds are fully off screen', () => {
+    const bounds: DesktopLyricsWindowBounds = {
+      x: -1400,
+      y: 1200,
+      width: 900,
+      height: 280,
+    };
+
+    expect(restoreDesktopLyricsBounds(bounds, WORK_AREAS)).toEqual({
+      x: 0,
+      y: 800,
+      width: 900,
+      height: 280,
     });
   });
 
