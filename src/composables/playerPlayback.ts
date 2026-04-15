@@ -35,6 +35,8 @@ let sessionStartTime: number | null = null;
 let accumulatedTime = 0;
 let isSeeking = false;
 
+const getSmtcTitle = (song: Song) => song.title?.trim() || song.name.replace(/\.[^/.]+$/, '');
+
 export const createPlayerPlayback = ({
   getDisplaySongList,
   addToHistory,
@@ -196,7 +198,7 @@ export const createPlayerPlayback = ({
     try {
       await playbackApi.playAudio({
         path: song.path,
-        title: song.name,
+        title: getSmtcTitle(song),
         artist: song.artist || 'Unknown Artist',
         album: song.album || 'Unknown Album',
         cover: cachedCoverPath,
@@ -223,7 +225,7 @@ export const createPlayerPlayback = ({
           }
 
           await playbackApi.updatePlaybackMetadata({
-            title: song.name,
+            title: getSmtcTitle(song),
             artist: song.artist || 'Unknown Artist',
             album: song.album || 'Unknown Album',
             cover: normalizedCoverPath,

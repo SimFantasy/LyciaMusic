@@ -26,6 +26,7 @@ vi.mock('./useCoverCache', () => ({
 
 import type { Song } from '../types';
 import { usePlaybackStore } from '../features/playback/store';
+import { playbackApi } from '../services/tauri/playbackApi';
 import { createPlayerPlayback } from './playerPlayback';
 
 const makeSong = (overrides: Partial<Song> = {}): Song => ({
@@ -95,6 +96,40 @@ describe('player playback domain', () => {
       songC.path,
       songD.path,
     ]);
+    playerPlayback.dispose();
+  });
+
+  it('prefers tagged song title when reporting playback metadata', async () => {
+    const song = makeSong({ name: 'i-dle - Allergy.flac', title: 'Allergy' });
+    const playerPlayback = createPlayerPlayback({
+      getDisplaySongList: () => [song],
+      addToHistory: vi.fn(),
+      loadLyrics: vi.fn(),
+      handleAutoNext: vi.fn(),
+    });
+
+    await playerPlayback.playSong(song);
+
+    expect(playbackApi.playAudio).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Allergy',
+    }));
+    playerPlayback.dispose();
+  });
+
+  it('strips the file extension when title metadata is missing', async () => {
+    const song = makeSong({ name: 'i-dle - Allergy.flac', title: '   ' });
+    const playerPlayback = createPlayerPlayback({
+      getDisplaySongList: () => [song],
+      addToHistory: vi.fn(),
+      loadLyrics: vi.fn(),
+      handleAutoNext: vi.fn(),
+    });
+
+    await playerPlayback.playSong(song);
+
+    expect(playbackApi.playAudio).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'i-dle - Allergy',
+    }));
     playerPlayback.dispose();
   });
 });
