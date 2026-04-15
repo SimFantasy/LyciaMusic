@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch, type CSSProperties } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type CSSProperties, type ComponentPublicInstance } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { usePlayer } from '../../composables/player';
@@ -63,7 +63,11 @@ const { openSongInfo } = useSongInfoDialog();
 const { openHomeArtist, openHomeAlbum } = useHomeNavigation(router);
 
 const menuRef = ref<HTMLElement | null>(null);
+const viewArtistTriggerRef = ref<HTMLElement | null>(null);
+const artistSubmenuRef = ref<HTMLElement | null>(null);
 const menuSize = ref({ width: 0, height: 0 });
+const artistSubmenuSize = ref({ width: 0, height: 0 });
+const showArtistSubmenu = ref(false);
 
 const showDeleteFromDisk = computed(() => Boolean(props.isFolderView && props.isManagementMode));
 
@@ -199,8 +203,25 @@ watch(
     }
 
     menuSize.value = { width: 0, height: 0 };
+    artistSubmenuSize.value = { width: 0, height: 0 };
+    showArtistSubmenu.value = false;
   },
 );
+
+watch(showArtistSubmenu, async (visible) => {
+  if (visible) {
+    await nextTick();
+    if (artistSubmenuRef.value) {
+      artistSubmenuSize.value = {
+        width: artistSubmenuRef.value.offsetWidth,
+        height: artistSubmenuRef.value.offsetHeight,
+      };
+    }
+    return;
+  }
+
+  artistSubmenuSize.value = { width: 0, height: 0 };
+});
 
 const menuStyle = computed<CSSProperties>(() => {
   if (!props.visible) {
@@ -231,7 +252,11 @@ const menuStyle = computed<CSSProperties>(() => {
 });
 
 const handleGlobalClick = (event: MouseEvent) => {
-  if (props.visible && menuRef.value && !menuRef.value.contains(event.target as Node)) {
+  const target = event.target as Node;
+  const clickedInsideMenu = Boolean(menuRef.value?.contains(target));
+  const clickedInsideSubmenu = Boolean(artistSubmenuRef.value?.contains(target));
+
+  if (props.visible && !clickedInsideMenu && !clickedInsideSubmenu) {
     emit('close');
   }
 };
@@ -244,10 +269,42 @@ const isMeaningfulMetadataValue = (value: string | undefined) => {
   return normalized !== '' && normalized.toLowerCase() !== 'unknown';
 };
 
+const normalizeArtistOptions = (artists: string[] = []) =>
+  artists
+    .map(name => name.trim())
+    .filter(isMeaningfulMetadataValue)
+    .filter((name, index, list) => list.indexOf(name) === index);
+
+const resolveArtistSubmenuOptions = (song: Song) => {
+  const effectiveArtists = normalizeArtistOptions(song.effective_artist_names);
+  if (effectiveArtists.length > 1) {
+    return effectiveArtists;
+  }
+
+  const artistNames = normalizeArtistOptions(song.artist_names);
+  if (artistNames.length > 1) {
+    return artistNames;
+  }
+
+  return [];
+};
+
 const resolvePrimaryArtistName = (song: Song) =>
   getSongArtistNames(song)
     .map(name => name.trim())
     .find(isMeaningfulMetadataValue) || '';
+
+const artistSubmenuOptions = computed(() =>
+  props.song ? resolveArtistSubmenuOptions(props.song) : [],
+);
+
+const hasArtistSubmenu = computed(() => artistSubmenuOptions.value.length > 1);
+
+watch(artistSubmenuOptions, (options) => {
+  if (options.length <= 1) {
+    showArtistSubmenu.value = false;
+  }
+});
 
 const hasArtistMetadata = (song: Song) =>
   Boolean(
@@ -262,6 +319,58 @@ const hasAlbumMetadata = (song: Song) =>
     Boolean(song.album_key?.trim())
     && !song.album_key.trim().toLowerCase().startsWith('unknown::')
   );
+
+const artistSubmenuStyle = computed<CSSProperties>(() => {
+  if (!showArtistSubmenu.value || !viewArtistTriggerRef.value) {
+    return {};
+  }
+
+  const triggerRect = viewArtistTriggerRef.value.getBoundingClientRect();
+  let top = triggerRect.top - 6;
+  let left = triggerRect.right + 8;
+  let verticalOrigin = 'top';
+  let horizontalOrigin = 'left';
+
+  if (left + artistSubmenuSize.value.width > window.innerWidth) {
+    left = triggerRect.left - artistSubmenuSize.value.width - 8;
+    horizontalOrigin = 'right';
+  }
+
+  if (top + artistSubmenuSize.value.height > window.innerHeight) {
+    top = window.innerHeight - artistSubmenuSize.value.height - 8;
+    verticalOrigin = 'bottom';
+  }
+
+  return {
+    left: `${Math.max(8, left)}px`,
+    top: `${Math.max(8, top)}px`,
+    visibility: artistSubmenuSize.value.height === 0 ? 'hidden' : 'visible',
+    transformOrigin: `${horizontalOrigin} ${verticalOrigin}`,
+  };
+});
+
+const closeArtistSubmenu = () => {
+  showArtistSubmenu.value = false;
+};
+
+const openArtistSubmenu = () => {
+  if (!hasArtistSubmenu.value) {
+    showArtistSubmenu.value = false;
+    return;
+  }
+
+  showArtistSubmenu.value = true;
+};
+
+const navigateToArtist = (artistName: string) => {
+  if (!isMeaningfulMetadataValue(artistName)) {
+    showToast('当前歌曲缺少歌手信息', 'info');
+    return;
+  }
+
+  void openHomeArtist(artistName);
+  emit('close');
+};
 
 const handleRemoveFromList = () => {
   if (!props.song) {
@@ -279,6 +388,15 @@ const handleRemoveFromList = () => {
   }
 
   showToast('当前页面暂不支持从列表移除', 'info');
+};
+
+const handleEntryMouseEnter = (action: SongMenuAction) => {
+  if (action === 'viewArtist') {
+    openArtistSubmenu();
+    return;
+  }
+
+  closeArtistSubmenu();
 };
 
 const handleAction = (action: SongMenuAction) => {
@@ -304,8 +422,12 @@ const handleAction = (action: SongMenuAction) => {
         showToast('当前歌曲缺少歌手信息', 'info');
         break;
       }
-      void openHomeArtist(resolvePrimaryArtistName(props.song));
-      break;
+      if (hasArtistSubmenu.value) {
+        openArtistSubmenu();
+        return;
+      }
+      navigateToArtist(resolvePrimaryArtistName(props.song));
+      return;
     case 'viewAlbum':
       if (!hasAlbumMetadata(props.song)) {
         showToast('当前歌曲缺少专辑信息', 'info');
@@ -328,6 +450,18 @@ const handleAction = (action: SongMenuAction) => {
   }
 
   emit('close');
+};
+
+const setViewArtistTriggerRef = (element: Element | ComponentPublicInstance | null) => {
+  if (element instanceof HTMLElement) {
+    viewArtistTriggerRef.value = element;
+    return;
+  }
+
+  viewArtistTriggerRef.value =
+    element && '$el' in element && element.$el instanceof HTMLElement
+      ? element.$el
+      : null;
 };
 </script>
 
@@ -352,6 +486,8 @@ const handleAction = (action: SongMenuAction) => {
             class="song-menu-item flex cursor-pointer items-center px-4 py-2.5 transition-colors"
             :class="entry.danger ? 'text-[#EC4141] hover:text-[#d73a3a]' : ''"
             :style="{ '--menu-item-delay': `${entry.motionIndex * 14}ms` }"
+            :ref="entry.key === 'viewArtist' ? setViewArtistTriggerRef : undefined"
+            @mouseenter="handleEntryMouseEnter(entry.key)"
             @click="handleAction(entry.key)"
           >
             <div class="mr-3 flex h-5 w-5 shrink-0 items-center justify-center text-[#6b778c]">
@@ -374,9 +510,45 @@ const handleAction = (action: SongMenuAction) => {
                 />
               </svg>
             </div>
-            <span>{{ entry.label }}</span>
+            <span class="min-w-0 flex-1 truncate">{{ entry.label }}</span>
+            <div
+              v-if="entry.key === 'viewArtist' && hasArtistSubmenu"
+              class="ml-3 flex h-4 w-4 shrink-0 items-center justify-center text-[#8b97aa]"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="m9 6 6 6-6 6" />
+              </svg>
+            </div>
           </div>
         </template>
+      </div>
+    </Transition>
+
+    <Transition name="song-menu-pop" appear>
+      <div
+        v-if="visible && showArtistSubmenu && hasArtistSubmenu"
+        ref="artistSubmenuRef"
+        class="fixed z-[10000] min-w-[200px] max-w-[280px] select-none rounded-[18px] border border-white/65 bg-white/78 py-1.5 text-sm text-gray-700 shadow-[0_20px_45px_rgba(15,23,42,0.16),0_6px_18px_rgba(15,23,42,0.08)] backdrop-blur-[22px] supports-[backdrop-filter]:bg-white/72"
+        :style="artistSubmenuStyle"
+        @contextmenu.prevent
+      >
+        <div
+          v-for="artistName in artistSubmenuOptions"
+          :key="artistName"
+          class="song-menu-item flex cursor-pointer items-center px-4 py-2.5 transition-colors"
+          @click="navigateToArtist(artistName)"
+        >
+          <span class="min-w-0 flex-1 truncate">{{ artistName }}</span>
+        </div>
       </div>
     </Transition>
   </Teleport>

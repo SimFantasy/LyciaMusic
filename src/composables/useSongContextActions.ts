@@ -23,11 +23,7 @@ export function useSongContextActions({
 
     contextMenuTargetSong.value = song;
     contextMenuX.value = event.clientX;
-    const menuHeight = 250;
-    contextMenuY.value =
-      event.clientY + menuHeight > window.innerHeight
-        ? event.clientY - menuHeight
-        : event.clientY;
+    contextMenuY.value = event.clientY;
     showContextMenu.value = true;
   };
 

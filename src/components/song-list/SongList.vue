@@ -52,8 +52,7 @@ const handleContextMenu = (e: MouseEvent, song: Song) => {
   if (isBatchMode.value) return; 
   contextMenuTargetSong.value = song;
   contextMenuX.value = e.clientX;
-  const menuHeight = 250;
-  contextMenuY.value = e.clientY + menuHeight > window.innerHeight ? e.clientY - menuHeight : e.clientY;
+  contextMenuY.value = e.clientY;
   showContextMenu.value = true;
 };
 
