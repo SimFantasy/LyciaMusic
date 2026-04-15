@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 
-import { useSettingsStore } from './store';
+import { mergeAppSettings, useSettingsStore } from './store';
 
 describe('settings store', () => {
   beforeEach(() => {
@@ -104,5 +104,17 @@ describe('settings store', () => {
     expect(settingsStore.settings.shortcuts.local.togglePlay?.code).toBe('Enter');
     expect(settingsStore.settings.shortcuts.local.nextSong?.code).toBe('ArrowRight');
     expect(settingsStore.settings.shortcuts.global.togglePlay?.code).toBe('KeyP');
+  });
+
+  it('ignores deprecated minimizeToTray when merging persisted settings', () => {
+    const settingsStore = useSettingsStore();
+
+    const merged = mergeAppSettings(settingsStore.settings, {
+      minimizeToTray: true,
+      closeToTray: true,
+    });
+
+    expect(merged.closeToTray).toBe(true);
+    expect('minimizeToTray' in merged).toBe(false);
   });
 });

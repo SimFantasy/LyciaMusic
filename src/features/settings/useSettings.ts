@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia';
 import { playerStorage, playerStorageKeys } from '../../services/storage/playerStorage';
 import {
   defaultAppSettings,
+  type DeprecatedAppSettingsPatch,
   mergeAppSettings,
   useSettingsStore,
 } from './store';
@@ -19,11 +20,12 @@ const migrateLegacySettings = (mergeSettings: (partialSettings: Partial<typeof d
   if (!legacyRaw) return;
 
   try {
-    const parsed = JSON.parse(legacyRaw) as Partial<typeof defaultAppSettings>;
-    mergeSettings(parsed);
+    const parsed = JSON.parse(legacyRaw) as DeprecatedAppSettingsPatch;
+    const migratedSettings = mergeAppSettings(defaultAppSettings, parsed);
+    mergeSettings(migratedSettings);
 
     if (!playerStorage.getString(playerStorageKeys.settings)) {
-      playerStorage.writeSettings(mergeAppSettings(defaultAppSettings, parsed));
+      playerStorage.writeSettings(migratedSettings);
     }
   } catch (error) {
     console.error('Failed to parse legacy app settings', error);

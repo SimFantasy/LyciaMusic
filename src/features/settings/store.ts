@@ -20,6 +20,10 @@ export interface AppSettingsPatch extends Partial<Omit<AppSettings, 'theme' | 's
   shortcuts?: ShortcutSettingsPatch;
 }
 
+export interface DeprecatedAppSettingsPatch extends AppSettingsPatch {
+  minimizeToTray?: boolean;
+}
+
 export const normalizeForegroundStyle = (
   foregroundStyle: string | null | undefined,
 ): ThemeSettings['customBackground']['foregroundStyle'] => (foregroundStyle === 'dark' ? 'dark' : 'light');
@@ -57,7 +61,6 @@ export const defaultSidebarSettings: SidebarSettings = {
 };
 
 export const defaultAppSettings: AppSettings = {
-  minimizeToTray: false,
   closeToTray: false,
   showQualityBadges: true,
   // Deprecated compat field. Main folder-source behavior no longer depends on it.
@@ -118,10 +121,11 @@ export const mergeSidebarSettings = (
 
 export const mergeAppSettings = (
   base: AppSettings,
-  patch: AppSettingsPatch,
+  patch: DeprecatedAppSettingsPatch,
 ): AppSettings => ({
+  // Ignore removed legacy fields that may still exist in persisted settings.
   ...base,
-  ...patch,
+  ...((({ minimizeToTray: _deprecated, ...rest }) => rest)(patch)),
   theme: mergeThemeSettings(base.theme, patch.theme ?? {}),
   sidebar: mergeSidebarSettings(base.sidebar, patch.sidebar ?? {}),
   shortcuts: mergeShortcutSettings(base.shortcuts, patch.shortcuts ?? {}),

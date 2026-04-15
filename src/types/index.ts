@@ -188,7 +188,6 @@ export interface ShortcutSettings {
 }
 
 export interface AppSettings {
-  minimizeToTray: boolean;
   closeToTray: boolean;
   showQualityBadges: boolean;
   // Deprecated compat field. Retained only for legacy config deserialization.

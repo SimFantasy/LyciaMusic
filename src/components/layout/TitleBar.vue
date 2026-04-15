@@ -16,12 +16,8 @@ const rotateSettings = () => {
 };
 
 // 最小化
-const minimize = async () => { 
-  if (settings.value.minimizeToTray) {
-    await appWindow.hide();
-  } else {
-    await appWindow.minimize(); 
-  }
+const minimize = async () => {
+  await appWindow.minimize();
 };
 
 // 最大化/还原
