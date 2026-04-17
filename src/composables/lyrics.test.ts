@@ -5,6 +5,35 @@ vi.stubGlobal('localStorage', {
   setItem: vi.fn(),
 });
 
+vi.mock('@applemusic-like-lyrics/lyric/pkg/amll_lyric.js', async () => {
+  // @ts-expect-error Vitest runs in Node, but this repo does not ship @types/node.
+  const fs = await import('node:fs/promises');
+  // @ts-expect-error Vitest runs in Node, but this repo does not ship @types/node.
+  const os = await import('node:os');
+  // @ts-expect-error Vitest runs in Node, but this repo does not ship @types/node.
+  const path = await import('node:path');
+  // @ts-expect-error Vitest runs in Node, but this repo does not ship @types/node.
+  const { pathToFileURL } = await import('node:url');
+  const cwd = (globalThis as any).process?.cwd?.() ?? '.';
+
+  const pkgDir = path.resolve(cwd, 'node_modules', '@applemusic-like-lyrics', 'lyric', 'pkg');
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'lycia-amll-'));
+  const tempModulePath = path.join(tempDir, 'amll_lyric_bg.mjs');
+
+  await fs.copyFile(path.join(pkgDir, 'amll_lyric_bg.js'), tempModulePath);
+
+  const wrapper = await import(pathToFileURL(tempModulePath).href);
+  const wasmBytes = await fs.readFile(path.join(pkgDir, 'amll_lyric_bg.wasm'));
+  const { instance } = await WebAssembly.instantiate(wasmBytes, {
+    './amll_lyric_bg.js': { ...wrapper },
+  });
+
+  wrapper.__wbg_set_wasm(instance.exports);
+  wrapper.wasm_start();
+
+  return wrapper;
+});
+
 describe('normalizeEslrcSource', async () => {
   const { normalizeEslrcSource } = await import('./lyrics');
 
@@ -701,5 +730,178 @@ describe('lyrics settings normalization', async () => {
     });
 
     expect(normalized.autoHideWhenFullscreen).toBe(false);
+  });
+});
+
+describe('raw lyrics samples from the common formats checklist', async () => {
+  const {
+    buildSemanticLines,
+    prepareParsedLyrics,
+    semanticLineToLyricLine,
+    getCurrentLyricDisplayLines,
+  } = await import('./lyrics');
+
+  async function parseRawToLyricLines(raw: string) {
+    const parsed = await prepareParsedLyrics(raw);
+    return buildSemanticLines(parsed).map(semanticLineToLyricLine);
+  }
+
+  it('parses inline timestamp chinese lrc into timed words', async () => {
+    const lines = await parseRawToLyricLines([
+      '[00:00.000]如[00:00.375]果[00:00.750]当[00:01.125]时[00:01.500] [00:01.875]-[00:02.250] [00:02.625]许[00:03.000]嵩[00:03.375]',
+      '[00:03.380]词[00:04.227]：[00:05.074]许[00:05.921]嵩[00:06.768]',
+    ].join('\n'));
+
+    expect(lines).toHaveLength(2);
+    expect(lines[0]?.text).toBe('如果当时 - 许嵩');
+    expect(lines[0]?.words?.map((word) => word.text)).toEqual([
+      '如',
+      '果',
+      '当',
+      '时',
+      ' ',
+      '-',
+      ' ',
+      '许',
+      '嵩',
+    ]);
+    expect(lines[0]?.translation).toBe('');
+    expect(lines[0]?.romaji).toBe('');
+  });
+
+  it('parses plain line-by-line lrc without losing ordering', async () => {
+    const lines = await parseRawToLyricLines([
+      '[00:00.000]如果当时 - 许嵩',
+      '[00:03.380]词：许嵩',
+      '[00:06.770]曲：许嵩',
+      '[00:10.150]编曲：许嵩',
+    ].join('\n'));
+
+    expect(lines.map((line) => line.text)).toEqual([
+      '如果当时 - 许嵩',
+      '词：许嵩',
+      '曲：许嵩',
+      '编曲：许嵩',
+    ]);
+  });
+
+  it('parses enhanced lrc and keeps per-word timing', async () => {
+    const lines = await parseRawToLyricLines([
+      '[00:00.000]<00:00.000>如<00:00.375>果<00:00.750>当<00:01.125>时<00:01.500> <00:01.875>-<00:02.250> <00:02.625>许<00:03.000>嵩<00:03.375>',
+    ].join('\n'));
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.text).toBe('如果当时 - 许嵩');
+    expect(lines[0]?.words?.map((word) => ({
+      text: word.text,
+      start: word.start,
+      end: word.end,
+    }))).toEqual([
+      { text: '如', start: 0, end: 0.375 },
+      { text: '果', start: 0.375, end: 0.75 },
+      { text: '当', start: 0.75, end: 1.125 },
+      { text: '时', start: 1.125, end: 1.5 },
+      { text: ' ', start: 1.5, end: 1.875 },
+      { text: '-', start: 1.875, end: 2.25 },
+      { text: ' ', start: 2.25, end: 2.625 },
+      { text: '许', start: 2.625, end: 3 },
+      { text: '嵩', start: 3, end: 3.375 },
+    ]);
+  });
+
+  it('classifies latin plus chinese bilingual lyrics as main plus translation across raw lrc input', async () => {
+    const lines = await parseRawToLyricLines([
+      '[00:14.727]You know you love me I know you care',
+      '[00:14.727]你知道你爱我 我知道你在意',
+      '[00:18.389]Just shout whenever and I\'ll be there',
+      '[00:18.389]你只要呼唤我 我就会马上出现',
+    ].join('\n'));
+
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({
+      text: 'You know you love me I know you care',
+      translation: '你知道你爱我 我知道你在意',
+      romaji: '',
+    });
+    expect(lines[1]).toMatchObject({
+      text: 'Just shout whenever and I\'ll be there',
+      translation: '你只要呼唤我 我就会马上出现',
+      romaji: '',
+    });
+  });
+
+  it('keeps english enhanced lines and attaches chinese translation from the same timestamp group', async () => {
+    const lines = await parseRawToLyricLines([
+      '[00:14.727]<00:14.727>You <00:14.896>know <00:15.071>you <00:15.248>love <00:15.576>me <00:16.016><00:16.592>I <00:16.784>know <00:16.992>you <00:17.159>care<00:18.014>',
+      '[00:14.727]<00:14.727>你知道你爱我 我知道你在意<00:18.380>',
+    ].join('\n'));
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.text).toBe('You know you love me I know you care');
+    expect(lines[0]?.translation).toBe('你知道你爱我 我知道你在意');
+    expect(lines[0]?.words?.length).toBeGreaterThan(3);
+  });
+
+  it('classifies japanese raw lrc groups as main plus romaji plus translation', async () => {
+    const lines = await parseRawToLyricLines([
+      '[00:43.792]mo u hi to tsu fu ya shi ma sho u ',
+      '[00:43.792]もう一つ増やしましょう',
+      '[00:43.792]但让我们再多加一个吧',
+      '[00:52.399]wa su re ta ku na i ko to ',
+      '[00:52.399]忘れたくないこと',
+      '[00:52.399]我不愿遗忘',
+    ].join('\n'));
+
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({
+      text: 'もう一つ増やしましょう',
+      romaji: 'mo u hi to tsu fu ya shi ma sho u',
+      translation: '但让我们再多加一个吧',
+    });
+    expect(lines[1]).toMatchObject({
+      text: '忘れたくないこと',
+      romaji: 'wa su re ta ku na i ko to',
+      translation: '我不愿遗忘',
+    });
+  });
+
+  it('preserves japanese enhanced word timing and exposes romaji then translation in display order', async () => {
+    const lines = await parseRawToLyricLines([
+      '[01:01.072]<01:01.072>wa <01:01.336>su <01:01.633>re <01:01.863>ta <01:02.103>ku <01:02.352>na <01:02.577>i <01:02.823>ko <01:03.159>to <01:03.553>',
+      '[01:01.072]<01:01.072>忘<01:01.633>れ<01:01.863>た<01:02.103>く<01:02.352>な<01:02.577>い<01:02.823>こ<01:03.159>と<01:03.553>',
+      '[01:01.072]<01:01.072>我不愿遗忘<01:03.790>',
+    ].join('\n'));
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.text).toBe('忘れたくないこと');
+    expect(lines[0]?.romaji).toBe('wa su re ta ku na i ko to');
+    expect(lines[0]?.translation).toBe('我不愿遗忘');
+    expect(lines[0]?.words?.map((word) => word.text)).toEqual([
+      '忘',
+      'れ',
+      'た',
+      'く',
+      'な',
+      'い',
+      'こ',
+      'と',
+    ]);
+
+    const displayLines = getCurrentLyricDisplayLines(lines[0]!, true, true);
+    expect(displayLines.map((line) => line.kind)).toEqual(['main', 'romaji', 'translation']);
+  });
+
+  it('treats accented latin lyrics as the main line and chinese as translation', async () => {
+    const lines = await parseRawToLyricLines([
+      '[01:06.009]On ira à la foire',
+      '[01:06.009]我们将一起前往那欢乐的圣地',
+    ].join('\n'));
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({
+      text: 'On ira à la foire',
+      translation: '我们将一起前往那欢乐的圣地',
+      romaji: '',
+    });
   });
 });
