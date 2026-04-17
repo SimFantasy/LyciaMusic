@@ -73,7 +73,8 @@ watch(currentCover, (cover) => {
 }, { immediate: true });
 
 watch([currentSongPath, () => props.isExpanded], async ([path, isExpanded]) => {
-  bigCoverLoaded.value = Boolean(path && getFullCoverUrl(path));
+  const cachedFullCoverUrl = path ? getFullCoverUrl(path) : '';
+  bigCoverLoaded.value = Boolean(cachedFullCoverUrl);
 
   if (!path || !isExpanded) {
     fullCoverRequestId += 1;
@@ -84,7 +85,8 @@ watch([currentSongPath, () => props.isExpanded], async ([path, isExpanded]) => {
   retainFullCoverPaths(retainedPaths);
   preloadFullCovers(retainedPaths.filter(candidatePath => candidatePath !== path));
 
-  if (currentCoverFull.value && currentCoverFull.value !== currentCover.value) {
+  if (cachedFullCoverUrl) {
+    currentCoverFull.value = cachedFullCoverUrl;
     return;
   }
 

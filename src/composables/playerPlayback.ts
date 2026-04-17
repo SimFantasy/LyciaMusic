@@ -186,7 +186,15 @@ export const createPlayerPlayback = ({
     currentCover.value = cachedCover;
     currentCoverFull.value = cachedFullCover || '';
     if (showPlayerDetail.value && !cachedFullCover) {
-      void loadFullCover(song.path).catch(() => {});
+      void loadFullCover(song.path)
+        .then((fullCoverUrl) => {
+          if (requestId !== playRequestId || currentSong.value?.path !== song.path || !fullCoverUrl) {
+            return;
+          }
+
+          currentCoverFull.value = fullCoverUrl;
+        })
+        .catch(() => {});
     }
     stopPlaybackRuntime();
     reanchorPlaybackClock(0);

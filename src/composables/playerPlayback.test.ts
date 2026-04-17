@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 
+const loadCoverMock = vi.fn().mockResolvedValue('');
+const loadCoverPathMock = vi.fn().mockResolvedValue('');
+const loadFullCoverMock = vi.fn().mockResolvedValue('');
+const peekCoverUrlMock = vi.fn().mockReturnValue('');
+const peekCoverPathMock = vi.fn().mockReturnValue('');
+const getFullCoverUrlMock = vi.fn().mockReturnValue('');
+
 vi.mock('../services/tauri/playbackApi', () => ({
   playbackApi: {
     playAudio: vi.fn().mockResolvedValue(undefined),
@@ -15,12 +22,12 @@ vi.mock('../services/tauri/playbackApi', () => ({
 
 vi.mock('./useCoverCache', () => ({
   useCoverCache: () => ({
-    loadCover: vi.fn().mockResolvedValue(''),
-    loadCoverPath: vi.fn().mockResolvedValue(''),
-    loadFullCover: vi.fn().mockResolvedValue(''),
-    peekCoverUrl: vi.fn().mockReturnValue(''),
-    peekCoverPath: vi.fn().mockReturnValue(''),
-    getFullCoverUrl: vi.fn().mockReturnValue(''),
+    loadCover: loadCoverMock,
+    loadCoverPath: loadCoverPathMock,
+    loadFullCover: loadFullCoverMock,
+    peekCoverUrl: peekCoverUrlMock,
+    peekCoverPath: peekCoverPathMock,
+    getFullCoverUrl: getFullCoverUrlMock,
   }),
 }));
 
@@ -28,6 +35,7 @@ import type { Song } from '../types';
 import { usePlaybackStore } from '../features/playback/store';
 import { playbackApi } from '../services/tauri/playbackApi';
 import { createPlayerPlayback } from './playerPlayback';
+import { useUiStore } from '../shared/stores/ui';
 
 const makeSong = (overrides: Partial<Song> = {}): Song => ({
   path: '/music/demo.flac',
@@ -49,6 +57,12 @@ describe('player playback domain', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.clearAllMocks();
+    loadCoverMock.mockResolvedValue('');
+    loadCoverPathMock.mockResolvedValue('');
+    loadFullCoverMock.mockResolvedValue('');
+    peekCoverUrlMock.mockReturnValue('');
+    peekCoverPathMock.mockReturnValue('');
+    getFullCoverUrlMock.mockReturnValue('');
   });
 
   it('rebuilds the queue from the display song list order when playback starts', async () => {
@@ -130,6 +144,30 @@ describe('player playback domain', () => {
     expect(playbackApi.playAudio).toHaveBeenCalledWith(expect.objectContaining({
       title: 'i-dle - Allergy',
     }));
+    playerPlayback.dispose();
+  });
+
+  it('updates the full-size cover state when switching songs in the player detail view', async () => {
+    const playbackStore = usePlaybackStore();
+    const uiStore = useUiStore();
+    const song = makeSong({ path: '/music/full-cover.flac', title: 'Full Cover' });
+
+    uiStore.showPlayerDetail = true;
+    loadCoverMock.mockResolvedValue('thumb-url');
+    loadFullCoverMock.mockResolvedValue('full-url');
+
+    const playerPlayback = createPlayerPlayback({
+      getDisplaySongList: () => [song],
+      addToHistory: vi.fn(),
+      loadLyrics: vi.fn(),
+      handleAutoNext: vi.fn(),
+    });
+
+    await playerPlayback.playSong(song);
+    await Promise.resolve();
+
+    expect(loadFullCoverMock).toHaveBeenCalledWith(song.path);
+    expect(playbackStore.currentCoverFull).toBe('full-url');
     playerPlayback.dispose();
   });
 });
