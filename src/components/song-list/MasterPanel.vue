@@ -31,6 +31,7 @@ const {
   toggleFolderNode,
   expandFolderPath,
   refreshFolder,
+  refreshAllFolders,
   removeLibraryFolder,
   deleteFolder,
   moveFilesToFolder,
@@ -196,10 +197,20 @@ const handleRefreshFolder = async () => {
   }
 
   try {
-    await refreshFolder(targetFolder.value.path);
-    toast.showToast('Folder refreshed', 'success');
+    const summary = await refreshAllFolders();
+    if (summary && typeof summary === 'object' && 'removedCount' in summary) {
+      const removedCount = Number(summary.removedCount) || 0;
+      toast.showToast(
+        removedCount > 0
+          ? `刷新成功，检测到少了 ${removedCount} 首歌曲`
+          : '刷新成功',
+        'success',
+      );
+    } else {
+      toast.showToast('刷新成功', 'success');
+    }
   } catch (error) {
-    toast.showToast(`Refresh failed: ${error}`, 'error');
+    toast.showToast(`刷新失败: ${error}`, 'error');
   } finally {
     showMenu.value = false;
   }

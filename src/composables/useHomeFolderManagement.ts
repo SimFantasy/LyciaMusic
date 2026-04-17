@@ -16,6 +16,7 @@ interface UseHomeFolderManagementOptions {
   libraryHierarchy: Ref<FolderNode[]>;
   sourceSongs: Ref<Song[]>;
   refreshFolder: (folderPath: string) => Promise<unknown>;
+  refreshAllFolders: () => Promise<unknown>;
   fetchFolderTree: () => Promise<unknown>;
   createFolder: (parentPath: string, folderName: string) => Promise<string>;
   deleteFolder: (path: string) => Promise<unknown>;
@@ -33,6 +34,7 @@ export function useHomeFolderManagement({
   libraryHierarchy,
   sourceSongs,
   refreshFolder,
+  refreshAllFolders,
   fetchFolderTree,
   createFolder,
   deleteFolder,
@@ -219,8 +221,19 @@ export function useHomeFolderManagement({
     }
 
     try {
-      await refreshFolder(currentFolderFilter.value);
-      showToast('文件夹刷新成功', 'success');
+      const summary = await refreshAllFolders();
+      if (summary && typeof summary === 'object' && 'removedCount' in summary) {
+        const removedCount = Number(summary.removedCount) || 0;
+        showToast(
+          removedCount > 0
+            ? `刷新成功，检测到少了 ${removedCount} 首歌曲`
+            : '刷新成功',
+          'success',
+        );
+        return;
+      }
+
+      showToast('刷新成功', 'success');
     } catch (error: any) {
       showToast(`刷新失败: ${error?.message || error}`, 'error');
     }

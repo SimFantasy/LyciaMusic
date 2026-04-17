@@ -7,7 +7,6 @@ use super::types::{
 use super::utils::normalize_path;
 use crate::database::DbState;
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::SystemTime;
 use tauri::{AppHandle, State};
@@ -140,30 +139,6 @@ fn folder_song_matches_query(row: &FolderViewSongRow, query: &str) -> bool {
         || preferred_artist_search_names(row)
             .iter()
             .any(|name| name.to_lowercase().contains(&lowered_query))
-}
-
-fn into_library_song(song: Song) -> LibrarySong {
-    LibrarySong {
-        id: song.id,
-        name: song.name,
-        title: song.title,
-        path: song.path,
-        artist: song.artist,
-        artist_names: song.artist_names,
-        effective_artist_names: song.effective_artist_names,
-        album: song.album,
-        album_artist: song.album_artist,
-        album_key: song.album_key,
-        is_various_artists_album: song.is_various_artists_album,
-        collapse_artist_credits: song.collapse_artist_credits,
-        duration: song.duration,
-        bitrate: song.bitrate,
-        sample_rate: song.sample_rate,
-        bit_depth: song.bit_depth,
-        format: song.format,
-        added_at: song.added_at,
-        file_modified_at: song.file_modified_at,
-    }
 }
 
 fn load_cached_songs(conn: &rusqlite::Connection) -> Result<Vec<LibrarySong>, String> {
@@ -759,31 +734,19 @@ pub async fn scan_library(
             rows
         };
 
-        let mut all_songs = Vec::new();
-
         let folder_total = folder_paths.len();
         for (index, folder) in folder_paths.into_iter().enumerate() {
-            if let Ok(songs) = scan_single_directory_internal(
+            let _ = scan_single_directory_internal(
                 folder,
                 db_conn.clone(),
                 Some(app.clone()),
                 index + 1,
                 folder_total.max(1),
-            ) {
-                all_songs.extend(songs);
-            }
+            );
         }
 
-        let mut unique_map = HashMap::new();
-        for song in all_songs {
-            unique_map.insert(song.path.clone(), song);
-        }
-
-        let mut result_vec: Vec<LibrarySong> =
-            unique_map.into_values().map(into_library_song).collect();
-        result_vec.sort_by(|a, b| a.name.cmp(&b.name));
-
-        Ok::<Vec<LibrarySong>, String>(result_vec)
+        let conn = db_conn.lock().map_err(|e| e.to_string())?;
+        load_cached_songs(&conn)
     })
     .await
     .map_err(|e| e.to_string())??;

@@ -34,7 +34,10 @@ pub fn scan_single_directory_internal(
     let original_db_count = db_snapshot.len();
     let scan_diff = collect_scan_diff(&normalized_folder, db_snapshot, reporter.as_ref())?;
 
-    if !scan_diff.has_disk_songs && original_db_count > 0 {
+    let folder_is_accessible = Path::new(&normalized_folder).is_dir()
+        && fs::read_dir(&normalized_folder).is_ok();
+
+    if !scan_diff.has_disk_songs && original_db_count > 0 && !folder_is_accessible {
         let error = "文件夹可能已断开连接或路径错误，未执行删除操作".to_string();
         if let Some(reporter) = reporter.as_ref() {
             reporter.emit_error(error.clone());

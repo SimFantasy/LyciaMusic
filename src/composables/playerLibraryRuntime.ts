@@ -20,6 +20,7 @@ let libraryRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 interface CreatePlayerLibraryRuntimeDeps {
   fetchLibraryFolders: () => Promise<void>;
+  fetchFolderTree: () => Promise<void>;
   flushBufferedLibraryScanBatch: () => void;
   refreshStateSongReferences: (fallbackSongs?: Song[]) => void;
   finalizeLibraryScanProgress: (
@@ -32,6 +33,7 @@ interface CreatePlayerLibraryRuntimeDeps {
 
 export const createPlayerLibraryRuntime = ({
   fetchLibraryFolders,
+  fetchFolderTree,
   flushBufferedLibraryScanBatch,
   refreshStateSongReferences,
   finalizeLibraryScanProgress,
@@ -59,11 +61,13 @@ export const createPlayerLibraryRuntime = ({
       flushBufferedLibraryScanBatch();
       const songs = await invoke<LibrarySong[]>('get_library_songs_cached');
       libraryStore.setLibrarySongs(songs);
+      libraryStore.setSourceSongs(songs);
       clearLibraryAllSongPathCache();
       clearLibraryCollectionSongPathCache();
       clearLibraryDetailSongPathCache();
       clearLibraryFolderSongPathCache();
       refreshStateSongReferences(songs);
+      await fetchFolderTree();
     } catch (error) {
       console.error('Failed to load cached library songs:', error);
     }
@@ -109,6 +113,7 @@ export const createPlayerLibraryRuntime = ({
         flushBufferedLibraryScanBatch();
         const songs = await invoke<LibrarySong[]>('scan_library');
         libraryStore.setLibrarySongs(songs);
+        libraryStore.setSourceSongs(songs);
         clearLibraryAllSongPathCache();
         clearLibraryCollectionSongPathCache();
         clearLibraryDetailSongPathCache();
@@ -116,6 +121,7 @@ export const createPlayerLibraryRuntime = ({
         refreshStateSongReferences(songs);
         await Promise.all([
           fetchLibraryFolders(),
+          fetchFolderTree(),
           loadLibraryCatalogsFromCache(),
         ]);
 

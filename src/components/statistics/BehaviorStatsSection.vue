@@ -31,6 +31,8 @@ const TEXT = {
   hideCard: '\u9690\u85cf\u6b64\u5361\u7247',
   unknownSong: '\u672a\u77e5\u6b4c\u66f2',
   unknownArtist: '\u672a\u77e5\u827a\u672f\u5bb6',
+  deletedSong: '\u5df2\u5220\u9664\u6b4c\u66f2',
+  deletedArtist: '\u6e90\u6587\u4ef6\u5df2\u4e0d\u5b58\u5728',
   morning: '\u4e0a\u5348',
   noon: '\u4e2d\u5348',
   afternoon: '\u4e0b\u5348',
@@ -67,6 +69,12 @@ function normalizePath(path: string): string {
 }
 
 function getCoverUrl(songPath: string): string | null {
+  const normalizedPath = normalizePath(songPath);
+  const existsInLibrary = canonicalSongs.value.some(item => normalizePath(item.path) === normalizedPath);
+  if (!existsInLibrary) {
+    return null;
+  }
+
   const cover = coverCache.get(songPath);
   return cover || null;
 }
@@ -83,8 +91,8 @@ function getSongInfo(path: string) {
   }
 
   return {
-    title: path.split(/[/\\]/).pop() || TEXT.unknownSong,
-    artist: TEXT.unknownArtist,
+    title: path.split(/[/\\]/).pop() || TEXT.deletedSong,
+    artist: TEXT.deletedArtist,
   };
 }
 

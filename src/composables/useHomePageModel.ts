@@ -167,6 +167,7 @@ export function useHomePageModel() {
     libraryHierarchy: folderTree,
     sourceSongs,
     refreshFolder,
+    refreshAllFolders,
     fetchFolderTree,
     createFolder,
     deleteFolder,
@@ -251,8 +252,23 @@ export function useHomePageModel() {
   };
 
   const handleRefreshAll = async () => {
-    await refreshAllFolders();
-    showToast('Refresh completed', 'success');
+    try {
+      const summary = await refreshAllFolders();
+      if (summary && typeof summary === 'object' && 'removedCount' in summary) {
+        const removedCount = Number(summary.removedCount) || 0;
+        showToast(
+          removedCount > 0
+            ? `刷新成功，检测到少了 ${removedCount} 首歌曲`
+            : '刷新成功',
+          'success',
+        );
+        return;
+      }
+
+      showToast('刷新成功', 'success');
+    } catch (error: any) {
+      showToast(`刷新失败: ${error?.message || error}`, 'error');
+    }
   };
 
   const handleRootCreatePlaylistRequest = (folderPath: string, folderName: string) => {

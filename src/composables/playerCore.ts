@@ -24,6 +24,7 @@ import { usePlaybackActions } from '../features/playback/usePlaybackActions';
 import { usePlayerLibraryView } from '../features/library/usePlayerLibraryView';
 import { useWindowActions } from './useWindowActions';
 import { playerStorage } from '../services/storage/playerStorage';
+import { playbackApi } from '../services/tauri/playbackApi';
 import { useCollectionsStore } from '../features/collections/store';
 import { useLibraryStore } from '../features/library/store';
 import { useNavigationStore } from '../shared/stores/navigation';
@@ -36,6 +37,11 @@ interface PlaySongOptions {
   clearShuffleFuture?: boolean;
   preserveQueue?: boolean;
   insertAfterCurrent?: boolean;
+}
+
+interface LibraryRefreshSummary {
+  removedCount: number;
+  removedPaths: string[];
 }
 
 const PLAYER_PLAYLIST_PATHS_KEY = 'player_playlist_paths';
@@ -94,8 +100,8 @@ const createSongLookup = (fallbackSongs: Song[] = []) => {
     }
   }
 
-  libraryStore.songLookup.forEach((song, path) => {
-    lookup.set(path, song);
+  libraryStore.canonicalSongs.forEach((song) => {
+    lookup.set(song.path, song);
   });
 
   return lookup;
@@ -159,7 +165,16 @@ function createPlayerCore() {
     localSortMode,
     localCustomOrder,
   } = libraryRefs;
-  const { currentSong, playMode } = playbackRefs;
+  const {
+    currentSong,
+    currentSongPath,
+    playMode,
+    isPlaying,
+    isSongLoaded,
+    currentCover,
+    currentCoverFull,
+    currentTime,
+  } = playbackRefs;
 
   const libraryView = usePlayerLibraryView();
   const {
@@ -267,6 +282,7 @@ function createPlayerCore() {
 
   libraryRuntime = createPlayerLibraryRuntime({
     fetchLibraryFolders,
+    fetchFolderTree,
     flushBufferedLibraryScanBatch,
     refreshStateSongReferences,
     finalizeLibraryScanProgress,
@@ -446,6 +462,67 @@ function createPlayerCore() {
     return playerFileManager.deleteFromDisk(song);
   }
 
+  const syncRemovedSongPreferences = (removedPaths: string[]) => {
+    if (removedPaths.length === 0) {
+      return;
+    }
+
+    const removedSet = new Set(removedPaths);
+    collectionsStore.favoritePaths = collectionsStore.favoritePaths.filter(path => !removedSet.has(path));
+    collectionsStore.playlists.forEach((playlist) => {
+      playlist.songPaths = playlist.songPaths.filter(path => !removedSet.has(path));
+    });
+    localCustomOrder.value = localCustomOrder.value.filter(path => !removedSet.has(path));
+
+    folderCustomOrder.value = Object.fromEntries(
+      Object.entries(folderCustomOrder.value).map(([folderPath, paths]) => [
+        folderPath,
+        paths.filter(path => !removedSet.has(path)),
+      ]),
+    );
+  };
+
+  const stopPlaybackForMissingSong = async () => {
+    await playbackApi.pauseAudio().catch(() => {});
+    playerPlayback.stopPlaybackRuntime();
+    isPlaying.value = false;
+    isSongLoaded.value = false;
+    currentSong.value = null;
+    currentSongPath.value = null;
+    currentTime.value = 0;
+    currentCover.value = '';
+    currentCoverFull.value = '';
+  };
+
+  const refreshLibraryAndCollectSummary = async (
+    options: ScanLibraryOptions = { trigger: 'manual-rescan', visibility: 'inline' },
+  ): Promise<LibraryRefreshSummary> => {
+    const previousPaths = [...libraryStore.canonicalSongPaths];
+    const previousPathSet = new Set(previousPaths);
+    const activeSongPath = currentSongPath.value;
+
+    await libraryRuntime.scanLibrary(options);
+
+    const currentPathSet = new Set(libraryStore.canonicalSongPaths);
+    const removedPaths = previousPaths.filter(path => !currentPathSet.has(path));
+
+    if (removedPaths.length > 0) {
+      syncRemovedSongPreferences(removedPaths);
+      await playerHistoryFavorites.removeFromHistory(removedPaths);
+      refreshStateSongReferences();
+    }
+
+    if (activeSongPath && previousPathSet.has(activeSongPath) && !currentPathSet.has(activeSongPath)) {
+      await stopPlaybackForMissingSong();
+      showToast('当前歌曲已不存在', 'info');
+    }
+
+    return {
+      removedCount: removedPaths.length,
+      removedPaths,
+    };
+  };
+
   async function playSong(song: Song, options: PlaySongOptions = {}) {
     return playerPlayback.playSong(song, options);
   }
@@ -467,7 +544,10 @@ function createPlayerCore() {
   }
 
   async function refreshAllFolders() {
-    return playerFileManager.refreshAllFolders();
+    return refreshLibraryAndCollectSummary({
+      trigger: 'manual-rescan',
+      visibility: 'inline',
+    });
   }
 
   const state = {

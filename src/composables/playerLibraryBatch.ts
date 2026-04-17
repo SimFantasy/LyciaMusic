@@ -16,29 +16,27 @@ export const createPlayerLibraryBatch = ({
   const libraryStore = useLibraryStore();
   const playbackStore = usePlaybackStore();
   const { sourceSongs, canonicalSongs } = storeToRefs(libraryStore);
-  const { playQueue, currentSong } = storeToRefs(playbackStore);
+  const { playQueue, tempQueue, currentSong } = storeToRefs(playbackStore);
   let libraryScanBatchFlushTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingLibraryScanSongs = new Map<string, Song>();
   const pendingLibraryScanDeletedPaths = new Set<string>();
   const pendingLibraryScanFallbackSongs = new Map<string, Song>();
 
   const refreshStateSongReferences = (fallbackSongs: Song[] = []) => {
-    const lookup = createSongLookup([
-      ...fallbackSongs,
-      ...sourceSongs.value,
-      ...playQueue.value,
-      ...(currentSong.value ? [currentSong.value] : []),
-    ]);
+    const lookup = createSongLookup(fallbackSongs);
 
     sourceSongs.value = sourceSongs.value
-      .map(song => lookup.get(song.path) ?? song)
+      .map(song => lookup.get(song.path))
       .filter((song): song is Song => !!song);
     playQueue.value = playQueue.value
-      .map(song => lookup.get(song.path) ?? song)
+      .map(song => lookup.get(song.path))
+      .filter((song): song is Song => !!song);
+    tempQueue.value = tempQueue.value
+      .map(song => lookup.get(song.path))
       .filter((song): song is Song => !!song);
 
     if (currentSong.value?.path) {
-      currentSong.value = lookup.get(currentSong.value.path) ?? currentSong.value;
+      currentSong.value = lookup.get(currentSong.value.path) ?? null;
     }
   };
 
