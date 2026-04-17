@@ -444,7 +444,7 @@ export function useLibraryCurrentViewSongs({
     );
 
   const sortSongPathsByAlbumDetailMode = (paths: string[], mode: AlbumDetailSortMode) => {
-    if (mode !== 'track_number') {
+    if (mode !== 'track_number' && mode !== 'track_number_desc') {
       return sortSongPathsByLocalMode(paths, mode as LocalSortMode);
     }
 
@@ -454,31 +454,34 @@ export function useLibraryCurrentViewSongs({
       const rightSong = songLookup.value.get(right);
       const leftDisc = parseSortIndexValue(leftSong?.disc_number);
       const rightDisc = parseSortIndexValue(rightSong?.disc_number);
+      let result = 0;
 
       if (leftDisc === null && rightDisc !== null) {
-        return 1;
-      }
-      if (leftDisc !== null && rightDisc === null) {
-        return -1;
-      }
-      if (leftDisc !== null && rightDisc !== null && leftDisc !== rightDisc) {
-        return leftDisc - rightDisc;
+        result = 1;
+      } else if (leftDisc !== null && rightDisc === null) {
+        result = -1;
+      } else if (leftDisc !== null && rightDisc !== null && leftDisc !== rightDisc) {
+        result = leftDisc - rightDisc;
       }
 
-      const leftTrack = parseSortIndexValue(leftSong?.track_number);
-      const rightTrack = parseSortIndexValue(rightSong?.track_number);
+      if (result === 0) {
+        const leftTrack = parseSortIndexValue(leftSong?.track_number);
+        const rightTrack = parseSortIndexValue(rightSong?.track_number);
 
-      if (leftTrack === null && rightTrack !== null) {
-        return 1;
-      }
-      if (leftTrack !== null && rightTrack === null) {
-        return -1;
-      }
-      if (leftTrack !== null && rightTrack !== null && leftTrack !== rightTrack) {
-        return leftTrack - rightTrack;
+        if (leftTrack === null && rightTrack !== null) {
+          result = 1;
+        } else if (leftTrack !== null && rightTrack === null) {
+          result = -1;
+        } else if (leftTrack !== null && rightTrack !== null && leftTrack !== rightTrack) {
+          result = leftTrack - rightTrack;
+        }
       }
 
-      return compareSongLabel(left, right) || left.localeCompare(right, 'zh-CN');
+      if (result === 0) {
+        result = compareSongLabel(left, right) || left.localeCompare(right, 'zh-CN');
+      }
+
+      return mode === 'track_number_desc' ? -result : result;
     });
 
     return sortedPaths;

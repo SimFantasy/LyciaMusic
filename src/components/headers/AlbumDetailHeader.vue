@@ -223,7 +223,9 @@ const getGradientForAlbum = (name: string) => {
                 v-for="mode in (['track_number', 'title', 'artist', 'added_at', 'file_modified_at'] as const)"
                 :key="mode"
                 @click="
-                  if (mode === 'added_at') {
+                  if (mode === 'track_number') {
+                    setAlbumDetailSortMode(albumDetailSortMode === 'track_number' ? 'track_number_desc' : 'track_number');
+                  } else if (mode === 'added_at') {
                     setAlbumDetailSortMode(albumDetailSortMode === 'added_at' ? 'added_at_asc' : 'added_at');
                   } else if (mode === 'file_modified_at') {
                     setAlbumDetailSortMode(albumDetailSortMode === 'file_modified_at' ? 'file_modified_at_asc' : 'file_modified_at');
@@ -237,7 +239,7 @@ const getGradientForAlbum = (name: string) => {
               >
                 <span>{{ sortLabelMap[mode] }}</span>
                 <div v-if="(albumDetailSortMode || '').startsWith(mode)" class="flex items-center gap-1.5">
-                  <svg v-if="mode === 'added_at' || mode === 'file_modified_at'" xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform duration-200" :class="{ 'rotate-180': albumDetailSortMode === 'added_at_asc' || albumDetailSortMode === 'file_modified_at_asc' }" viewBox="0 0 20 20" fill="currentColor">
+                  <svg v-if="mode === 'track_number' || mode === 'added_at' || mode === 'file_modified_at'" xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform duration-200" :class="{ 'rotate-180': albumDetailSortMode === 'track_number_desc' || albumDetailSortMode === 'added_at_asc' || albumDetailSortMode === 'file_modified_at_asc' }" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M14.707 12.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l2.293-2.293a1 1 0 011.414 0z" clip-rule="evenodd" />
                   </svg>
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">

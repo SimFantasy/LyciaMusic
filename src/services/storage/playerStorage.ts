@@ -5,7 +5,7 @@ export type ArtistSortMode = 'count' | 'name' | 'custom';
 export type AlbumSortMode = 'count' | 'name' | 'artist' | 'custom';
 export type FolderSortMode = 'title' | 'name' | 'artist' | 'added_at' | 'added_at_asc' | 'custom';
 export type LocalSortMode = 'title' | 'artist' | 'added_at' | 'added_at_asc' | 'file_modified_at' | 'file_modified_at_asc' | 'custom';
-export type AlbumDetailSortMode = 'track_number' | 'title' | 'artist' | 'added_at' | 'added_at_asc' | 'file_modified_at' | 'file_modified_at_asc';
+export type AlbumDetailSortMode = 'track_number' | 'track_number_desc' | 'title' | 'artist' | 'added_at' | 'added_at_asc' | 'file_modified_at' | 'file_modified_at_asc';
 export type PlaylistSortMode = 'title' | 'name' | 'artist' | 'added_at' | 'added_at_asc' | 'custom';
 
 export const playerStorageKeys = {

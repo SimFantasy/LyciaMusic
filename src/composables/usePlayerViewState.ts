@@ -22,7 +22,7 @@ export function usePlayerViewState() {
     libraryRefs.localSortMode.value = mode;
   };
 
-  const setAlbumDetailSortMode = (mode: 'track_number' | 'title' | 'artist' | 'added_at' | 'added_at_asc' | 'file_modified_at' | 'file_modified_at_asc') => {
+  const setAlbumDetailSortMode = (mode: 'track_number' | 'track_number_desc' | 'title' | 'artist' | 'added_at' | 'added_at_asc' | 'file_modified_at' | 'file_modified_at_asc') => {
     libraryRefs.albumDetailSortMode.value = mode;
   };
 

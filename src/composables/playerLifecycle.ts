@@ -121,7 +121,7 @@ const restoreSortSettings = ({
   }
 
   const storedAlbumDetailSort = playerStorage.getString(playerStorageKeys.albumDetailSortMode);
-  if (storedAlbumDetailSort && ['track_number', 'title', 'artist', 'added_at', 'added_at_asc', 'file_modified_at', 'file_modified_at_asc'].includes(storedAlbumDetailSort)) {
+  if (storedAlbumDetailSort && ['track_number', 'track_number_desc', 'title', 'artist', 'added_at', 'added_at_asc', 'file_modified_at', 'file_modified_at_asc'].includes(storedAlbumDetailSort)) {
     albumDetailSortMode.value = storedAlbumDetailSort as AlbumDetailSortMode;
   }
 

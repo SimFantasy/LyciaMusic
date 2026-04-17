@@ -402,6 +402,15 @@ describe('player library view', () => {
       discTwoSong.path,
     ]);
 
+    libraryStore.albumDetailSortMode = 'track_number_desc';
+    await flushPromises();
+
+    expect(displaySongList.value.map(song => song.path)).toEqual([
+      discTwoSong.path,
+      secondTrack.path,
+      firstTrack.path,
+    ]);
+
     libraryStore.albumDetailSortMode = 'added_at';
     await flushPromises();
 
