@@ -53,16 +53,6 @@ const currentOutputDeviceLabel = computed(() => {
   return selectedDevice?.name || '默认系统设备';
 });
 
-const outputDeviceDescription = computed(() => {
-  if (!currentOutputDeviceLabel.value) {
-    return '未检测到可用输出设备';
-  }
-
-  return followsSystemDefault.value
-    ? `当前播放设备：${currentOutputDeviceLabel.value}（跟随系统默认）`
-    : `当前播放设备：${currentOutputDeviceLabel.value}`;
-});
-
 const lyricsSyncOffsetMs = computed({
   get: () => Math.round(settings.value.lyricsSyncOffset * 1000),
   set: (value: number | string) => {
@@ -223,7 +213,6 @@ onUnmounted(() => {
         <div class="p-4 flex items-center justify-between border-b border-white/30 dark:border-white/5 last:border-0 hover:bg-white/40 dark:hover:bg-white/10 transition-colors">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">开机自动运行</div>
-            <div class="text-xs text-gray-600 dark:text-white/60 mt-0.5">系统启动时自动打开应用</div>
           </div>
           <button @click="launchOnStartup = !launchOnStartup" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none" :class="launchOnStartup ? 'bg-[#EC4141]' : 'bg-gray-300 dark:bg-gray-700'">
             <span class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out shadow-sm" :class="launchOnStartup ? 'translate-x-6' : 'translate-x-1'" />
@@ -233,7 +222,6 @@ onUnmounted(() => {
         <div class="p-4 flex items-center justify-between border-b border-white/30 dark:border-white/5 last:border-0 hover:bg-white/40 dark:hover:bg-white/10 transition-colors">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">GPU 加速</div>
-            <div class="text-xs text-gray-600 dark:text-white/60 mt-0.5">使用显卡硬件加速界面渲染 (需要重启)</div>
           </div>
           <button @click="gpuAcceleration = !gpuAcceleration" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none" :class="gpuAcceleration ? 'bg-[#EC4141]' : 'bg-gray-300 dark:bg-gray-700'">
             <span class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out shadow-sm" :class="gpuAcceleration ? 'translate-x-6' : 'translate-x-1'" />
@@ -243,7 +231,6 @@ onUnmounted(() => {
         <div class="p-4 flex items-center justify-between border-b border-white/30 dark:border-white/5 last:border-0 hover:bg-white/40 dark:hover:bg-white/10 transition-colors">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">关闭主面板时最小化到托盘</div>
-            <div class="text-xs text-gray-600 dark:text-white/60 mt-0.5">点击关闭按钮时隐藏到托盘，不退出程序</div>
           </div>
           <button @click="settings.closeToTray = !settings.closeToTray" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none" :class="settings.closeToTray ? 'bg-[#EC4141]' : 'bg-gray-300 dark:bg-gray-700'">
             <span class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out shadow-sm" :class="settings.closeToTray ? 'translate-x-6' : 'translate-x-1'" />
@@ -253,7 +240,6 @@ onUnmounted(() => {
         <div class="p-4 flex items-center justify-between border-b border-white/30 dark:border-white/5 last:border-0 hover:bg-white/40 dark:hover:bg-white/10 transition-colors">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">显示音质标识</div>
-            <div class="text-xs text-gray-600 dark:text-white/60 mt-0.5">在歌曲标题旁显示 Hi-Res / SQ / HQ 标签</div>
           </div>
           <button @click="settings.showQualityBadges = !settings.showQualityBadges" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none" :class="settings.showQualityBadges ? 'bg-[#EC4141]' : 'bg-gray-300 dark:bg-gray-700'">
             <span class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out shadow-sm" :class="settings.showQualityBadges ? 'translate-x-6' : 'translate-x-1'" />
@@ -272,7 +258,6 @@ onUnmounted(() => {
         <div class="p-4 flex items-center justify-between border-b border-white/30 dark:border-white/5 last:border-0 hover:bg-white/40 dark:hover:bg-white/10 transition-colors">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">自动播放</div>
-            <div class="text-xs text-gray-600 dark:text-white/60 mt-0.5">程序启动后自动恢复上次播放</div>
           </div>
            <button @click="autoPlay = !autoPlay" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none" :class="autoPlay ? 'bg-[#EC4141]' : 'bg-gray-300 dark:bg-gray-700'">
             <span class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out shadow-sm" :class="autoPlay ? 'translate-x-6' : 'translate-x-1'" />
@@ -282,9 +267,6 @@ onUnmounted(() => {
         <div class="p-4 flex items-center justify-between border-b border-white/30 dark:border-white/5 last:border-0 hover:bg-white/40 dark:hover:bg-white/10 transition-colors relative">
            <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">输出设备</div>
-            <div class="text-xs text-gray-600 dark:text-white/60 mt-0.5">
-              {{ outputDeviceDescription }}
-            </div>
           </div>
           
           <div class="relative">
@@ -349,9 +331,6 @@ onUnmounted(() => {
           >
             <div class="min-w-0">
               <div class="text-sm font-medium text-gray-800 dark:text-gray-200">歌词同步补偿</div>
-              <div class="text-xs text-gray-600 dark:text-white/60 mt-0.5 truncate">
-                当前值 {{ lyricsSyncOffsetLabel }}，点击展开调节
-              </div>
             </div>
             <div class="flex items-center gap-3 shrink-0">
               <div class="text-xs font-medium text-gray-600 dark:text-gray-300 tabular-nums">
@@ -422,7 +401,6 @@ onUnmounted(() => {
          <div class="p-4 flex items-center justify-between hover:bg-white/40 dark:hover:bg-white/10 transition-colors">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">清除缓存</div>
-            <div class="text-xs text-gray-600 dark:text-white/60 mt-0.5">释放封面与界面取色缓存</div>
           </div>
           <button
             type="button"
@@ -448,9 +426,6 @@ onUnmounted(() => {
         <div class="p-4 flex items-center justify-between gap-4 hover:bg-white/40 dark:hover:bg-white/10 transition-colors">
           <div class="min-w-0">
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">清除所有数据</div>
-            <div class="text-xs text-gray-600 dark:text-white/60 mt-0.5">
-              删除媒体库、播放记录、收藏和设置，恢复初始状态，不会删除你的音乐文件
-            </div>
           </div>
           <button
             type="button"
