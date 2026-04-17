@@ -238,6 +238,9 @@ type AlbumSectionEntry = { album: AlbumListItem; index: number };
 type AlbumVirtualHeaderRow = { type: 'header'; key: string; title: string };
 type AlbumVirtualItemsRow = { type: 'items'; key: string; items: AlbumSectionEntry[] };
 type AlbumVirtualRow = AlbumVirtualHeaderRow | AlbumVirtualItemsRow;
+type MeasuredAlbumVirtualHeaderRow = AlbumVirtualHeaderRow & { top: number; height: number };
+type MeasuredAlbumVirtualItemsRow = AlbumVirtualItemsRow & { top: number; height: number };
+type MeasuredAlbumVirtualRow = MeasuredAlbumVirtualHeaderRow | MeasuredAlbumVirtualItemsRow;
 
 const groupedAlbumRows = computed<AlbumVirtualRow[]>(() => {
   const rows: AlbumVirtualRow[] = [];
@@ -261,6 +264,21 @@ const groupedAlbumRows = computed<AlbumVirtualRow[]>(() => {
   return rows;
 });
 
+const measuredGroupedAlbumRows = computed<MeasuredAlbumVirtualRow[]>(() => {
+  let totalHeight = 0;
+
+  return groupedAlbumRows.value.map((row) => {
+    const height = row.type === 'header' ? ALBUM_SECTION_HEADER_HEIGHT : albumRowSpan.value;
+    const measuredRow = {
+      ...row,
+      top: totalHeight,
+      height,
+    };
+    totalHeight += height;
+    return measuredRow;
+  });
+});
+
 const groupedAlbumVirtualState = computed(() => {
   const overscanPx = albumRowSpan.value * ALBUM_OVERSCAN_ROWS;
   const startBoundary = Math.max(0, containerScrollTop.value - overscanPx);
@@ -269,17 +287,8 @@ const groupedAlbumVirtualState = computed(() => {
   let totalHeight = 0;
   let startIndex = 0;
   let endIndex = groupedAlbumRows.value.length;
-
-  const measuredRows = groupedAlbumRows.value.map((row) => {
-    const height = row.type === 'header' ? ALBUM_SECTION_HEADER_HEIGHT : albumRowSpan.value;
-    const top = totalHeight;
-    totalHeight += height;
-    return {
-      ...row,
-      top,
-      height,
-    };
-  });
+  const measuredRows = measuredGroupedAlbumRows.value;
+  totalHeight = measuredRows.reduce((sum, row) => sum + row.height, 0);
 
   while (
     startIndex < measuredRows.length
@@ -305,6 +314,53 @@ const groupedAlbumVirtualState = computed(() => {
     paddingBottom: `${Math.max(0, totalHeight - lastBottom)}px`,
   };
 });
+
+const stickyAlbumHeader = computed(() => {
+  if (albumSortMode.value !== 'name') {
+    return null;
+  }
+
+  const headerRows = measuredGroupedAlbumRows.value.filter(
+    (row): row is MeasuredAlbumVirtualHeaderRow => row.type === 'header',
+  );
+
+  if (headerRows.length === 0) {
+    return null;
+  }
+
+  const scrollTop = containerScrollTop.value;
+  let activeIndex = 0;
+
+  for (let index = 0; index < headerRows.length; index += 1) {
+    if (headerRows[index].top <= scrollTop) {
+      activeIndex = index;
+      continue;
+    }
+    break;
+  }
+
+  const activeHeader = headerRows[activeIndex];
+  const nextHeader = headerRows[activeIndex + 1];
+  const offset = nextHeader
+    ? Math.min(0, nextHeader.top - scrollTop - activeHeader.height)
+    : 0;
+
+  return {
+    key: activeHeader.key,
+    title: activeHeader.title,
+    offset: `${offset}px`,
+    shouldHideSourceRow: activeHeader.top <= scrollTop,
+  };
+});
+
+const isStickyAlbumHeaderRow = (rowKey: string, rowTop: number) => {
+  const stickyHeader = stickyAlbumHeader.value;
+  if (!stickyHeader) {
+    return false;
+  }
+
+  return stickyHeader.key === rowKey && stickyHeader.shouldHideSourceRow && rowTop <= containerScrollTop.value;
+};
 
 const flatAlbumVirtualState = computed(() => {
   const totalRows = Math.ceil(filteredAlbumList.value.length / albumGridColumns.value);
@@ -583,13 +639,31 @@ onUnmounted(() => {
 
     <section ref="containerRef" class="albums-scroll-container flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 custom-scrollbar relative z-0" @scroll="handleContainerScroll">
       <div
+        v-if="stickyAlbumHeader"
+        class="pointer-events-none sticky top-0 z-20"
+        :style="{ height: `${ALBUM_SECTION_HEADER_HEIGHT}px`, marginBottom: `-${ALBUM_SECTION_HEADER_HEIGHT}px` }"
+        aria-hidden="true"
+      >
+        <div
+          class="h-[72px] flex items-end gap-3 pb-4"
+          :style="{ transform: `translateY(${stickyAlbumHeader.offset})`, willChange: 'transform' }"
+        >
+          <div class="text-xl md:text-2xl font-black tracking-[0.2em] text-gray-900 dark:text-white/90">
+            {{ stickyAlbumHeader.title }}
+          </div>
+          <div class="h-px flex-1 bg-gradient-to-r from-gray-300/80 via-gray-200/50 to-transparent dark:from-white/15 dark:via-white/8 dark:to-transparent"></div>
+        </div>
+      </div>
+
+      <div
         v-if="albumSortMode === 'name'"
         :style="{ paddingTop: groupedAlbumVirtualState.paddingTop, paddingBottom: groupedAlbumVirtualState.paddingBottom }"
       >
         <template v-for="row in groupedAlbumVirtualState.rows" :key="row.key">
           <div
             v-if="row.type === 'header'"
-            class="h-[72px] flex items-end gap-3 pb-4"
+            class="h-[72px] flex items-end gap-3 pb-4 transition-opacity duration-150"
+            :class="{ 'opacity-0': isStickyAlbumHeaderRow(row.key, row.top) }"
           >
             <div class="text-xl md:text-2xl font-black tracking-[0.2em] text-gray-900 dark:text-white/90">
               {{ row.title }}

@@ -210,6 +210,9 @@ type ArtistSectionEntry = { artist: ArtistListItem; index: number };
 type ArtistVirtualHeaderRow = { type: 'header'; key: string; title: string };
 type ArtistVirtualItemsRow = { type: 'items'; key: string; items: ArtistSectionEntry[] };
 type ArtistVirtualRow = ArtistVirtualHeaderRow | ArtistVirtualItemsRow;
+type MeasuredArtistVirtualHeaderRow = ArtistVirtualHeaderRow & { top: number; height: number };
+type MeasuredArtistVirtualItemsRow = ArtistVirtualItemsRow & { top: number; height: number };
+type MeasuredArtistVirtualRow = MeasuredArtistVirtualHeaderRow | MeasuredArtistVirtualItemsRow;
 
 const groupedArtistRows = computed<ArtistVirtualRow[]>(() => {
   const rows: ArtistVirtualRow[] = [];
@@ -233,6 +236,21 @@ const groupedArtistRows = computed<ArtistVirtualRow[]>(() => {
   return rows;
 });
 
+const measuredGroupedArtistRows = computed<MeasuredArtistVirtualRow[]>(() => {
+  let totalHeight = 0;
+
+  return groupedArtistRows.value.map((row) => {
+    const height = row.type === 'header' ? ARTIST_SECTION_HEADER_HEIGHT : ARTIST_ROW_SPAN;
+    const measuredRow = {
+      ...row,
+      top: totalHeight,
+      height,
+    };
+    totalHeight += height;
+    return measuredRow;
+  });
+});
+
 const groupedArtistVirtualState = computed(() => {
   const overscanPx = ARTIST_ROW_SPAN * ARTIST_OVERSCAN_ROWS;
   const startBoundary = Math.max(0, containerScrollTop.value - overscanPx);
@@ -241,17 +259,8 @@ const groupedArtistVirtualState = computed(() => {
   let totalHeight = 0;
   let startIndex = 0;
   let endIndex = groupedArtistRows.value.length;
-
-  const measuredRows = groupedArtistRows.value.map((row) => {
-    const height = row.type === 'header' ? ARTIST_SECTION_HEADER_HEIGHT : ARTIST_ROW_SPAN;
-    const top = totalHeight;
-    totalHeight += height;
-    return {
-      ...row,
-      top,
-      height,
-    };
-  });
+  const measuredRows = measuredGroupedArtistRows.value;
+  totalHeight = measuredRows.reduce((sum, row) => sum + row.height, 0);
 
   while (
     startIndex < measuredRows.length
@@ -277,6 +286,53 @@ const groupedArtistVirtualState = computed(() => {
     paddingBottom: `${Math.max(0, totalHeight - lastBottom)}px`,
   };
 });
+
+const stickyArtistHeader = computed(() => {
+  if (artistSortMode.value !== 'name') {
+    return null;
+  }
+
+  const headerRows = measuredGroupedArtistRows.value.filter(
+    (row): row is MeasuredArtistVirtualHeaderRow => row.type === 'header',
+  );
+
+  if (headerRows.length === 0) {
+    return null;
+  }
+
+  const scrollTop = containerScrollTop.value;
+  let activeIndex = 0;
+
+  for (let index = 0; index < headerRows.length; index += 1) {
+    if (headerRows[index].top <= scrollTop) {
+      activeIndex = index;
+      continue;
+    }
+    break;
+  }
+
+  const activeHeader = headerRows[activeIndex];
+  const nextHeader = headerRows[activeIndex + 1];
+  const offset = nextHeader
+    ? Math.min(0, nextHeader.top - scrollTop - activeHeader.height)
+    : 0;
+
+  return {
+    key: activeHeader.key,
+    title: activeHeader.title,
+    offset: `${offset}px`,
+    shouldHideSourceRow: activeHeader.top <= scrollTop,
+  };
+});
+
+const isStickyArtistHeaderRow = (rowKey: string, rowTop: number) => {
+  const stickyHeader = stickyArtistHeader.value;
+  if (!stickyHeader) {
+    return false;
+  }
+
+  return stickyHeader.key === rowKey && stickyHeader.shouldHideSourceRow && rowTop <= containerScrollTop.value;
+};
 
 const flatArtistVirtualState = computed(() => {
   const totalRows = Math.ceil(filteredArtistList.value.length / artistGridColumns.value);
@@ -542,13 +598,31 @@ onUnmounted(() => {
 
     <section ref="containerRef" class="artists-scroll-container flex-1 overflow-y-auto p-8 custom-scrollbar relative z-0" @scroll="handleContainerScroll">
       <div
+        v-if="stickyArtistHeader"
+        class="pointer-events-none sticky top-0 z-20"
+        :style="{ height: `${ARTIST_SECTION_HEADER_HEIGHT}px`, marginBottom: `-${ARTIST_SECTION_HEADER_HEIGHT}px` }"
+        aria-hidden="true"
+      >
+        <div
+          class="h-14 flex items-end gap-3 pb-4"
+          :style="{ transform: `translateY(${stickyArtistHeader.offset})`, willChange: 'transform' }"
+        >
+          <div class="text-xl md:text-2xl font-black tracking-[0.2em] text-gray-900 dark:text-white/90">
+            {{ stickyArtistHeader.title }}
+          </div>
+          <div class="h-px flex-1 bg-gradient-to-r from-gray-300/80 via-gray-200/50 to-transparent dark:from-white/15 dark:via-white/8 dark:to-transparent"></div>
+        </div>
+      </div>
+
+      <div
         v-if="artistSortMode === 'name'"
         :style="{ paddingTop: groupedArtistVirtualState.paddingTop, paddingBottom: groupedArtistVirtualState.paddingBottom }"
       >
         <template v-for="row in groupedArtistVirtualState.rows" :key="row.key">
           <div
             v-if="row.type === 'header'"
-            class="h-14 flex items-end gap-3 pb-4"
+            class="h-14 flex items-end gap-3 pb-4 transition-opacity duration-150"
+            :class="{ 'opacity-0': isStickyArtistHeaderRow(row.key, row.top) }"
           >
             <div class="text-xl md:text-2xl font-black tracking-[0.2em] text-gray-900 dark:text-white/90">
               {{ row.title }}
