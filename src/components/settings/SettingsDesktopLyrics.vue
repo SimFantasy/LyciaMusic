@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { emit } from '@tauri-apps/api/event';
-import { Check, ChevronDown, Type } from 'lucide-vue-next';
+import { Check, ChevronDown, RotateCcw, Type } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 
 import {
@@ -57,8 +57,10 @@ const COLOR_SCHEME_OPTIONS: Array<{
 const { settings } = useSettings();
 const { lyricsSettings, desktopLyricsSettings } = useLyrics();
 const fontPresetFieldRef = ref<HTMLElement | null>(null);
+const fontPresetTriggerRef = ref<HTMLElement | null>(null);
 const fontPresetMenuRef = ref<HTMLElement | null>(null);
 const isFontPresetMenuOpen = ref(false);
+const fontPresetMenuStyle = ref<Record<string, string>>({});
 const isResettingWindowBounds = ref(false);
 
 const availableFontOptions = computed(() => [
@@ -151,12 +153,50 @@ function resetLyricsSyncOffset() {
   lyricsSyncOffsetMs.value = 0;
 }
 
+function updateFontPresetMenuPosition() {
+  const trigger = fontPresetTriggerRef.value;
+  if (!trigger) return;
+
+  const rect = trigger.getBoundingClientRect();
+  const viewportPadding = 16;
+  const gap = 10;
+  const preferredWidth = Math.max(rect.width, 320);
+  const menuWidth = Math.min(preferredWidth, window.innerWidth - viewportPadding * 2);
+
+  let left = rect.right - menuWidth;
+  left = Math.min(left, window.innerWidth - viewportPadding - menuWidth);
+  left = Math.max(viewportPadding, left);
+
+  const availableBelow = window.innerHeight - rect.bottom - viewportPadding;
+  const availableAbove = rect.top - viewportPadding;
+  const shouldOpenUpward = availableBelow < 220 && availableAbove > availableBelow;
+  const availableHeight = shouldOpenUpward ? availableAbove : availableBelow;
+  const maxHeight = Math.max(180, Math.min(360, availableHeight - gap));
+
+  fontPresetMenuStyle.value = shouldOpenUpward
+    ? {
+        position: 'fixed',
+        left: `${Math.round(left)}px`,
+        bottom: `${Math.round(window.innerHeight - rect.top + gap)}px`,
+        width: `${Math.round(menuWidth)}px`,
+        maxHeight: `${Math.round(maxHeight)}px`,
+      }
+    : {
+        position: 'fixed',
+        left: `${Math.round(left)}px`,
+        top: `${Math.round(rect.bottom + gap)}px`,
+        width: `${Math.round(menuWidth)}px`,
+        maxHeight: `${Math.round(maxHeight)}px`,
+      };
+}
+
 async function toggleFontPresetMenu() {
   isFontPresetMenuOpen.value = !isFontPresetMenuOpen.value;
 
   if (!isFontPresetMenuOpen.value) return;
 
   await nextTick();
+  updateFontPresetMenuPosition();
 
   const activeItem = fontPresetMenuRef.value?.querySelector('.desktop-font-option--active') as HTMLElement | null;
   activeItem?.scrollIntoView({ block: 'nearest' });
@@ -196,15 +236,24 @@ function handleWindowEscape(event: KeyboardEvent) {
   }
 }
 
+function handleViewportChange() {
+  if (!isFontPresetMenuOpen.value) return;
+  updateFontPresetMenuPosition();
+}
+
 onMounted(() => {
   window.addEventListener('mousedown', handlePointerDownOutside);
   window.addEventListener('keydown', handleWindowEscape);
+  window.addEventListener('resize', handleViewportChange);
+  document.addEventListener('scroll', handleViewportChange, true);
   void loadSystemLyricsFonts();
 });
 
 onUnmounted(() => {
   window.removeEventListener('mousedown', handlePointerDownOutside);
   window.removeEventListener('keydown', handleWindowEscape);
+  window.removeEventListener('resize', handleViewportChange);
+  document.removeEventListener('scroll', handleViewportChange, true);
 });
 </script>
 
@@ -379,22 +428,23 @@ onUnmounted(() => {
         <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
         排版与字体
       </h2>
-      <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div class="desktop-card">
-          <div class="desktop-card-header">
-            <div>
-              <div class="text-sm font-medium text-gray-800 dark:text-gray-200">字号</div>
+      <div class="desktop-typography-panel">
+        <div class="desktop-typography-row">
+          <div class="desktop-inline-header">
+            <div class="desktop-inline-title">
+              <span class="text-sm font-medium text-gray-800 dark:text-gray-200">字号</span>
+              <button
+                v-if="desktopLyricsSettings.playerFontScale !== DEFAULT_PLAYER_FONT_SCALE"
+                type="button"
+                class="desktop-inline-reset"
+                title="重置字号"
+                @click="setDesktopFontScale(DEFAULT_PLAYER_FONT_SCALE)"
+              >
+                <RotateCcw :size="12" />
+              </button>
             </div>
-            <button
-              v-if="desktopLyricsSettings.playerFontScale !== DEFAULT_PLAYER_FONT_SCALE"
-              type="button"
-              class="desktop-reset-button"
-              @click="setDesktopFontScale(DEFAULT_PLAYER_FONT_SCALE)"
-            >
-              重置
-            </button>
+            <div class="desktop-inline-value">{{ fontScaleLabel }}</div>
           </div>
-          <div class="desktop-card-value">{{ fontScaleLabel }}</div>
           <div class="desktop-slider-row">
             <button type="button" class="desktop-mini-button" @click="setDesktopFontScale(desktopLyricsSettings.playerFontScale - FONT_SCALE_STEP)">-</button>
             <input
@@ -410,21 +460,22 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="desktop-card">
-          <div class="desktop-card-header">
-            <div>
-              <div class="text-sm font-medium text-gray-800 dark:text-gray-200">行距</div>
+        <div class="desktop-typography-row">
+          <div class="desktop-inline-header">
+            <div class="desktop-inline-title">
+              <span class="text-sm font-medium text-gray-800 dark:text-gray-200">行距</span>
+              <button
+                v-if="desktopLyricsSettings.playerLineGap !== DEFAULT_PLAYER_LINE_GAP"
+                type="button"
+                class="desktop-inline-reset"
+                title="重置行距"
+                @click="setDesktopLineGap(DEFAULT_PLAYER_LINE_GAP)"
+              >
+                <RotateCcw :size="12" />
+              </button>
             </div>
-            <button
-              v-if="desktopLyricsSettings.playerLineGap !== DEFAULT_PLAYER_LINE_GAP"
-              type="button"
-              class="desktop-reset-button"
-              @click="setDesktopLineGap(DEFAULT_PLAYER_LINE_GAP)"
-            >
-              重置
-            </button>
+            <div class="desktop-inline-value">{{ lineGapLabel }}</div>
           </div>
-          <div class="desktop-card-value">{{ lineGapLabel }}</div>
           <div class="desktop-slider-row">
             <button type="button" class="desktop-mini-button" @click="setDesktopLineGap(desktopLyricsSettings.playerLineGap - LINE_GAP_STEP)">-</button>
             <input
@@ -440,21 +491,22 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="desktop-card">
-          <div class="desktop-card-header">
-            <div>
-              <div class="text-sm font-medium text-gray-800 dark:text-gray-200">横向偏移</div>
+        <div class="desktop-typography-row">
+          <div class="desktop-inline-header">
+            <div class="desktop-inline-title">
+              <span class="text-sm font-medium text-gray-800 dark:text-gray-200">横向偏移</span>
+              <button
+                v-if="desktopLyricsSettings.playerOffsetX !== DEFAULT_PLAYER_OFFSET_X"
+                type="button"
+                class="desktop-inline-reset"
+                title="重置横向偏移"
+                @click="setDesktopOffsetX(DEFAULT_PLAYER_OFFSET_X)"
+              >
+                <RotateCcw :size="12" />
+              </button>
             </div>
-            <button
-              v-if="desktopLyricsSettings.playerOffsetX !== DEFAULT_PLAYER_OFFSET_X"
-              type="button"
-              class="desktop-reset-button"
-              @click="setDesktopOffsetX(DEFAULT_PLAYER_OFFSET_X)"
-            >
-              重置
-            </button>
+            <div class="desktop-inline-value">{{ offsetXLabel }}</div>
           </div>
-          <div class="desktop-card-value">{{ offsetXLabel }}</div>
           <div class="desktop-slider-row">
             <button type="button" class="desktop-mini-button" @click="setDesktopOffsetX(desktopLyricsSettings.playerOffsetX - OFFSET_STEP)">-</button>
             <input
@@ -470,21 +522,22 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="desktop-card">
-          <div class="desktop-card-header">
-            <div>
-              <div class="text-sm font-medium text-gray-800 dark:text-gray-200">纵向偏移</div>
+        <div class="desktop-typography-row">
+          <div class="desktop-inline-header">
+            <div class="desktop-inline-title">
+              <span class="text-sm font-medium text-gray-800 dark:text-gray-200">纵向偏移</span>
+              <button
+                v-if="desktopLyricsSettings.playerOffsetY !== DEFAULT_PLAYER_OFFSET_Y"
+                type="button"
+                class="desktop-inline-reset"
+                title="重置纵向偏移"
+                @click="setDesktopOffsetY(DEFAULT_PLAYER_OFFSET_Y)"
+              >
+                <RotateCcw :size="12" />
+              </button>
             </div>
-            <button
-              v-if="desktopLyricsSettings.playerOffsetY !== DEFAULT_PLAYER_OFFSET_Y"
-              type="button"
-              class="desktop-reset-button"
-              @click="setDesktopOffsetY(DEFAULT_PLAYER_OFFSET_Y)"
-            >
-              重置
-            </button>
+            <div class="desktop-inline-value">{{ offsetYLabel }}</div>
           </div>
-          <div class="desktop-card-value">{{ offsetYLabel }}</div>
           <div class="desktop-slider-row">
             <button type="button" class="desktop-mini-button" @click="setDesktopOffsetY(desktopLyricsSettings.playerOffsetY - OFFSET_STEP)">-</button>
             <input
@@ -499,55 +552,52 @@ onUnmounted(() => {
             <button type="button" class="desktop-mini-button" @click="setDesktopOffsetY(desktopLyricsSettings.playerOffsetY + OFFSET_STEP)">+</button>
           </div>
         </div>
-      </div>
 
-      <div class="desktop-card">
-        <div class="desktop-card-header">
-          <div>
-            <div class="text-sm font-medium text-gray-800 dark:text-gray-200">对齐方式</div>
-          </div>
-          <button
-            v-if="desktopLyricsSettings.playerAlignment !== DEFAULT_DESKTOP_PLAYER_ALIGNMENT"
-            type="button"
-            class="desktop-reset-button"
-            @click="setDesktopAlignment(DEFAULT_DESKTOP_PLAYER_ALIGNMENT)"
-          >
-            重置
-          </button>
-        </div>
-        <div class="mt-4 flex flex-wrap gap-3">
-          <button
-            v-for="option in ALIGNMENT_OPTIONS"
-            :key="option.value"
-            type="button"
-            class="desktop-chip"
-            :class="desktopLyricsSettings.playerAlignment === option.value ? 'desktop-chip--active' : ''"
-            @click="setDesktopAlignment(option.value)"
-          >
-            {{ option.label }}
-          </button>
-        </div>
-      </div>
-
-      <div class="desktop-card">
-        <div class="desktop-card-header">
-          <div>
-            <div class="text-sm font-medium text-gray-800 dark:text-gray-200">字体</div>
-          </div>
-          <button
-            v-if="desktopLyricsSettings.playerFontPreset !== DEFAULT_PLAYER_FONT_PRESET"
-            type="button"
-            class="desktop-reset-button"
-            @click="setDesktopFontPreset(DEFAULT_PLAYER_FONT_PRESET)"
-          >
-            重置
-          </button>
-        </div>
-        <div class="mt-4 flex flex-col gap-3 md:flex-row md:items-start">
-          <div ref="fontPresetFieldRef" class="desktop-font-picker min-w-0 flex-1">
+        <div class="desktop-typography-row desktop-typography-row--inline">
+          <div class="desktop-inline-title">
+            <span class="text-sm font-medium text-gray-800 dark:text-gray-200">对齐方式</span>
             <button
+              v-if="desktopLyricsSettings.playerAlignment !== DEFAULT_DESKTOP_PLAYER_ALIGNMENT"
               type="button"
-              class="desktop-font-trigger"
+              class="desktop-inline-reset"
+              title="重置对齐方式"
+              @click="setDesktopAlignment(DEFAULT_DESKTOP_PLAYER_ALIGNMENT)"
+            >
+              <RotateCcw :size="12" />
+            </button>
+          </div>
+          <div class="desktop-inline-actions">
+            <button
+              v-for="option in ALIGNMENT_OPTIONS"
+              :key="option.value"
+              type="button"
+              class="desktop-chip"
+              :class="desktopLyricsSettings.playerAlignment === option.value ? 'desktop-chip--active' : ''"
+              @click="setDesktopAlignment(option.value)"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+        </div>
+
+        <div class="desktop-typography-row desktop-typography-row--inline">
+          <div class="desktop-inline-title">
+            <span class="text-sm font-medium text-gray-800 dark:text-gray-200">字体</span>
+            <button
+              v-if="desktopLyricsSettings.playerFontPreset !== DEFAULT_PLAYER_FONT_PRESET"
+              type="button"
+              class="desktop-inline-reset"
+              title="重置字体"
+              @click="setDesktopFontPreset(DEFAULT_PLAYER_FONT_PRESET)"
+            >
+              <RotateCcw :size="12" />
+            </button>
+          </div>
+          <div ref="fontPresetFieldRef" class="desktop-font-picker desktop-font-picker--inline">
+            <button
+              ref="fontPresetTriggerRef"
+              type="button"
+              class="desktop-font-trigger desktop-font-trigger--compact"
               :class="isFontPresetMenuOpen ? 'desktop-font-trigger--open' : ''"
               @click="toggleFontPresetMenu"
             >
@@ -566,42 +616,44 @@ onUnmounted(() => {
               />
             </button>
 
-            <transition name="desktop-font-menu">
-              <div
-                v-if="isFontPresetMenuOpen"
-                ref="fontPresetMenuRef"
-                class="desktop-font-menu"
-              >
-                <div class="desktop-font-menu-header">
-                  <span>字体方案</span>
-                  <span>{{ availableFontOptions.length }} 项</span>
-                </div>
-                <div class="desktop-font-menu-list custom-scrollbar">
-                  <button
-                    v-for="option in availableFontOptions"
-                    :key="option.value"
-                    type="button"
-                    class="desktop-font-option"
-                    :class="desktopLyricsSettings.playerFontPreset === option.value ? 'desktop-font-option--active' : ''"
-                    @click="selectDesktopFontPreset(option.value)"
-                  >
-                    <div class="min-w-0 flex-1">
-                      <div class="truncate text-sm font-semibold" :style="{ fontFamily: option.fontFamily }">
-                        {{ option.label }}
+            <Teleport to="body">
+              <transition name="desktop-font-menu">
+                <div
+                  v-if="isFontPresetMenuOpen"
+                  ref="fontPresetMenuRef"
+                  class="desktop-font-menu"
+                  :style="fontPresetMenuStyle"
+                  @click.stop
+                  @mousedown.stop
+                >
+                  <div class="desktop-font-menu-header">
+                    <span>字体方案</span>
+                    <span>{{ availableFontOptions.length }} 项</span>
+                  </div>
+                  <div class="desktop-font-menu-list custom-scrollbar">
+                    <button
+                      v-for="option in availableFontOptions"
+                      :key="option.value"
+                      type="button"
+                      class="desktop-font-option"
+                      :class="desktopLyricsSettings.playerFontPreset === option.value ? 'desktop-font-option--active' : ''"
+                      @click="selectDesktopFontPreset(option.value)"
+                    >
+                      <div class="min-w-0 flex-1">
+                        <div class="truncate text-sm font-semibold" :style="{ fontFamily: option.fontFamily }">
+                          {{ option.label }}
+                        </div>
                       </div>
-                    </div>
-                    <Check
-                      v-if="desktopLyricsSettings.playerFontPreset === option.value"
-                      :size="16"
-                      class="shrink-0 text-[#EC4141]"
-                    />
-                  </button>
+                      <Check
+                        v-if="desktopLyricsSettings.playerFontPreset === option.value"
+                        :size="16"
+                        class="shrink-0 text-[#EC4141]"
+                      />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </transition>
-          </div>
-          <div class="rounded-full bg-black/5 px-3 py-1.5 text-xs text-gray-600 dark:bg-white/8 dark:text-white/70">
-            {{ selectedFontLabel }}
+              </transition>
+            </Teleport>
           </div>
         </div>
       </div>
@@ -656,6 +708,86 @@ onUnmounted(() => {
 
 :global(.dark) .desktop-setting-row:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+.desktop-typography-panel {
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.desktop-typography-row {
+  padding: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  transition: background-color 160ms ease;
+}
+
+.desktop-typography-row:last-child {
+  border-bottom: 0;
+}
+
+.desktop-typography-row:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+:global(.dark) .desktop-typography-row {
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+:global(.dark) .desktop-typography-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.desktop-typography-row--inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.desktop-inline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.desktop-inline-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.desktop-inline-value {
+  color: #ec4141;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.desktop-inline-reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid rgba(236, 65, 65, 0.16);
+  border-radius: 999px;
+  background: rgba(236, 65, 65, 0.06);
+  color: #ec4141;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.desktop-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .desktop-switch {
@@ -781,6 +913,11 @@ onUnmounted(() => {
   position: relative;
 }
 
+.desktop-font-picker--inline {
+  width: min(340px, 100%);
+  flex-shrink: 0;
+}
+
 .desktop-font-trigger {
   display: flex;
   align-items: center;
@@ -800,6 +937,19 @@ onUnmounted(() => {
     box-shadow 180ms ease,
     background-color 180ms ease,
     transform 180ms ease;
+}
+
+.desktop-font-trigger--compact {
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  gap: 10px;
+}
+
+.desktop-font-trigger--compact .desktop-font-trigger-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
 }
 
 .desktop-font-trigger:hover,
@@ -828,11 +978,6 @@ onUnmounted(() => {
 }
 
 .desktop-font-menu {
-  position: absolute;
-  top: calc(100% + 12px);
-  left: 0;
-  right: 0;
-  z-index: 40;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 20px;
@@ -842,6 +987,7 @@ onUnmounted(() => {
     0 10px 24px rgba(15, 23, 42, 0.08);
   backdrop-filter: blur(22px) saturate(160%);
   -webkit-backdrop-filter: blur(22px) saturate(160%);
+  z-index: 120;
 }
 
 .desktop-font-menu-header {
@@ -909,10 +1055,11 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 16px;
+  margin-top: 12px;
 }
 
 .desktop-mini-button,
+.desktop-inline-reset,
 .desktop-reset-button,
 .desktop-action-button,
 .desktop-chip {
@@ -930,6 +1077,7 @@ onUnmounted(() => {
 }
 
 .desktop-mini-button:hover,
+.desktop-inline-reset:hover,
 .desktop-reset-button:hover,
 .desktop-chip:hover {
   border-color: rgba(236, 65, 65, 0.38);
@@ -986,6 +1134,21 @@ onUnmounted(() => {
   border-color: rgba(236, 65, 65, 0.35);
   background: rgba(236, 65, 65, 0.14);
   color: #ff8b8b;
+}
+
+@media (max-width: 767px) {
+  .desktop-typography-row--inline {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .desktop-inline-actions {
+    justify-content: flex-start;
+  }
+
+  .desktop-font-picker--inline {
+    width: 100%;
+  }
 }
 
 .desktop-slider {
