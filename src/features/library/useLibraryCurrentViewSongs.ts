@@ -478,7 +478,10 @@ export function useLibraryCurrentViewSongs({
       }
 
       if (currentViewMode.value === 'artist' || currentViewMode.value === 'album') {
-        return detailViewSongPaths.value.filter(matchesQuery);
+        const filteredPaths = detailViewSongPaths.value.filter(matchesQuery);
+        return localSortMode.value === 'custom'
+          ? filteredPaths
+          : sortSongPathsByLocalMode(filteredPaths, localSortMode.value);
       }
 
       return canonicalSongPaths.value.filter(matchesQuery);
@@ -515,7 +518,9 @@ export function useLibraryCurrentViewSongs({
     }
 
     if (currentViewMode.value === 'artist' || currentViewMode.value === 'album') {
-      return detailViewSongPaths.value;
+      return localSortMode.value === 'custom'
+        ? detailViewSongPaths.value
+        : sortSongPathsByLocalMode(detailViewSongPaths.value, localSortMode.value);
     }
 
     if (currentViewMode.value === 'recent') {

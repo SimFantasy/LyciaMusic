@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { albumHeaderCache } from '../../caches/imageCaches';
 import { useCoverCache } from '../../composables/useCoverCache';
+import { usePlayerViewState } from '../../composables/usePlayerViewState';
 
 const props = defineProps<{
   albumName: string;
@@ -20,12 +21,56 @@ const emit = defineEmits([
   'batchMove'
 ]);
 
+const {
+  localSortMode,
+  setLocalSortMode,
+} = usePlayerViewState();
+
+const sortLabelMap = {
+  title: '歌曲名',
+  artist: '歌手',
+  added_at: '添加时间',
+  file_modified_at: '修改时间',
+  custom: '自定义',
+} as const;
+
+const showSortMenu = ref(false);
+const sortMenuX = ref(0);
+const sortMenuY = ref(0);
+const sortMenuIsRightAligned = ref(false);
+
 const coverUrl = ref('');
 const isLoading = ref(false);
 const artistName = computed(() => props.albumArtist || '未知歌手');
 const albumCacheKey = computed(() => `${props.albumName}::${props.albumArtist || '未知歌手'}`);
 const { loadCover, peekCoverUrl } = useCoverCache();
 let coverRequestId = 0;
+
+const handleSortClick = (e: MouseEvent) => {
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  const windowWidth = window.innerWidth;
+
+  if (rect.left > windowWidth / 2) {
+    sortMenuIsRightAligned.value = true;
+    sortMenuX.value = windowWidth - rect.right;
+  } else {
+    sortMenuIsRightAligned.value = false;
+    sortMenuX.value = rect.left;
+  }
+
+  sortMenuY.value = rect.bottom + 8;
+  showSortMenu.value = !showSortMenu.value;
+};
+
+const handleGlobalClick = (e: MouseEvent) => {
+  const target = e.target as HTMLElement;
+  if (!target.closest('.sort-menu-trigger')) {
+    showSortMenu.value = false;
+  }
+};
+
+onMounted(() => window.addEventListener('click', handleGlobalClick));
+onUnmounted(() => window.removeEventListener('click', handleGlobalClick));
 
 watch([albumCacheKey, () => props.songs], async ([cacheKey, newSongs]) => {
   const requestId = ++coverRequestId;
@@ -145,7 +190,7 @@ const getGradientForAlbum = (name: string) => {
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
             </svg>
-            播放全部
+            播放
           </button>
 
           <button @click="emit('update:isBatchMode', true)" title="批量操作" class="bg-white/1 hover:bg-white/10 border border-white/1 text-gray-900 dark:text-gray-100 px-5 py-2 rounded-full text-[15px] font-medium transition flex items-center gap-2 active:scale-95 shadow-sm hover:border-gray-200 dark:hover:border-white/20">
@@ -154,6 +199,54 @@ const getGradientForAlbum = (name: string) => {
             </svg>
             管理
           </button>
+
+          <button
+            @click.stop="handleSortClick"
+            title="排序方式"
+            class="sort-menu-trigger bg-white/1 hover:bg-white/10 border border-white/1 text-gray-900 dark:text-gray-100 px-5 py-2 rounded-full text-[15px] font-medium transition flex items-center gap-2 active:scale-95 shadow-sm hover:border-gray-200 dark:hover:border-white/20"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+            </svg>
+            排序
+          </button>
+
+          <Teleport to="body">
+            <div
+              v-if="showSortMenu"
+              class="fixed z-[9999] bg-white dark:bg-[#2b2b2b] rounded-lg shadow-xl border border-gray-100 dark:border-white/10 py-1 min-w-[120px] isolate animate-in fade-in zoom-in-95 duration-100"
+              :style="sortMenuIsRightAligned
+                ? { right: sortMenuX + 'px', top: sortMenuY + 'px' }
+                : { left: sortMenuX + 'px', top: sortMenuY + 'px' }"
+            >
+              <div
+                v-for="mode in (['title', 'artist', 'added_at', 'file_modified_at', 'custom'] as const)"
+                :key="mode"
+                @click="
+                  if (mode === 'added_at') {
+                    setLocalSortMode(localSortMode === 'added_at' ? 'added_at_asc' : 'added_at');
+                  } else if (mode === 'file_modified_at') {
+                    setLocalSortMode(localSortMode === 'file_modified_at' ? 'file_modified_at_asc' : 'file_modified_at');
+                  } else {
+                    setLocalSortMode(mode);
+                  }
+                  showSortMenu = false;
+                "
+                class="px-3 py-2 text-xs cursor-pointer flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                :class="(localSortMode || '').startsWith(mode) ? 'text-blue-500 font-medium' : 'text-gray-600 dark:text-gray-300'"
+              >
+                <span>{{ sortLabelMap[mode] }}</span>
+                <div v-if="(localSortMode || '').startsWith(mode)" class="flex items-center gap-1.5">
+                  <svg v-if="mode === 'added_at' || mode === 'file_modified_at'" xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform duration-200" :class="{ 'rotate-180': localSortMode === 'added_at_asc' || localSortMode === 'file_modified_at_asc' }" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M14.707 12.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l2.293-2.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                  </svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </Teleport>
         </div>
       </div>
     </div>

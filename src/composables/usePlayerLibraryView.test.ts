@@ -109,6 +109,22 @@ describe('player library view', () => {
         return sortSongs(filtered, sortMode).map(song => song.path);
       }
 
+      if (command === 'get_library_song_paths_by_artist') {
+        const artistName = String(payload?.artistName ?? '');
+        return songs
+          .filter(song => normalizeArtistNames(song).includes(artistName))
+          .sort((left, right) => (left.title || left.name).localeCompare(right.title || right.name, 'zh-CN'))
+          .map(song => song.path);
+      }
+
+      if (command === 'get_library_song_paths_by_album') {
+        const albumKey = String(payload?.albumKey ?? '');
+        return songs
+          .filter(song => resolveAlbumKey(song) === albumKey)
+          .sort((left, right) => (left.title || left.name).localeCompare(right.title || right.name, 'zh-CN'))
+          .map(song => song.path);
+      }
+
       if (command === 'get_favorite_artist_catalog') {
         const favoritePaths = new Set((payload?.favoritePaths as string[] | undefined) ?? []);
         const map = new Map<string, { count: number; firstSongPath: string }>();
@@ -339,6 +355,46 @@ describe('player library view', () => {
     expect(displaySongList.value.map(song => song.path)).toEqual([
       oldSong.path,
       newSong.path,
+    ]);
+  });
+
+  it('applies local sorting rules in album detail view', async () => {
+    const libraryStore = useLibraryStore();
+    const navigationStore = useNavigationStore();
+    const earlySong = makeSong({
+      path: '/music/album/early.flac',
+      title: 'Early',
+      album: 'Detail Album',
+      album_key: 'detail-album::artist',
+      added_at: 10,
+    });
+    const lateSong = makeSong({
+      path: '/music/album/late.flac',
+      title: 'Late',
+      album: 'Detail Album',
+      album_key: 'detail-album::artist',
+      added_at: 30,
+    });
+
+    libraryStore.librarySongs = [earlySong, lateSong];
+    navigationStore.currentViewMode = 'album';
+    navigationStore.filterCondition = 'detail-album::artist';
+    libraryStore.localSortMode = 'added_at';
+
+    const { displaySongList } = usePlayerLibraryView();
+    await flushPromises();
+
+    expect(displaySongList.value.map(song => song.path)).toEqual([
+      lateSong.path,
+      earlySong.path,
+    ]);
+
+    libraryStore.localSortMode = 'added_at_asc';
+    await flushPromises();
+
+    expect(displaySongList.value.map(song => song.path)).toEqual([
+      earlySong.path,
+      lateSong.path,
     ]);
   });
 });
