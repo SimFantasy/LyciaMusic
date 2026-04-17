@@ -61,6 +61,7 @@ const fontPresetTriggerRef = ref<HTMLElement | null>(null);
 const fontPresetMenuRef = ref<HTMLElement | null>(null);
 const isFontPresetMenuOpen = ref(false);
 const fontPresetMenuStyle = ref<Record<string, string>>({});
+const showLyricsSyncOffsetPanel = ref(false);
 const isResettingWindowBounds = ref(false);
 
 const availableFontOptions = computed(() => [
@@ -336,20 +337,6 @@ onUnmounted(() => {
           </span>
         </button>
 
-        <div class="desktop-setting-row">
-          <div>
-            <div class="text-sm font-medium text-gray-800 dark:text-gray-200">重置窗口位置</div>
-          </div>
-          <button
-            type="button"
-            class="desktop-action-button"
-            :disabled="isResettingWindowBounds"
-            @click="resetDesktopLyricsWindowBounds"
-          >
-            {{ isResettingWindowBounds ? '重置中...' : '立即重置' }}
-          </button>
-        </div>
-
         <button
           type="button"
           class="desktop-setting-row"
@@ -375,6 +362,20 @@ onUnmounted(() => {
             <span class="desktop-switch-thumb" :class="lyricsSettings.showRomaji ? 'translate-x-5' : ''" />
           </span>
         </button>
+
+        <div class="desktop-setting-row">
+          <div>
+            <div class="text-sm font-medium text-gray-800 dark:text-gray-200">重置窗口位置</div>
+          </div>
+          <button
+            type="button"
+            class="desktop-action-button"
+            :disabled="isResettingWindowBounds"
+            @click="resetDesktopLyricsWindowBounds"
+          >
+            {{ isResettingWindowBounds ? '重置中...' : '重置' }}
+          </button>
+        </div>
       </div>
     </section>
 
@@ -383,43 +384,64 @@ onUnmounted(() => {
         <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
         歌词同步
       </h2>
-      <div class="rounded-2xl border border-white/30 bg-white/55 p-5 shadow-sm dark:border-white/8 dark:bg-black/20">
-        <div class="flex items-start justify-between gap-4">
+      <div class="flex flex-col rounded-xl overflow-hidden">
+        <button
+          type="button"
+          class="desktop-setting-row"
+          @click="showLyricsSyncOffsetPanel = !showLyricsSyncOffsetPanel"
+        >
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">同步偏移</div>
           </div>
-          <div class="rounded-full bg-[#EC4141]/10 px-3 py-1 text-xs font-medium text-[#EC4141] tabular-nums">
-            {{ lyricsSyncOffsetLabel }}
-          </div>
-        </div>
-
-        <div class="mt-5 flex flex-col gap-4 md:flex-row md:items-center">
-          <input
-            v-model="lyricsSyncOffsetMs"
-            type="range"
-            min="-1000"
-            max="1000"
-            step="10"
-            class="desktop-slider flex-1"
-          />
-          <div class="flex items-center gap-3">
-            <input
-              v-model="lyricsSyncOffsetMs"
-              type="number"
-              min="-1000"
-              max="1000"
-              step="10"
-              class="w-28 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none transition focus:border-[#EC4141] dark:border-white/10 dark:bg-white/5 dark:text-gray-100"
+          <div class="flex items-center gap-3 shrink-0">
+            <div class="rounded-full bg-[#EC4141]/10 px-3 py-1 text-xs font-medium text-[#EC4141] tabular-nums">
+              {{ lyricsSyncOffsetLabel }}
+            </div>
+            <ChevronDown
+              :size="16"
+              class="text-gray-400 transition-transform duration-200 dark:text-white/45"
+              :class="showLyricsSyncOffsetPanel ? 'rotate-180 text-[#EC4141]' : ''"
             />
-            <button
-              type="button"
-              class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 transition hover:border-[#EC4141] hover:text-[#EC4141] dark:border-white/10 dark:bg-white/5 dark:text-gray-200"
-              @click="resetLyricsSyncOffset"
-            >
-              重置
-            </button>
           </div>
-        </div>
+        </button>
+
+        <transition name="desktop-expand-panel">
+          <div v-if="showLyricsSyncOffsetPanel" class="desktop-setting-expand">
+            <div class="desktop-setting-expand-inner">
+              <div class="text-xs text-gray-600 dark:text-white/60">
+                正值让歌词更晚显示，负值让歌词更早显示。用于修正不同输出设备的播放缓冲差异，默认值为 0 ms。
+              </div>
+
+              <div class="mt-4 flex flex-col gap-4 md:flex-row md:items-center">
+                <input
+                  v-model="lyricsSyncOffsetMs"
+                  type="range"
+                  min="-1000"
+                  max="1000"
+                  step="10"
+                  class="desktop-slider flex-1"
+                />
+                <div class="flex items-center gap-3">
+                  <input
+                    v-model="lyricsSyncOffsetMs"
+                    type="number"
+                    min="-1000"
+                    max="1000"
+                    step="10"
+                    class="w-28 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none transition focus:border-[#EC4141] dark:border-white/10 dark:bg-white/5 dark:text-gray-100"
+                  />
+                  <button
+                    type="button"
+                    class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 transition hover:border-[#EC4141] hover:text-[#EC4141] dark:border-white/10 dark:bg-white/5 dark:text-gray-200"
+                    @click="resetLyricsSyncOffset"
+                  >
+                    重置
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </transition>
       </div>
     </section>
 
@@ -715,6 +737,19 @@ onUnmounted(() => {
   flex-direction: column;
   border-radius: 16px;
   overflow: hidden;
+}
+
+.desktop-setting-expand {
+  overflow: hidden;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.desktop-setting-expand-inner {
+  padding: 16px;
+}
+
+:global(.dark) .desktop-setting-expand {
+  border-top-color: rgba(255, 255, 255, 0.05);
 }
 
 .desktop-typography-row {
@@ -1049,6 +1084,30 @@ onUnmounted(() => {
 .desktop-font-menu-leave-to {
   opacity: 0;
   transform: translateY(-8px) scale(0.98);
+}
+
+.desktop-expand-panel-enter-active,
+.desktop-expand-panel-leave-active {
+  transition:
+    opacity 200ms ease,
+    transform 220ms ease,
+    max-height 220ms ease;
+  transform-origin: top center;
+  overflow: hidden;
+}
+
+.desktop-expand-panel-enter-from,
+.desktop-expand-panel-leave-to {
+  opacity: 0;
+  transform: translateY(-10px) scaleY(0.96);
+  max-height: 0;
+}
+
+.desktop-expand-panel-enter-to,
+.desktop-expand-panel-leave-from {
+  opacity: 1;
+  transform: translateY(0) scaleY(1);
+  max-height: 260px;
 }
 
 .desktop-slider-row {
