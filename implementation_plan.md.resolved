@@ -1,0 +1,376 @@
+# 本地歌词架构重构方案（v4 · 已确认决策）
+
+## 已确认的设计决策
+
+| 决策项 | 结论 |
+|--------|------|
+| 歌词设置持久化 | 纳入 Tauri 后端持久化（随 AppSettings） |
+| UI 展示歌词来源 | 暂不需要 |
+| 执行粒度 | 仅分析总结，暂不实施 |
+
+---
+
+## 第一部分：架构问题诊断
+
+### 1. `lyrics.ts` 职责过载（1143 行）
+
+[lyrics.ts](file:///c:/Users/LIU/Desktop/LyciaMusic/src/composables/lyrics.ts) 同时承担 7 类职责：类型定义、UI 常量、字体管理、设置存储（localStorage 手动持久化）、多格式解析、状态管理、AML 转换。
+
+### 2. 设置存储机制不一致
+
+歌词设置用 `localStorage` + `reactive` + `watch` 手动管理，其他设置统一走 Pinia Store + Tauri 后端。
+
+### 3. `DesktopLyricsWindowSettings` 拼接式继承
+
+通过 `Pick<LyricsSettings, 'showTranslation' | 'showRomaji'>` 隐式借用字段，缺乏明确的内容/渲染分层。
+
+### 4. 核心状态不在 Pinia 中
+
+`parsedLyrics`、`lyricsStatus`、`currentLyricIndex` 等用模块级 `ref`，Vue Devtools 不可见。
+
+---
+
+## 第二部分：三层数据模型设计
+
+> [!IMPORTANT]
+> 当前管线只有 `AmlLyricLine[]` -> `PreparedLine` -> `LyricLine` 两层半，中间的"语义归类"和"渲染适配"混在一起。建议明确分为三层，让每层职责清晰、不互相污染。
+
+### 第 1 层：`ParsedLine`（解析器输出）
+
+表示"解析器吐出来的东西"，尽量不掺业务判断。
+
+```typescript
+interface ParsedWord {
+  text: string;
+  startMs: number;
+  endMs: number;
+  romanText?: string;
+}
+
+interface ParsedLine {
+  startMs: number;
+  endMs?: number;
+  text: string;
+  words?: ParsedWord[];
+  translatedText?: string;   // 解析器原生给的翻译
+  romanText?: string;         // 解析器原生给的罗马音
+  sourceFormat: 'lrc' | 'enhanced_lrc' | 'eslrc' | 'yrc' | 'qrc' | 'lys' | 'ttml';
+  sourceIndex: number;
+}
+```
+
+**职责边界**：只做格式解析 -> 统一结构，不做语种判断，不做角色分类。
+
+**字段细则**：
+
+- **`endMs`**（可选）：若当前行无 `endMs`，由下游补全规则处理：取下一行 `startMs`；最后一行取歌曲剩余时长；若仍无则给安全默认值 `startMs + 5000`。
+- **`sourceIndex`**：仅用于稳定排序（保证相同 `startMs` 时原始顺序不丢失），**不代表语义优先级**。当显式信息和启发式结论冲突时，不以 `sourceIndex` 覆盖显式结论。
+
+### 第 2 层：`SemanticLine`（语义归类后）
+
+表示"确定了主行/翻译/罗马音角色"的结果。
+
+```typescript
+type ClassificationConfidence = 'explicit' | 'parser-native' | 'heuristic';
+
+interface SemanticLine {
+  startMs: number;
+  endMs: number;
+  mainText: string;
+  mainWords?: ParsedWord[];
+  translationText?: string;
+  romanText?: string;
+  romanWords?: ParsedWord[];
+  secondaryTexts?: string[];   // 无法确定角色的附加行
+  confidence: ClassificationConfidence;
+}
+```
+
+**`confidence` 语义**：
+
+| 值 | 含义 |
+|----|------|
+| `explicit` | 来自歌词文本本身的显式标记（`[tr:]`、`[roma:]`、`【翻译】`等） |
+| `parser-native` | 来自格式解析器的原生结构字段（YRC/QRC/LYS/TTML 直接给出的翻译/罗马音） |
+| `heuristic` | 通过同时间戳分组 + 脚本检测 + 回退规则得出 |
+
+> [!NOTE]
+> `explicit` 和 `parser-native` 是两个不同来源：前者来自歌词文本约定，后者来自特定格式的结构化字段。两者都是高可信度的，但不能混为一谈，因为它们的识别逻辑完全不同。
+
+**`secondaryTexts`**：当分类器无法判定某行是翻译还是罗马音时，将其文本收入此字段。渲染层可以选择显示为副行、忽略、或在调试页展示。这保证了 `secondaryLines` 从分类阶段到渲染阶段的完整链路闭环。
+
+### 第 3 层：`RenderLine`（渲染适配）
+
+表示"给具体 UI 组件的渲染数据"，根据用户设置（是否显示翻译、romaji）裁剪内容。
+
+```typescript
+interface DisplayFragment {
+  text: string;
+  startMs?: number;
+  endMs?: number;
+}
+
+interface RenderLine {
+  startMs: number;
+  endMs: number;
+  main: DisplayFragment[];
+  translation?: DisplayFragment[];
+  roman?: DisplayFragment[];
+  secondary?: DisplayFragment[];  // 来自 SemanticLine.secondaryTexts
+}
+```
+
+`secondary` 字段由 `SemanticLine.secondaryTexts` 映射而来。默认 UI 不渲染 `secondary`，但保留数据通道，未来可用于调试面板或"展开更多"交互。
+
+**职责边界**：只处理"哪些内容要渲染"和"怎么拼 DisplayFragment"。AMLL 的 `CoreAmlLyricLine` 转换、桌面歌词的 `CurrentLyricDisplayLine` 转换都从 `RenderLine` 出发，不回溯到解析层。
+
+### 数据流向
+
+```mermaid
+graph LR
+  A["原始字符串"] -->|"各格式解析器"| B["ParsedLine[]"]
+  B -->|"分组 + 分类"| C["SemanticLine[]"]
+  C -->|"用户设置裁剪"| D["RenderLine[]"]
+  D -->|"转 AMLL 格式"| E["CoreAmlLyricLine[]"]
+  D -->|"转桌面歌词格式"| F["CurrentLyricDisplayLine[]"]
+  D -->|"转 Footer 字幕"| G["DisplaySubtitles"]
+```
+
+### secondaryLines 完整链路
+
+```mermaid
+graph LR
+  A["classifyGroupLines"] -->|"secondaryLines: ParsedLine[]"| B["SemanticLine.secondaryTexts: string[]"]
+  B -->|"映射"| C["RenderLine.secondary: DisplayFragment[]"]
+  C -->|"默认不渲染"| D["UI 忽略 / 调试面板可展示"]
+```
+
+---
+
+## 第三部分：语义分类优先级设计
+
+> [!IMPORTANT]
+> 核心原则：**宁可不判也不误判**。不确定时不要塞进 `romajiLine`，应放进 `secondaryLines[]`，最终映射为 `SemanticLine.secondaryTexts` -> `RenderLine.secondary`。
+
+### 4 级判断优先级
+
+#### 优先级 1：显式标签（confidence = `explicit`）
+
+- LRC 中有 `[tr:]`、`[roma:]` 等元数据标签
+- 行内容有明显前缀标记（如 `【翻译】`、`【罗马音】`）
+
+来自歌词文本本身的显式约定，直接使用。
+
+#### 优先级 2：解析器原生字段（confidence = `parser-native`）
+
+- YRC/QRC/LYS/TTML 格式解析器直接给出 `translatedLyric` / `romanLyric`
+
+来自格式结构化字段，可信度高，直接使用。
+
+#### 优先级 3：同组启发式分类（confidence = `heuristic`）
+
+同时间戳分组内，先找"明显主行"，剩余行按脚本特征分配：
+
+| 主行脚本特征 | 纯 Latin 剩余行 | 纯 Han 剩余行 |
+|:------------:|:-----------------:|:---------------:|
+| kana（日文） | romaji | translation |
+| hangul（韩文） | romaji | translation |
+| han（中文） | romaji/pinyin | -- |
+| latin（英文） | -- | translation |
+
+#### 优先级 4：保守回退
+
+当没有足够证据时：
+
+- **不直接塞进 `romajiLine`**
+- 放进 `secondaryLines[]`
+- 映射为 `SemanticLine.secondaryTexts`
+- 渲染层通过 `RenderLine.secondary` 决定是否显示
+
+```typescript
+interface ClassifiedGroupResult {
+  main: ParsedLine;
+  translationLine: ParsedLine | null;
+  romajiLine: ParsedLine | null;
+  secondaryLines: ParsedLine[];  // 无法确定角色的行
+}
+```
+
+> [!WARNING]
+> **当前最大风险是"误判"而非"漏判"**。韩文歌中文翻译被判成 romaji，比不显示翻译更糟，因为它会把整套 UI 语义搞错。保守回退策略能避免这类问题。
+
+---
+
+## 第四部分：自适应分组容差
+
+当前容差 1ms 太严，但直接改为固定 50ms 在快速歌词（rap）场景会误合并。
+
+### 建议：上下文感知的自适应容差
+
+```typescript
+function getEffectiveTolerance(
+  currentStartMs: number,
+  prevStartMs: number | null,
+  nextStartMs: number | null,
+): number {
+  const MAX_TOLERANCE = 50;
+
+  const prevGap = prevStartMs !== null
+    ? Math.abs(currentStartMs - prevStartMs)
+    : Infinity;
+  const nextGap = nextStartMs !== null
+    ? Math.abs(nextStartMs - currentStartMs)
+    : Infinity;
+
+  return Math.min(
+    MAX_TOLERANCE,
+    prevGap * 0.25,
+    nextGap * 0.25,
+  );
+}
+```
+
+**额外约束**：
+- 一个分组最多合并 3 行（原文 + 翻译 + romaji）
+- 组内行脚本不能高度相似（避免把两行中文歌词误合并）
+
+---
+
+## 第五部分：脚本检测范围
+
+> [!TIP]
+> 当前真实 bug 是韩文，主要用户场景为中/日/韩/英。先把高频场景打稳，不过早扩展。
+
+### 第一步只做 4 种
+
+```typescript
+interface LineScriptProfile {
+  latinCount: number;
+  hanCount: number;
+  kanaCount: number;
+  hangulCount: number;  // U+AC00-D7AF, U+1100-11FF, U+3130-318F
+}
+```
+
+不做 `cyrillicCount`、`arabicCount`、`thaiCount`。未来需要时再扩展，避免分类分支过早膨胀。
+
+---
+
+## 第六部分：状态分层 -- 什么进 Store，什么不进
+
+### 进 Pinia + Tauri 持久化的（用户偏好配置）
+
+| 字段 | 说明 |
+|------|------|
+| `showTranslation` | 是否显示翻译 |
+| `showRomaji` | 是否显示罗马音 |
+| `playerFontScale` / `playerLineGap` / `playerOffsetX` / `playerOffsetY` | 渲染样式 |
+| `playerAlignment` / `playerFontPreset` | 渲染样式 |
+| `lyricsSyncOffset` | 同步补偿 |
+| 桌面歌词所有设置 | `isAlwaysOnTop`, `colorScheme`, `isLocked` 等 |
+
+### 不强行进 Pinia 的（播放态高频数据）
+
+| 字段 | 原因 |
+|------|------|
+| `parsedLyrics` (SemanticLine[]) | 每次切歌整体替换，进 store 可调试但非必须 |
+| `currentLyricIndex` | 高频更新（跟随播放进度），塞 Pinia 增加无谓响应式压力 |
+| `rawLyrics` | 仅在解析阶段使用的中间值 |
+| `loadRequestId` | 纯内部并发控制 |
+| AML 模块缓存 | 纯运行时缓存 |
+
+### 建议方案
+
+- **配置** -> Pinia store，随 AppSettings 持久化到 Tauri 后端
+- **主状态**（`parsedLyrics`, `lyricsStatus`）-> 可选进 Pinia（方便调试），但标记为非持久化
+- **高频衍生数据**（`currentLyricIndex`, 逐字 active word）-> 保持 composable 内 `computed`，不进 store
+
+---
+
+## 第七部分：执行顺序（已修正）
+
+> [!IMPORTANT]
+> 核心原则：**先补测试 -> 再修语义 -> 再拆文件 -> 最后迁设置**。如果没有测试兜底，拆文件很容易悄悄改坏歌词行为。
+
+```mermaid
+graph TD
+  A["Phase A: 金样本测试"] --> B["Phase B: 语义分类修复"]
+  B --> C["Phase C: 文件拆分"]
+  C --> D["Phase D: 设置迁移"]
+
+  A1["A1. 补充 8 种场景金样本测试"] --> A
+  A2["A2. 覆盖 classifyGroupLines 边界"] --> A
+
+  B1["B1. 扩展 Hangul 脚本检测"] --> B
+  B2["B2. 重写 classifyGroupLines 4 级优先级"] --> B
+  B3["B3. 实现自适应分组容差"] --> B
+  B4["B4. 定义 ParsedLine / SemanticLine / RenderLine"] --> B
+
+  C1["C1. 拆分 lyrics.ts 为子目录"] --> C
+  C2["C2. 抽出 parser.ts / classifier.ts / converters.ts"] --> C
+
+  D1["D1. 歌词配置迁入 Pinia store"] --> D
+  D2["D2. 接入 Tauri 后端持久化"] --> D
+```
+
+### 各 Phase 详情
+
+#### Phase A：金样本测试
+
+在动任何逻辑之前，先补充覆盖以下场景的测试用例：
+
+| # | 场景 | 测试要点 |
+|:-:|------|----------|
+| 1 | 英文 + 中文翻译 | 英文为 main，中文为 translation（已有） |
+| 2 | 日文 + 中文翻译 + 罗马音 | 三语分类正确（已有） |
+| 3 | 韩文 + 中文翻译 | **当前会失败** -- 验证修复后通过 |
+| 4 | 中文 + 拼音 | 中文为 main，拼音为 romaji |
+| 5 | 增强 LRC 逐字 + 翻译行 | 逐字保留，翻译正确归类 |
+| 6 | 微偏差时间戳双语 | 容差内合组，容差外独立 |
+| 7 | **快速歌词不误合并（反例）** | 两句间距 30-80ms 的密集歌词（rap/快速台词）不被容差机制误合并为双语组 |
+| 8 | **不确定场景不误判（反例）** | 两行同语种（双中文/双英文）、或主行与副行脚本特征不满足任何明确翻译/romaji 模式时，`translation` 和 `roman` 为空，进入 `secondaryTexts` |
+
+> [!TIP]
+> 测试 7 和 8 是"保守回退"和"自适应容差"这两个核心新设计的直接验证，必须在 Phase B 实施前到位。
+
+#### Phase B：语义分类修复
+
+1. `getLineScriptProfile` 增加 `hangulCount`（~20 行）
+2. 定义 `ParsedLine` / `SemanticLine` / `RenderLine` 三层类型
+3. 重写 `classifyGroupLines` 为 4 级优先级判断 + `secondaryLines` 保守回退
+4. 实现自适应分组容差（替代硬编码 1ms）
+5. 确保所有 Phase A 测试通过
+
+#### Phase C：文件拆分
+
+在语义已修正、测试已覆盖的前提下拆分：
+
+```
+src/composables/lyrics/
+  index.ts            <- re-export，保持对外兼容
+  types.ts            <- ParsedLine, SemanticLine, RenderLine 等
+  constants.ts        <- MIN/MAX/DEFAULT, FONT_OPTIONS
+  fontUtils.ts        <- getLyricsFontFamily, loadSystemLyricsFonts
+  parser.ts           <- parseWithAml, parseEnhancedLrc, normalizeEslrcSource
+  classifier.ts       <- classifyGroupLines, getLineScriptProfile, 分组逻辑
+  converters.ts       <- SemanticLine -> RenderLine -> CoreAmlLyricLine
+  state.ts            <- parsedLyrics, lyricsStatus, loadLyrics
+```
+
+#### Phase D：设置迁移
+
+1. 创建 `useLyricsSettingsStore`（Pinia store）
+2. 将用户偏好配置迁入，接入 Tauri 后端持久化
+3. 高频播放态数据保留 composable 内
+4. 更新所有消费方的 import 路径
+
+---
+
+## 风险评估
+
+| Phase | 改动量 | 风险 | 价值 |
+|-------|:------:|:----:|:----:|
+| A. 金样本测试 | 中 | 极低 | 所有后续改动的安全网 |
+| B. 语义分类修复 | 中 | 中 | 修复韩文 bug + 多语种正确性 |
+| C. 文件拆分 | 大（文件多） | 低（有测试兜底） | 可维护性 |
+| D. 设置迁移 | 大 | 中 | 架构一致性 |

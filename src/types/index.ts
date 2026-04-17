@@ -158,6 +158,36 @@ export interface SidebarSettings {
   showStatistics: boolean;
 }
 
+export type LyricsPlayerAlignment = 'left' | 'center' | 'right';
+export type LyricsColorScheme = 'auto' | 'default' | 'pink' | 'blue' | 'green' | 'white';
+export type LyricsFontPreset = string;
+
+export interface LyricsSettings {
+  showTranslation: boolean;
+  showRomaji: boolean;
+  playerFontScale: number;
+  playerLineGap: number;
+  playerOffsetX: number;
+  playerOffsetY: number;
+  playerAlignment: LyricsPlayerAlignment;
+  playerFontPreset: LyricsFontPreset;
+}
+
+export interface DesktopLyricsSettings {
+  isAlwaysOnTop: boolean;
+  alwaysShowShadowBackground: boolean;
+  autoHideWhenFullscreen: boolean;
+  isLocked: boolean;
+  persistLock: boolean;
+  colorScheme: LyricsColorScheme;
+  playerFontScale: number;
+  playerLineGap: number;
+  playerOffsetX: number;
+  playerOffsetY: number;
+  playerAlignment: LyricsPlayerAlignment;
+  playerFontPreset: LyricsFontPreset;
+}
+
 export type ShortcutActionId =
   | 'togglePlay'
   | 'prevSong'
@@ -196,6 +226,8 @@ export interface AppSettings {
   organizeRoot: string;
   enableAutoOrganize: boolean;
   organizeRule: string;
+  lyrics: LyricsSettings;
+  desktopLyrics: DesktopLyricsSettings;
   theme: ThemeSettings;
   sidebar: SidebarSettings;
   shortcuts: ShortcutSettings;

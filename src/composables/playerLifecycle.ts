@@ -4,6 +4,12 @@ import { onMounted, onScopeDispose, watch, type Ref } from 'vue';
 import { storeToRefs } from 'pinia';
 
 import { clearPaletteCache, extractDominantColors } from './colorExtraction';
+import {
+  LEGACY_DESKTOP_LYRICS_SETTINGS_KEY,
+  LEGACY_LYRICS_SETTINGS_KEY,
+  normalizeDesktopLyricsSettingsPatch,
+  normalizeLyricsSettingsPatch,
+} from './lyrics/constants';
 import type { LibraryScanProgress, Song } from '../types';
 import {
   playerStorage,
@@ -151,6 +157,51 @@ const restoreSortSettings = ({
   }
 };
 
+const readLegacyLyricsSettings = <T extends object>(key: string): Partial<T> | null => {
+  if (typeof localStorage === 'undefined') {
+    return null;
+  }
+
+  const raw = localStorage.getItem(key);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<T>;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const resolveLegacyLyricsSettingsPatch = (
+  saved: Partial<AppSettings>,
+): Partial<Pick<AppSettings, 'lyrics' | 'desktopLyrics'>> => {
+  const patch: Partial<Pick<AppSettings, 'lyrics' | 'desktopLyrics'>> = {};
+
+  if (!saved.lyrics) {
+    const legacyLyrics = readLegacyLyricsSettings<AppSettings['lyrics']>(LEGACY_LYRICS_SETTINGS_KEY);
+    if (legacyLyrics) {
+      patch.lyrics = normalizeLyricsSettingsPatch(legacyLyrics);
+    }
+  }
+
+  if (!saved.desktopLyrics) {
+    const legacyDesktopLyrics = readLegacyLyricsSettings<AppSettings['desktopLyrics']>(LEGACY_DESKTOP_LYRICS_SETTINGS_KEY)
+      ?? readLegacyLyricsSettings<AppSettings['desktopLyrics']>(LEGACY_LYRICS_SETTINGS_KEY);
+    if (legacyDesktopLyrics) {
+      patch.desktopLyrics = normalizeDesktopLyricsSettingsPatch(legacyDesktopLyrics);
+    }
+  }
+
+  return patch;
+};
+
 const restoreAppSettings = (
   currentSettings: AppSettings,
   replaceSettings: (settings: AppSettings) => void,
@@ -175,6 +226,7 @@ const restoreAppSettings = (
       savedTheme.customBackground && typeof savedTheme.customBackground === 'object'
         ? savedTheme.customBackground
         : {} as Partial<typeof currentSettings.theme.customBackground>;
+    const legacyLyricsSettingsPatch = resolveLegacyLyricsSettingsPatch(saved);
 
     let dynamicBgType = savedTheme.dynamicBgType;
     if (dynamicBgType === undefined && savedTheme.enableDynamicBg !== undefined) {
@@ -188,6 +240,7 @@ const restoreAppSettings = (
 
     replaceSettings(mergeAppSettings(currentSettings, {
       ...saved,
+      ...legacyLyricsSettingsPatch,
       theme: {
         ...savedTheme,
         windowMaterial: savedWindowMaterial,

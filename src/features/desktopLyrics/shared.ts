@@ -1,6 +1,5 @@
 import type {
   DesktopLyricsSettings,
-  LyricsSettings,
   LyricsStatus,
   LyricLine,
 } from '../../composables/lyrics';
@@ -25,12 +24,13 @@ export const DESKTOP_LYRICS_WINDOW_MAX_WIDTH = 1440;
 export const DESKTOP_LYRICS_WINDOW_EDGE_SNAP_THRESHOLD = 24;
 export const DESKTOP_LYRICS_WINDOW_SCREEN_MARGIN = 12;
 
-type LyricsContentSettingsFields =
-  | 'showTranslation'
-  | 'showRomaji';
+export interface DesktopLyricsContentSettings {
+  showTranslation: boolean;
+  showRomaji: boolean;
+}
 
 export interface DesktopLyricsWindowSettings
-  extends Pick<LyricsSettings, LyricsContentSettingsFields>, DesktopLyricsSettings {}
+  extends DesktopLyricsContentSettings, DesktopLyricsSettings {}
 
 export interface DesktopLyricsSongSnapshot {
   path: string;

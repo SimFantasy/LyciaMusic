@@ -117,4 +117,34 @@ describe('settings store', () => {
     expect(merged.closeToTray).toBe(true);
     expect('minimizeToTray' in merged).toBe(false);
   });
+
+  it('merges lyrics settings without dropping untouched display preferences', () => {
+    const settingsStore = useSettingsStore();
+
+    settingsStore.patchSettings({
+      lyrics: {
+        showRomaji: true,
+        playerOffsetX: 999,
+      },
+    });
+
+    expect(settingsStore.settings.lyrics.showTranslation).toBe(true);
+    expect(settingsStore.settings.lyrics.showRomaji).toBe(true);
+    expect(settingsStore.settings.lyrics.playerOffsetX).toBe(30);
+  });
+
+  it('merges desktop lyrics settings while keeping the desktop defaults intact', () => {
+    const settingsStore = useSettingsStore();
+
+    settingsStore.patchSettings({
+      desktopLyrics: {
+        autoHideWhenFullscreen: false,
+        colorScheme: 'pink',
+      },
+    });
+
+    expect(settingsStore.settings.desktopLyrics.autoHideWhenFullscreen).toBe(false);
+    expect(settingsStore.settings.desktopLyrics.colorScheme).toBe('pink');
+    expect(settingsStore.settings.desktopLyrics.playerAlignment).toBe('center');
+  });
 });

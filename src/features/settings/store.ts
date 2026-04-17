@@ -1,7 +1,19 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 
-import type { AppSettings, SidebarSettings, ThemeSettings } from '../../types';
+import type {
+  AppSettings,
+  DesktopLyricsSettings,
+  LyricsSettings,
+  SidebarSettings,
+  ThemeSettings,
+} from '../../types';
+import {
+  createDefaultDesktopLyricsSettings,
+  createDefaultLyricsSettings,
+  mergeDesktopLyricsSettings,
+  mergeLyricsSettings,
+} from '../../composables/lyrics/constants';
 import {
   createDefaultShortcutSettings,
   mergeShortcutSettings,
@@ -14,10 +26,16 @@ export type ThemeSettingsPatch = Partial<Omit<ThemeSettings, 'customBackground'>
 
 export type SidebarSettingsPatch = Partial<SidebarSettings>;
 
-export interface AppSettingsPatch extends Partial<Omit<AppSettings, 'theme' | 'sidebar' | 'shortcuts'>> {
+export type LyricsSettingsPatch = Partial<LyricsSettings>;
+export type DesktopLyricsSettingsPatch = Partial<DesktopLyricsSettings>;
+
+export interface AppSettingsPatch
+  extends Partial<Omit<AppSettings, 'theme' | 'sidebar' | 'shortcuts' | 'lyrics' | 'desktopLyrics'>> {
   theme?: ThemeSettingsPatch;
   sidebar?: SidebarSettingsPatch;
   shortcuts?: ShortcutSettingsPatch;
+  lyrics?: LyricsSettingsPatch;
+  desktopLyrics?: DesktopLyricsSettingsPatch;
 }
 
 export interface DeprecatedAppSettingsPatch extends AppSettingsPatch {
@@ -69,6 +87,8 @@ export const defaultAppSettings: AppSettings = {
   organizeRoot: 'D:\\Music',
   enableAutoOrganize: true,
   organizeRule: '{Artist}/{Album}/{Title}',
+  lyrics: createDefaultLyricsSettings(),
+  desktopLyrics: createDefaultDesktopLyricsSettings(),
   theme: defaultThemeSettings,
   sidebar: defaultSidebarSettings,
   shortcuts: createDefaultShortcutSettings(),
@@ -87,6 +107,8 @@ export const createDefaultSidebarSettings = (): SidebarSettings => ({
 
 export const createDefaultAppSettings = (): AppSettings => ({
   ...defaultAppSettings,
+  lyrics: createDefaultLyricsSettings(),
+  desktopLyrics: createDefaultDesktopLyricsSettings(),
   theme: createDefaultThemeSettings(),
   sidebar: createDefaultSidebarSettings(),
   shortcuts: createDefaultShortcutSettings(),
@@ -126,6 +148,8 @@ export const mergeAppSettings = (
   // Ignore removed legacy fields that may still exist in persisted settings.
   ...base,
   ...((({ minimizeToTray: _deprecated, ...rest }) => rest)(patch)),
+  lyrics: mergeLyricsSettings(base.lyrics, patch.lyrics ?? {}),
+  desktopLyrics: mergeDesktopLyricsSettings(base.desktopLyrics, patch.desktopLyrics ?? {}),
   theme: mergeThemeSettings(base.theme, patch.theme ?? {}),
   sidebar: mergeSidebarSettings(base.sidebar, patch.sidebar ?? {}),
   shortcuts: mergeShortcutSettings(base.shortcuts, patch.shortcuts ?? {}),

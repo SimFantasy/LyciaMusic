@@ -161,7 +161,12 @@ describe('enhanced lrc parser', async () => {
 });
 
 describe('mergePreparedLines', async () => {
-  const { getCurrentLyricDisplayLines, getDisplaySubtitles, mergePreparedLines } = await import('./lyrics');
+  const {
+    getCurrentLyricDisplayLines,
+    getDisplaySubtitles,
+    getLineScriptProfile,
+    mergePreparedLines,
+  } = await import('./lyrics');
 
   it('keeps the earlier source line as the main line for bilingual groups', () => {
     const merged = mergePreparedLines([
@@ -328,6 +333,297 @@ describe('mergePreparedLines', async () => {
     expect(merged[0].romaji).toBe('');
   });
 
+  it('classifies korean lyric groups as main plus chinese translation', () => {
+    const merged = mergePreparedLines([
+      {
+        startMs: 12000,
+        endMs: 15000,
+        text: '\uadf8\ub7f0 \ub0a0\uc774 \uc788\uc5c8\uc9c0',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: '\uadf8\ub7f0 \ub0a0\uc774 \uc788\uc5c8\uc9c0',
+          start: 12,
+          end: 15,
+          romaji: '',
+        }],
+        sourceIndex: 0,
+      },
+      {
+        startMs: 12000,
+        endMs: 15000,
+        text: '\u90a3\u6837\u7684\u65e5\u5b50\u66fe\u7ecf\u5b58\u5728',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: '\u90a3\u6837\u7684\u65e5\u5b50\u66fe\u7ecf\u5b58\u5728',
+          start: 12,
+          end: 15,
+          romaji: '',
+        }],
+        sourceIndex: 1,
+      },
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].text).toBe('\uadf8\ub7f0 \ub0a0\uc774 \uc788\uc5c8\uc9c0');
+    expect(merged[0].translation).toBe('\u90a3\u6837\u7684\u65e5\u5b50\u66fe\u7ecf\u5b58\u5728');
+    expect(merged[0].romaji).toBe('');
+  });
+
+  it('treats chinese plus pinyin as main and romaji', () => {
+    const merged = mergePreparedLines([
+      {
+        startMs: 5000,
+        endMs: 8000,
+        text: '\u5fc3\u91cc\u6709\u4e00\u4e2a\u68a6',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: '\u5fc3\u91cc\u6709\u4e00\u4e2a\u68a6',
+          start: 5,
+          end: 8,
+          romaji: '',
+        }],
+        sourceIndex: 0,
+      },
+      {
+        startMs: 5000,
+        endMs: 8000,
+        text: 'xin li you yi ge meng',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: 'xin li you yi ge meng',
+          start: 5,
+          end: 8,
+          romaji: '',
+        }],
+        sourceIndex: 1,
+      },
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].text).toBe('\u5fc3\u91cc\u6709\u4e00\u4e2a\u68a6');
+    expect(merged[0].translation).toBe('');
+    expect(merged[0].romaji).toBe('xin li you yi ge meng');
+  });
+
+  it('keeps enhanced main-word timing while attaching a translated line', () => {
+    const merged = mergePreparedLines([
+      {
+        startMs: 1000,
+        endMs: 2400,
+        text: 'Hello',
+        translation: '',
+        romaji: '',
+        words: [
+          { text: 'Hel', start: 1, end: 1.7, romaji: '' },
+          { text: 'lo', start: 1.7, end: 2.4, romaji: '' },
+        ],
+        sourceIndex: 0,
+      },
+      {
+        startMs: 1000,
+        endMs: 2400,
+        text: '\u4f60\u597d',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: '\u4f60\u597d',
+          start: 1,
+          end: 2.4,
+          romaji: '',
+        }],
+        sourceIndex: 1,
+      },
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].translation).toBe('\u4f60\u597d');
+    expect(merged[0].words).toEqual([
+      { text: 'Hel', start: 1, end: 1.7, romaji: '' },
+      { text: 'lo', start: 1.7, end: 2.4, romaji: '' },
+    ]);
+  });
+
+  it('merges bilingual lines with tiny timestamp drift but not beyond the safety cap', () => {
+    const merged = mergePreparedLines([
+      {
+        startMs: 1000,
+        endMs: 2400,
+        text: 'Main line',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: 'Main line',
+          start: 1,
+          end: 2.4,
+          romaji: '',
+        }],
+        sourceIndex: 0,
+      },
+      {
+        startMs: 1004,
+        endMs: 2400,
+        text: '\u526f\u884c',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: '\u526f\u884c',
+          start: 1.004,
+          end: 2.4,
+          romaji: '',
+        }],
+        sourceIndex: 1,
+      },
+      {
+        startMs: 5000,
+        endMs: 6400,
+        text: 'Next sentence',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: 'Next sentence',
+          start: 5,
+          end: 6.4,
+          romaji: '',
+        }],
+        sourceIndex: 2,
+      },
+      {
+        startMs: 7000,
+        endMs: 8200,
+        text: 'Standalone',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: 'Standalone',
+          start: 7,
+          end: 8.2,
+          romaji: '',
+        }],
+        sourceIndex: 3,
+      },
+      {
+        startMs: 7065,
+        endMs: 8200,
+        text: '\u4e0d\u5e94\u8be5\u5408\u5e76',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: '\u4e0d\u5e94\u8be5\u5408\u5e76',
+          start: 7.065,
+          end: 8.2,
+          romaji: '',
+        }],
+        sourceIndex: 4,
+      },
+      {
+        startMs: 12000,
+        endMs: 13200,
+        text: 'Afterward',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: 'Afterward',
+          start: 12,
+          end: 13.2,
+          romaji: '',
+        }],
+        sourceIndex: 5,
+      },
+    ]);
+
+    expect(merged[0].translation).toBe('\u526f\u884c');
+    expect(merged.map((line) => line.text)).toEqual([
+      'Main line',
+      'Next sentence',
+      'Standalone',
+      '\u4e0d\u5e94\u8be5\u5408\u5e76',
+      'Afterward',
+    ]);
+  });
+
+  it('does not merge rapid same-script lines in dense sequences', () => {
+    const merged = mergePreparedLines([
+      {
+        startMs: 0,
+        endMs: 200,
+        text: 'one',
+        translation: '',
+        romaji: '',
+        words: [{ text: 'one', start: 0, end: 0.2, romaji: '' }],
+        sourceIndex: 0,
+      },
+      {
+        startMs: 40,
+        endMs: 240,
+        text: 'two',
+        translation: '',
+        romaji: '',
+        words: [{ text: 'two', start: 0.04, end: 0.24, romaji: '' }],
+        sourceIndex: 1,
+      },
+      {
+        startMs: 85,
+        endMs: 260,
+        text: 'three',
+        translation: '',
+        romaji: '',
+        words: [{ text: 'three', start: 0.085, end: 0.26, romaji: '' }],
+        sourceIndex: 2,
+      },
+    ]);
+
+    expect(merged.map((line) => line.text)).toEqual(['one', 'two', 'three']);
+  });
+
+  it('falls back to secondary lines when same-script groups are ambiguous', () => {
+    const merged = mergePreparedLines([
+      {
+        startMs: 2000,
+        endMs: 4000,
+        text: '\u6211\u4eec\u8fd8\u5728\u8fd9\u91cc',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: '\u6211\u4eec\u8fd8\u5728\u8fd9\u91cc',
+          start: 2,
+          end: 4,
+          romaji: '',
+        }],
+        sourceIndex: 0,
+      },
+      {
+        startMs: 2000,
+        endMs: 4000,
+        text: '\u540c\u6b65\u7684\u53e6\u4e00\u884c',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: '\u540c\u6b65\u7684\u53e6\u4e00\u884c',
+          start: 2,
+          end: 4,
+          romaji: '',
+        }],
+        sourceIndex: 1,
+      },
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].translation).toBe('');
+    expect(merged[0].romaji).toBe('');
+    expect(merged[0].secondary).toEqual(['\u540c\u6b65\u7684\u53e6\u4e00\u884c']);
+  });
+
+  it('detects hangul characters when building the script profile', () => {
+    const profile = getLineScriptProfile('\uadf8\ub7f0 \ub0a0\uc774 \uc788\uc5c8\uc9c0');
+
+    expect(profile.hangulCount).toBeGreaterThan(0);
+    expect(profile.dominantScript).toBe('hangul');
+  });
+
   it('orders visible sublines as romaji first and translation second', () => {
     const subtitles = getDisplaySubtitles({
       translation: '\u4ece\u90a3\u5929\u5f00\u59cb\u4f3c\u4e4e',
@@ -375,99 +671,35 @@ describe('mergePreparedLines', async () => {
   });
 });
 
-describe('lyrics settings persistence', () => {
-  it('clamps persisted player offsets when loading settings', async () => {
-    vi.resetModules();
+describe('lyrics settings normalization', async () => {
+  const {
+    MAX_PLAYER_OFFSET_X,
+    MIN_PLAYER_OFFSET_Y,
+    normalizeDesktopLyricsSettingsPatch,
+    normalizeLyricsSettingsPatch,
+  } = await import('./lyrics');
 
-    const getItem = vi.fn(() => JSON.stringify({
+  it('clamps player offsets for migrated player settings', () => {
+    const normalized = normalizeLyricsSettingsPatch({
       playerOffsetX: 999,
       playerOffsetY: -999,
-    }));
-    const setItem = vi.fn();
-
-    vi.stubGlobal('localStorage', {
-      getItem,
-      setItem,
     });
 
-    const {
-      MAX_PLAYER_OFFSET_X,
-      MIN_PLAYER_OFFSET_Y,
-      desktopLyricsSettings,
-      lyricsSettings,
-    } = await import('./lyrics');
-
-    expect(lyricsSettings.playerOffsetX).toBe(MAX_PLAYER_OFFSET_X);
-    expect(lyricsSettings.playerOffsetY).toBe(MIN_PLAYER_OFFSET_Y);
-    expect(desktopLyricsSettings.playerOffsetX).toBe(MAX_PLAYER_OFFSET_X);
-    expect(desktopLyricsSettings.playerOffsetY).toBe(MIN_PLAYER_OFFSET_Y);
+    expect(normalized.playerOffsetX).toBe(MAX_PLAYER_OFFSET_X);
+    expect(normalized.playerOffsetY).toBe(MIN_PLAYER_OFFSET_Y);
   });
 
-  it('only persists locked state when desktop lock persistence is enabled', async () => {
-    vi.resetModules();
+  it('defaults desktop auto-hide on fullscreen to enabled', () => {
+    const normalized = normalizeDesktopLyricsSettingsPatch({});
 
-    const getItem = vi.fn(() => null);
-    const setItem = vi.fn();
-
-    vi.stubGlobal('localStorage', {
-      getItem,
-      setItem,
-    });
-
-    const { desktopLyricsSettings } = await import('./lyrics');
-
-    desktopLyricsSettings.isLocked = true;
-    desktopLyricsSettings.persistLock = false;
-    await Promise.resolve();
-
-    const desktopPayloadWithoutPersistence = JSON.parse(String(setItem.mock.lastCall?.[1] ?? '{}'));
-    expect(desktopPayloadWithoutPersistence.isLocked).toBe(false);
-
-    desktopLyricsSettings.persistLock = true;
-    desktopLyricsSettings.isLocked = true;
-    await Promise.resolve();
-
-    const desktopPayloadWithPersistence = JSON.parse(String(setItem.mock.lastCall?.[1] ?? '{}'));
-    expect(desktopPayloadWithPersistence.isLocked).toBe(true);
+    expect(normalized.autoHideWhenFullscreen).toBe(true);
   });
 
-  it('defaults desktop auto-hide on fullscreen to enabled', async () => {
-    vi.resetModules();
-
-    const getItem = vi.fn(() => null);
-    const setItem = vi.fn();
-
-    vi.stubGlobal('localStorage', {
-      getItem,
-      setItem,
+  it('restores desktop auto-hide on fullscreen from migrated values', () => {
+    const normalized = normalizeDesktopLyricsSettingsPatch({
+      autoHideWhenFullscreen: false,
     });
 
-    const { desktopLyricsSettings } = await import('./lyrics');
-
-    expect(desktopLyricsSettings.autoHideWhenFullscreen).toBe(true);
-  });
-
-  it('restores desktop auto-hide on fullscreen from storage', async () => {
-    vi.resetModules();
-
-    const getItem = vi.fn((key: string) => {
-      if (key === 'desktop_lyrics_settings') {
-        return JSON.stringify({
-          autoHideWhenFullscreen: false,
-        });
-      }
-
-      return null;
-    });
-    const setItem = vi.fn();
-
-    vi.stubGlobal('localStorage', {
-      getItem,
-      setItem,
-    });
-
-    const { desktopLyricsSettings } = await import('./lyrics');
-
-    expect(desktopLyricsSettings.autoHideWhenFullscreen).toBe(false);
+    expect(normalized.autoHideWhenFullscreen).toBe(false);
   });
 });
