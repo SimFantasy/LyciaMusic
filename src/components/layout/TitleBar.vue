@@ -1,19 +1,43 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router';
+import { computed, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { usePlayerViewState } from '../../composables/usePlayerViewState';
 import { getCurrentWindow } from '@tauri-apps/api/window'; 
 import { useSettings } from '../../features/settings/useSettings';
-import { ref } from 'vue';
 
 const router = useRouter();
+const route = useRoute();
 const { searchQuery, setSearch, isMiniMode } = usePlayerViewState();
 const appWindow = getCurrentWindow();
 const { settings } = useSettings();
 const rotation = ref(0); // For settings icon animation
+const lastNonSettingsRoute = ref(route.path === '/settings' ? '/' : route.fullPath);
+const isSettingsRoute = computed(() => route.path === '/settings');
 
 const rotateSettings = () => {
   rotation.value += 180;
 };
+
+const toggleSettingsPage = async () => {
+  rotateSettings();
+
+  if (isSettingsRoute.value) {
+    await router.push(lastNonSettingsRoute.value || '/');
+    return;
+  }
+
+  await router.push('/settings');
+};
+
+watch(
+  () => route.fullPath,
+  (fullPath) => {
+    if (route.path !== '/settings') {
+      lastNonSettingsRoute.value = fullPath;
+    }
+  },
+  { immediate: true },
+);
 
 // 最小化
 const minimize = async () => {
@@ -79,18 +103,22 @@ const goBack = () => { router.back(); };
     </div>
 
     <div class="flex items-center gap-2 relative z-10">
-      <router-link 
-        to="/settings" 
-        class="p-2 text-gray-900 dark:text-gray-100 hover:text-black dark:hover:text-white transition-all duration-700 ease-out cursor-pointer" 
+      <button
+        type="button"
+        class="rounded-md p-2 transition-all duration-300 ease-out cursor-pointer"
+        :class="isSettingsRoute
+          ? 'text-[#EC4141] dark:text-[#ff8b8b]'
+          : 'text-gray-900 dark:text-gray-100 hover:text-black dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5'"
         :style="{ transform: `rotate(${rotation}deg)` }"
-        @click="rotateSettings"
+        :aria-pressed="isSettingsRoute"
+        @click.stop="toggleSettingsPage"
         title="设置"
       >
         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
-      </router-link>
+      </button>
       <div class="h-4 w-px bg-gray-400/30 mx-2"></div>
       <div class="flex items-center gap-1">
         <button @click.stop="isMiniMode = true" class="p-2 text-gray-900 dark:text-gray-100 hover:text-black dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-md transition-colors cursor-pointer" title="Mini 模式">
