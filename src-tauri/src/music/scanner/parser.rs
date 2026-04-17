@@ -1,4 +1,4 @@
-use super::super::tags::read_tagged_file_from_path_for_scan;
+use super::super::tags::{extract_detail_metadata, read_tagged_file_from_path_for_scan};
 use super::super::types::Song;
 use super::super::utils::{is_supported_library_extension, normalize_path};
 use super::{
@@ -104,6 +104,8 @@ pub(super) fn parse_song_from_file(path: &Path, path_str: &str, format: &str) ->
     let mut file_size = 0u64;
     let mut file_created_at: Option<u64> = None;
     let mut file_modified_at: Option<u64> = None;
+    let mut track_number: Option<String> = None;
+    let mut disc_number: Option<String> = None;
     let mut container = Some(normalize_container_from_extension(format));
     let mut codec = None;
 
@@ -134,6 +136,9 @@ pub(super) fn parse_song_from_file(path: &Path, path_str: &str, format: &str) ->
             &mut title,
             &mut album_artist,
         );
+        let detail_metadata = extract_detail_metadata(&tagged_file);
+        track_number = detail_metadata.track_number;
+        disc_number = detail_metadata.disc_number;
     }
 
     if duration == 0 || sample_rate == 0 || bit_depth.is_none() {
@@ -192,6 +197,8 @@ pub(super) fn parse_song_from_file(path: &Path, path_str: &str, format: &str) ->
         container,
         codec,
         file_size,
+        track_number,
+        disc_number,
         // Keep `added_at` as the frontend sort field, but source it from file time.
         added_at: file_created_at.or(file_modified_at),
         file_modified_at,

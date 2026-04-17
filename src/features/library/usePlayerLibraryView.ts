@@ -45,6 +45,7 @@ export function usePlayerLibraryView() {
     folderSortMode,
     folderCustomOrder,
     localSortMode,
+    albumDetailSortMode,
     localCustomOrder,
   } = storeToRefs(libraryStore);
   const { favoritePaths, playlists, recentSongs, playlistSortMode } = storeToRefs(collectionsStore);
@@ -102,6 +103,7 @@ export function usePlayerLibraryView() {
     favDetailFilter,
     folderSortMode,
     localSortMode,
+    albumDetailSortMode,
     localCustomOrder,
     playlistSortMode,
   });

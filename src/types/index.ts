@@ -22,6 +22,8 @@ export interface SongCore {
   container?: string;
   codec?: string;
   file_size?: number;
+  track_number?: string;
+  disc_number?: string;
   added_at?: number;
   file_modified_at?: number;
 }

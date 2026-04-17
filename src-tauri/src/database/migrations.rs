@@ -106,6 +106,14 @@ fn migrate_song_columns(conn: &Connection) -> Result<(), String> {
         conn.execute("ALTER TABLE songs ADD COLUMN file_size INTEGER", [])
             .ok();
     }
+    if !columns.iter().any(|column| column == "track_number") {
+        conn.execute("ALTER TABLE songs ADD COLUMN track_number TEXT", [])
+            .ok();
+    }
+    if !columns.iter().any(|column| column == "disc_number") {
+        conn.execute("ALTER TABLE songs ADD COLUMN disc_number TEXT", [])
+            .ok();
+    }
     if !columns.iter().any(|column| column == "added_at") {
         conn.execute("ALTER TABLE songs ADD COLUMN added_at INTEGER", [])
             .ok();

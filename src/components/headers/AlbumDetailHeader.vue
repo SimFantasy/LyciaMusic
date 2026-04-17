@@ -22,16 +22,16 @@ const emit = defineEmits([
 ]);
 
 const {
-  localSortMode,
-  setLocalSortMode,
+  albumDetailSortMode,
+  setAlbumDetailSortMode,
 } = usePlayerViewState();
 
 const sortLabelMap = {
+  track_number: '音轨号',
   title: '歌曲名',
   artist: '歌手',
   added_at: '添加时间',
   file_modified_at: '修改时间',
-  custom: '自定义',
 } as const;
 
 const showSortMenu = ref(false);
@@ -220,24 +220,24 @@ const getGradientForAlbum = (name: string) => {
                 : { left: sortMenuX + 'px', top: sortMenuY + 'px' }"
             >
               <div
-                v-for="mode in (['title', 'artist', 'added_at', 'file_modified_at', 'custom'] as const)"
+                v-for="mode in (['track_number', 'title', 'artist', 'added_at', 'file_modified_at'] as const)"
                 :key="mode"
                 @click="
                   if (mode === 'added_at') {
-                    setLocalSortMode(localSortMode === 'added_at' ? 'added_at_asc' : 'added_at');
+                    setAlbumDetailSortMode(albumDetailSortMode === 'added_at' ? 'added_at_asc' : 'added_at');
                   } else if (mode === 'file_modified_at') {
-                    setLocalSortMode(localSortMode === 'file_modified_at' ? 'file_modified_at_asc' : 'file_modified_at');
+                    setAlbumDetailSortMode(albumDetailSortMode === 'file_modified_at' ? 'file_modified_at_asc' : 'file_modified_at');
                   } else {
-                    setLocalSortMode(mode);
+                    setAlbumDetailSortMode(mode);
                   }
                   showSortMenu = false;
                 "
                 class="px-3 py-2 text-xs cursor-pointer flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
-                :class="(localSortMode || '').startsWith(mode) ? 'text-blue-500 font-medium' : 'text-gray-600 dark:text-gray-300'"
+                :class="(albumDetailSortMode || '').startsWith(mode) ? 'text-blue-500 font-medium' : 'text-gray-600 dark:text-gray-300'"
               >
                 <span>{{ sortLabelMap[mode] }}</span>
-                <div v-if="(localSortMode || '').startsWith(mode)" class="flex items-center gap-1.5">
-                  <svg v-if="mode === 'added_at' || mode === 'file_modified_at'" xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform duration-200" :class="{ 'rotate-180': localSortMode === 'added_at_asc' || localSortMode === 'file_modified_at_asc' }" viewBox="0 0 20 20" fill="currentColor">
+                <div v-if="(albumDetailSortMode || '').startsWith(mode)" class="flex items-center gap-1.5">
+                  <svg v-if="mode === 'added_at' || mode === 'file_modified_at'" xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform duration-200" :class="{ 'rotate-180': albumDetailSortMode === 'added_at_asc' || albumDetailSortMode === 'file_modified_at_asc' }" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M14.707 12.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l2.293-2.293a1 1 0 011.414 0z" clip-rule="evenodd" />
                   </svg>
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">

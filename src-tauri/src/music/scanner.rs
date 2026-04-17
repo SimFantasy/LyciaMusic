@@ -220,6 +220,8 @@ mod tests {
             container: Some("flac".to_string()),
             codec: Some("flac".to_string()),
             file_size: 1024,
+            track_number: None,
+            disc_number: None,
             added_at: Some(1),
             file_modified_at: Some(10),
         }
@@ -252,6 +254,8 @@ mod tests {
                 container TEXT,
                 codec TEXT,
                 file_size INTEGER,
+                track_number TEXT,
+                disc_number TEXT,
                 added_at INTEGER,
                 file_modified_at INTEGER
             );

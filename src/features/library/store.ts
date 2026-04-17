@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 
 import type {
   AlbumSortMode,
+  AlbumDetailSortMode,
   ArtistSortMode,
   FolderSortMode,
   LocalSortMode,
@@ -82,6 +83,8 @@ export const useLibraryStore = defineStore('library', () => {
       song.album = registerString(song.album) ?? '';
       song.album_artist = registerString(song.album_artist) ?? '';
       song.album_key = registerString(song.album_key) ?? '';
+      song.track_number = registerString(song.track_number);
+      song.disc_number = registerString(song.disc_number);
       song.format = registerString(song.format);
     }
 
@@ -107,6 +110,8 @@ export const useLibraryStore = defineStore('library', () => {
     'album',
     'album_artist',
     'album_key',
+    'track_number',
+    'disc_number',
     'is_various_artists_album',
     'collapse_artist_credits',
     'duration',
@@ -164,6 +169,8 @@ export const useLibraryStore = defineStore('library', () => {
     album: internString(song.album) ?? '',
     album_artist: internString(song.album_artist) ?? '',
     album_key: internString(song.album_key) ?? '',
+    track_number: internString(song.track_number),
+    disc_number: internString(song.disc_number),
     format: internString(song.format),
   });
 
@@ -349,6 +356,7 @@ export const useLibraryStore = defineStore('library', () => {
   const watchedFolders = ref<string[]>([]);
   const artistSortMode = ref<ArtistSortMode>('name');
   const albumSortMode = ref<AlbumSortMode>('name');
+  const albumDetailSortMode = ref<AlbumDetailSortMode>('track_number');
   const artistCustomOrder = ref<string[]>([]);
   const albumCustomOrder = ref<string[]>([]);
   const folderSortMode = ref<FolderSortMode>('title');
@@ -421,6 +429,7 @@ export const useLibraryStore = defineStore('library', () => {
     watchedFolders,
     artistSortMode,
     albumSortMode,
+    albumDetailSortMode,
     artistCustomOrder,
     albumCustomOrder,
     folderSortMode,

@@ -35,6 +35,8 @@ pub(crate) fn ensure_base_schema(conn: &Connection) -> Result<(), String> {
             container TEXT,
             codec TEXT,
             file_size INTEGER,
+            track_number TEXT,
+            disc_number TEXT,
             added_at INTEGER,
             file_modified_at INTEGER
         )",

@@ -15,6 +15,7 @@ import {
   playerStorage,
   playerStorageKeys,
   type AlbumSortMode,
+  type AlbumDetailSortMode,
   type ArtistSortMode,
   type FolderSortMode,
   type LocalSortMode,
@@ -71,6 +72,7 @@ let dominantColorSignature = '';
 interface SortSettingsRefs {
   artistSortMode: Ref<ArtistSortMode>;
   albumSortMode: Ref<AlbumSortMode>;
+  albumDetailSortMode: Ref<AlbumDetailSortMode>;
   artistCustomOrder: Ref<string[]>;
   albumCustomOrder: Ref<string[]>;
   folderSortMode: Ref<FolderSortMode>;
@@ -99,6 +101,7 @@ const restoreOutputDevice = async () => {
 const restoreSortSettings = ({
   artistSortMode,
   albumSortMode,
+  albumDetailSortMode,
   artistCustomOrder,
   albumCustomOrder,
   folderSortMode,
@@ -115,6 +118,11 @@ const restoreSortSettings = ({
   const storedAlbumSort = playerStorage.getString(playerStorageKeys.albumSortMode);
   if (storedAlbumSort && ['count', 'name', 'artist', 'custom'].includes(storedAlbumSort)) {
     albumSortMode.value = storedAlbumSort as AlbumSortMode;
+  }
+
+  const storedAlbumDetailSort = playerStorage.getString(playerStorageKeys.albumDetailSortMode);
+  if (storedAlbumDetailSort && ['track_number', 'title', 'artist', 'added_at', 'added_at_asc', 'file_modified_at', 'file_modified_at_asc'].includes(storedAlbumDetailSort)) {
+    albumDetailSortMode.value = storedAlbumDetailSort as AlbumDetailSortMode;
   }
 
   const storedArtistOrder = playerStorage.readStringArray(playerStorageKeys.artistCustomOrder);
@@ -288,6 +296,7 @@ export const createPlayerLifecycle = ({
     watchedFolders,
     artistSortMode,
     albumSortMode,
+    albumDetailSortMode,
     artistCustomOrder,
     albumCustomOrder,
     folderSortMode,
@@ -383,6 +392,9 @@ export const createPlayerLifecycle = ({
     });
     watch(albumSortMode, value => {
       playerStorage.setString(playerStorageKeys.albumSortMode, value);
+    });
+    watch(albumDetailSortMode, value => {
+      playerStorage.setString(playerStorageKeys.albumDetailSortMode, value);
     });
     watch(folderSortMode, value => {
       playerStorage.setString(playerStorageKeys.folderSortMode, value);
@@ -511,6 +523,7 @@ export const createPlayerLifecycle = ({
       restoreSortSettings({
         artistSortMode,
         albumSortMode,
+        albumDetailSortMode,
         artistCustomOrder,
         albumCustomOrder,
         folderSortMode,

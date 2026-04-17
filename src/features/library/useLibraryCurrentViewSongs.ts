@@ -4,7 +4,7 @@ import { useLibraryAllSongPathCache } from '../../composables/useLibraryAllSongP
 import { useLibraryCollectionSongPathCache } from '../../composables/useLibraryCollectionSongPathCache';
 import { useLibraryDetailSongPathCache } from '../../composables/useLibraryDetailSongPathCache';
 import { useLibraryFolderSongPathCache } from '../../composables/useLibraryFolderSongPathCache';
-import type { FolderSortMode, LocalSortMode, PlaylistSortMode } from '../../services/storage/playerStorage';
+import type { AlbumDetailSortMode, FolderSortMode, LocalSortMode, PlaylistSortMode } from '../../services/storage/playerStorage';
 import type { HistoryItem, Playlist, Song } from '../../types';
 import { sortItemsByAlphabetIndex } from '../../utils/alphabetIndex';
 import {
@@ -32,6 +32,7 @@ interface UseLibraryCurrentViewSongsOptions {
   favDetailFilter: Ref<{ type: 'artist' | 'album'; name: string } | null>;
   folderSortMode: Ref<FolderSortMode>;
   localSortMode: Ref<LocalSortMode>;
+  albumDetailSortMode: Ref<AlbumDetailSortMode>;
   localCustomOrder: Ref<string[]>;
   playlistSortMode: Ref<PlaylistSortMode>;
 }
@@ -54,6 +55,7 @@ export function useLibraryCurrentViewSongs({
   favDetailFilter,
   folderSortMode,
   localSortMode,
+  albumDetailSortMode,
   localCustomOrder,
   playlistSortMode,
 }: UseLibraryCurrentViewSongsOptions) {
@@ -421,6 +423,67 @@ export function useLibraryCurrentViewSongs({
     return sortedPaths;
   };
 
+  const parseSortIndexValue = (value?: string) => {
+    if (!value) {
+      return null;
+    }
+
+    const match = value.trim().match(/\d+/);
+    if (!match) {
+      return null;
+    }
+
+    const parsed = Number.parseInt(match[0], 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const compareSongLabel = (left: string, right: string) =>
+    getSongTitleLabel(songLookup.value.get(left)!).localeCompare(
+      getSongTitleLabel(songLookup.value.get(right)!),
+      'zh-CN',
+    );
+
+  const sortSongPathsByAlbumDetailMode = (paths: string[], mode: AlbumDetailSortMode) => {
+    if (mode !== 'track_number') {
+      return sortSongPathsByLocalMode(paths, mode as LocalSortMode);
+    }
+
+    const sortedPaths = [...paths];
+    sortedPaths.sort((left, right) => {
+      const leftSong = songLookup.value.get(left);
+      const rightSong = songLookup.value.get(right);
+      const leftDisc = parseSortIndexValue(leftSong?.disc_number);
+      const rightDisc = parseSortIndexValue(rightSong?.disc_number);
+
+      if (leftDisc === null && rightDisc !== null) {
+        return 1;
+      }
+      if (leftDisc !== null && rightDisc === null) {
+        return -1;
+      }
+      if (leftDisc !== null && rightDisc !== null && leftDisc !== rightDisc) {
+        return leftDisc - rightDisc;
+      }
+
+      const leftTrack = parseSortIndexValue(leftSong?.track_number);
+      const rightTrack = parseSortIndexValue(rightSong?.track_number);
+
+      if (leftTrack === null && rightTrack !== null) {
+        return 1;
+      }
+      if (leftTrack !== null && rightTrack === null) {
+        return -1;
+      }
+      if (leftTrack !== null && rightTrack !== null && leftTrack !== rightTrack) {
+        return leftTrack - rightTrack;
+      }
+
+      return compareSongLabel(left, right) || left.localeCompare(right, 'zh-CN');
+    });
+
+    return sortedPaths;
+  };
+
   const currentViewSongPaths = computed(() => {
     if (searchQuery.value.trim()) {
       const query = searchQuery.value.toLowerCase();
@@ -477,11 +540,18 @@ export function useLibraryCurrentViewSongs({
         );
       }
 
-      if (currentViewMode.value === 'artist' || currentViewMode.value === 'album') {
+      if (currentViewMode.value === 'artist') {
         const filteredPaths = detailViewSongPaths.value.filter(matchesQuery);
         return localSortMode.value === 'custom'
           ? filteredPaths
           : sortSongPathsByLocalMode(filteredPaths, localSortMode.value);
+      }
+
+      if (currentViewMode.value === 'album') {
+        return sortSongPathsByAlbumDetailMode(
+          detailViewSongPaths.value.filter(matchesQuery),
+          albumDetailSortMode.value,
+        );
       }
 
       return canonicalSongPaths.value.filter(matchesQuery);
@@ -517,10 +587,14 @@ export function useLibraryCurrentViewSongs({
       return currentFolderSongPaths.value;
     }
 
-    if (currentViewMode.value === 'artist' || currentViewMode.value === 'album') {
+    if (currentViewMode.value === 'artist') {
       return localSortMode.value === 'custom'
         ? detailViewSongPaths.value
         : sortSongPathsByLocalMode(detailViewSongPaths.value, localSortMode.value);
+    }
+
+    if (currentViewMode.value === 'album') {
+      return sortSongPathsByAlbumDetailMode(detailViewSongPaths.value, albumDetailSortMode.value);
     }
 
     if (currentViewMode.value === 'recent') {

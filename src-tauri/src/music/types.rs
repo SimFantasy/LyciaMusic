@@ -28,6 +28,8 @@ pub struct Song {
     pub container: Option<String>,
     pub codec: Option<String>,
     pub file_size: u64,
+    pub track_number: Option<String>,
+    pub disc_number: Option<String>,
     pub added_at: Option<u64>,
     pub file_modified_at: Option<u64>,
 }
@@ -51,6 +53,8 @@ pub struct LibrarySong {
     pub sample_rate: u32,
     pub bit_depth: Option<u8>,
     pub format: String,
+    pub track_number: Option<String>,
+    pub disc_number: Option<String>,
     pub added_at: Option<u64>,
     pub file_modified_at: Option<u64>,
 }

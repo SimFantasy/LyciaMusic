@@ -358,43 +358,66 @@ describe('player library view', () => {
     ]);
   });
 
-  it('applies local sorting rules in album detail view', async () => {
+  it('applies album detail sorting rules including track order', async () => {
     const libraryStore = useLibraryStore();
     const navigationStore = useNavigationStore();
-    const earlySong = makeSong({
-      path: '/music/album/early.flac',
-      title: 'Early',
+    const discTwoSong = makeSong({
+      path: '/music/album/disc-two.flac',
+      title: 'Disc Two',
       album: 'Detail Album',
       album_key: 'detail-album::artist',
       added_at: 10,
+      disc_number: '2',
+      track_number: '1',
     });
-    const lateSong = makeSong({
-      path: '/music/album/late.flac',
-      title: 'Late',
+    const firstTrack = makeSong({
+      path: '/music/album/first-track.flac',
+      title: 'First Track',
+      album: 'Detail Album',
+      album_key: 'detail-album::artist',
+      added_at: 20,
+      disc_number: '1',
+      track_number: '1/10',
+    });
+    const secondTrack = makeSong({
+      path: '/music/album/second-track.flac',
+      title: 'Second Track',
       album: 'Detail Album',
       album_key: 'detail-album::artist',
       added_at: 30,
+      disc_number: '1',
+      track_number: '2',
     });
 
-    libraryStore.librarySongs = [earlySong, lateSong];
+    libraryStore.librarySongs = [discTwoSong, secondTrack, firstTrack];
     navigationStore.currentViewMode = 'album';
     navigationStore.filterCondition = 'detail-album::artist';
-    libraryStore.localSortMode = 'added_at';
 
     const { displaySongList } = usePlayerLibraryView();
     await flushPromises();
 
     expect(displaySongList.value.map(song => song.path)).toEqual([
-      lateSong.path,
-      earlySong.path,
+      firstTrack.path,
+      secondTrack.path,
+      discTwoSong.path,
     ]);
 
-    libraryStore.localSortMode = 'added_at_asc';
+    libraryStore.albumDetailSortMode = 'added_at';
     await flushPromises();
 
     expect(displaySongList.value.map(song => song.path)).toEqual([
-      earlySong.path,
-      lateSong.path,
+      secondTrack.path,
+      firstTrack.path,
+      discTwoSong.path,
+    ]);
+
+    libraryStore.albumDetailSortMode = 'added_at_asc';
+    await flushPromises();
+
+    expect(displaySongList.value.map(song => song.path)).toEqual([
+      discTwoSong.path,
+      firstTrack.path,
+      secondTrack.path,
     ]);
   });
 });

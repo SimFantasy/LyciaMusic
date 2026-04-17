@@ -158,6 +158,7 @@ function createPlayerCore() {
   const {
     artistSortMode,
     albumSortMode,
+    albumDetailSortMode,
     artistCustomOrder,
     albumCustomOrder,
     folderSortMode,
@@ -654,6 +655,9 @@ function createPlayerCore() {
     },
     setLocalSortMode: (mode: 'title' | 'artist' | 'added_at' | 'added_at_asc' | 'file_modified_at' | 'file_modified_at_asc' | 'custom') => {
       localSortMode.value = mode;
+    },
+    setAlbumDetailSortMode: (mode: 'track_number' | 'title' | 'artist' | 'added_at' | 'added_at_asc' | 'file_modified_at' | 'file_modified_at_asc') => {
+      albumDetailSortMode.value = mode;
     },
     setPlaylistSortMode: (mode: 'title' | 'name' | 'artist' | 'added_at' | 'custom') => {
       playlistSortMode.value = mode;

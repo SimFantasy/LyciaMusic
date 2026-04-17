@@ -2,7 +2,7 @@
 
 use super::scanner::{scan_folder_recursive, scan_single_directory_internal};
 use super::types::{
-    AlbumCatalogItem, ArtistCatalogItem, FolderNode, LibraryFolder, LibrarySong, Song,
+    AlbumCatalogItem, ArtistCatalogItem, FolderNode, LibraryFolder, LibrarySong,
 };
 use super::utils::normalize_path;
 use crate::database::DbState;
@@ -144,7 +144,7 @@ fn folder_song_matches_query(row: &FolderViewSongRow, query: &str) -> bool {
 fn load_cached_songs(conn: &rusqlite::Connection) -> Result<Vec<LibrarySong>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, path, title, artist, artist_names, effective_artist_names, album, album_artist, album_key, is_various_artists_album, collapse_artist_credits, duration, bitrate, sample_rate, bit_depth, format, container, codec, file_size, added_at, file_modified_at
+            "SELECT id, path, title, artist, artist_names, effective_artist_names, album, album_artist, album_key, is_various_artists_album, collapse_artist_credits, duration, bitrate, sample_rate, bit_depth, format, container, codec, file_size, track_number, disc_number, added_at, file_modified_at
              FROM songs",
         )
         .map_err(|e| e.to_string())?;
@@ -156,8 +156,10 @@ fn load_cached_songs(conn: &rusqlite::Connection) -> Result<Vec<LibrarySong>, St
             let bitrate = clamp_i64_to_u32(row.get::<_, Option<i64>>(12)?.unwrap_or(0));
             let sample_rate = clamp_i64_to_u32(row.get::<_, Option<i64>>(13)?.unwrap_or(0));
             let bit_depth = i64_to_u8_opt(row.get::<_, Option<i64>>(14)?);
-            let added_at_i64 = row.get::<_, Option<i64>>(19)?;
-            let file_modified_at_i64 = row.get::<_, Option<i64>>(20)?;
+            let track_number = row.get::<_, Option<String>>(19)?;
+            let disc_number = row.get::<_, Option<String>>(20)?;
+            let added_at_i64 = row.get::<_, Option<i64>>(21)?;
+            let file_modified_at_i64 = row.get::<_, Option<i64>>(22)?;
             let artist_names = deserialize_string_list(row.get::<_, Option<String>>(4)?);
             let effective_artist_names = deserialize_string_list(row.get::<_, Option<String>>(5)?);
 
@@ -184,6 +186,8 @@ fn load_cached_songs(conn: &rusqlite::Connection) -> Result<Vec<LibrarySong>, St
                 sample_rate,
                 bit_depth,
                 format: row.get::<_, Option<String>>(15)?.unwrap_or_default(),
+                track_number,
+                disc_number,
                 added_at: i64_to_u64_opt(added_at_i64),
                 file_modified_at: i64_to_u64_opt(file_modified_at_i64),
             })
