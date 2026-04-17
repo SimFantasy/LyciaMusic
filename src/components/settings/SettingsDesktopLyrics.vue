@@ -223,7 +223,6 @@ onUnmounted(() => {
         >
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">窗口置顶</div>
-            <div class="mt-0.5 text-xs text-gray-600 dark:text-white/60">让桌面歌词始终显示在其他窗口上方</div>
           </div>
           <span class="desktop-switch" :class="desktopLyricsSettings.isAlwaysOnTop ? 'desktop-switch--on' : ''">
             <span class="desktop-switch-thumb" :class="desktopLyricsSettings.isAlwaysOnTop ? 'translate-x-5' : ''" />
@@ -237,7 +236,6 @@ onUnmounted(() => {
         >
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">始终显示阴影背景</div>
-            <div class="mt-0.5 text-xs text-gray-600 dark:text-white/60">开启后，桌面歌词会持续显示底板阴影，不再只在显示或拖动时临时出现</div>
           </div>
           <span
             class="desktop-switch"
@@ -257,7 +255,6 @@ onUnmounted(() => {
         >
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">全屏时自动隐藏</div>
-            <div class="mt-0.5 text-xs text-gray-600 dark:text-white/60">检测到前台全屏应用时，自动隐藏桌面歌词</div>
           </div>
           <span class="desktop-switch" :class="desktopLyricsSettings.autoHideWhenFullscreen ? 'desktop-switch--on' : ''">
             <span class="desktop-switch-thumb" :class="desktopLyricsSettings.autoHideWhenFullscreen ? 'translate-x-5' : ''" />
@@ -271,7 +268,6 @@ onUnmounted(() => {
         >
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">锁定位置并启用鼠标穿透</div>
-            <div class="mt-0.5 text-xs text-gray-600 dark:text-white/60">锁定后无法拖动桌面歌词，鼠标操作会穿透到下层窗口</div>
           </div>
           <span class="desktop-switch" :class="desktopLyricsSettings.isLocked ? 'desktop-switch--on' : ''">
             <span class="desktop-switch-thumb" :class="desktopLyricsSettings.isLocked ? 'translate-x-5' : ''" />
@@ -285,7 +281,6 @@ onUnmounted(() => {
         >
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">记住锁定状态</div>
-            <div class="mt-0.5 text-xs text-gray-600 dark:text-white/60">下次启动软件时，继续沿用当前锁定状态</div>
           </div>
           <span class="desktop-switch" :class="desktopLyricsSettings.persistLock ? 'desktop-switch--on' : ''">
             <span class="desktop-switch-thumb" :class="desktopLyricsSettings.persistLock ? 'translate-x-5' : ''" />
@@ -295,7 +290,6 @@ onUnmounted(() => {
         <div class="desktop-setting-row">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">重置窗口位置</div>
-            <div class="mt-0.5 text-xs text-gray-600 dark:text-white/60">当桌面歌词超出屏幕或难以找回时，将窗口位置恢复到默认状态</div>
           </div>
           <button
             type="button"
@@ -314,7 +308,6 @@ onUnmounted(() => {
         >
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">显示翻译</div>
-            <div class="mt-0.5 text-xs text-gray-600 dark:text-white/60">当歌词含翻译时，在桌面歌词中同时显示</div>
           </div>
           <span class="desktop-switch" :class="lyricsSettings.showTranslation ? 'desktop-switch--on' : ''">
             <span class="desktop-switch-thumb" :class="lyricsSettings.showTranslation ? 'translate-x-5' : ''" />
@@ -328,7 +321,6 @@ onUnmounted(() => {
         >
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">显示罗马音</div>
-            <div class="mt-0.5 text-xs text-gray-600 dark:text-white/60">当歌词含罗马音时，在桌面歌词中同时显示</div>
           </div>
           <span class="desktop-switch" :class="lyricsSettings.showRomaji ? 'desktop-switch--on' : ''">
             <span class="desktop-switch-thumb" :class="lyricsSettings.showRomaji ? 'translate-x-5' : ''" />
@@ -346,9 +338,6 @@ onUnmounted(() => {
         <div class="flex items-start justify-between gap-4">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">同步偏移</div>
-            <div class="mt-0.5 text-xs text-gray-600 dark:text-white/60">
-              正值会让歌词更晚显示，负值会让歌词更早显示，可用于校正不同输出设备带来的延迟差异。
-            </div>
           </div>
           <div class="rounded-full bg-[#EC4141]/10 px-3 py-1 text-xs font-medium text-[#EC4141] tabular-nums">
             {{ lyricsSyncOffsetLabel }}
@@ -395,7 +384,6 @@ onUnmounted(() => {
           <div class="desktop-card-header">
             <div>
               <div class="text-sm font-medium text-gray-800 dark:text-gray-200">字号</div>
-              <div class="mt-0.5 text-xs text-gray-600 dark:text-white/60">调节桌面歌词的整体字体缩放</div>
             </div>
             <button
               v-if="desktopLyricsSettings.playerFontScale !== DEFAULT_PLAYER_FONT_SCALE"
@@ -426,7 +414,6 @@ onUnmounted(() => {
           <div class="desktop-card-header">
             <div>
               <div class="text-sm font-medium text-gray-800 dark:text-gray-200">行距</div>
-              <div class="mt-0.5 text-xs text-gray-600 dark:text-white/60">控制主歌词与副歌词之间的呼吸感</div>
             </div>
             <button
               v-if="desktopLyricsSettings.playerLineGap !== DEFAULT_PLAYER_LINE_GAP"
@@ -457,7 +444,6 @@ onUnmounted(() => {
           <div class="desktop-card-header">
             <div>
               <div class="text-sm font-medium text-gray-800 dark:text-gray-200">横向偏移</div>
-              <div class="mt-0.5 text-xs text-gray-600 dark:text-white/60">微调歌词块在桌面歌词窗口中的水平位置</div>
             </div>
             <button
               v-if="desktopLyricsSettings.playerOffsetX !== DEFAULT_PLAYER_OFFSET_X"
@@ -488,7 +474,6 @@ onUnmounted(() => {
           <div class="desktop-card-header">
             <div>
               <div class="text-sm font-medium text-gray-800 dark:text-gray-200">纵向偏移</div>
-              <div class="mt-0.5 text-xs text-gray-600 dark:text-white/60">微调歌词块在桌面歌词窗口中的垂直位置</div>
             </div>
             <button
               v-if="desktopLyricsSettings.playerOffsetY !== DEFAULT_PLAYER_OFFSET_Y"
@@ -520,7 +505,6 @@ onUnmounted(() => {
         <div class="desktop-card-header">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">对齐方式</div>
-            <div class="mt-0.5 text-xs text-gray-600 dark:text-white/60">决定歌词文本在桌面歌词中的排列方向</div>
           </div>
           <button
             v-if="desktopLyricsSettings.playerAlignment !== DEFAULT_DESKTOP_PLAYER_ALIGNMENT"
@@ -549,7 +533,6 @@ onUnmounted(() => {
         <div class="desktop-card-header">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">字体</div>
-            <div class="mt-0.5 text-xs text-gray-600 dark:text-white/60">桌面歌词会使用这里选中的字体方案</div>
           </div>
           <button
             v-if="desktopLyricsSettings.playerFontPreset !== DEFAULT_PLAYER_FONT_PRESET"
@@ -574,9 +557,6 @@ onUnmounted(() => {
               <div class="min-w-0 flex-1 text-left">
                 <div class="truncate text-[15px] font-semibold text-gray-800 dark:text-gray-100" :style="{ fontFamily: selectedFontFamily }">
                   {{ selectedFontLabel }}
-                </div>
-                <div class="mt-1 truncate text-xs text-gray-500 dark:text-white/45">
-                  点击选择桌面歌词字体
                 </div>
               </div>
               <ChevronDown
@@ -644,7 +624,6 @@ onUnmounted(() => {
           @click="setDesktopColorScheme(option.value)"
         >
           <div class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ option.label }}</div>
-          <div class="mt-1 text-xs text-gray-600 dark:text-white/60">{{ option.hint }}</div>
         </button>
       </div>
     </section>
