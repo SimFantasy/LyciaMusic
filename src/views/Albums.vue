@@ -35,8 +35,9 @@ const VIEWPORT_SNAPSHOT_KEY = 'albums-current';
 const VIEWPORT_SNAPSHOT_LIMIT = 72;
 const ALBUM_GRID_GAP_X = 24;
 const ALBUM_GRID_GAP_Y = 40;
+const ALBUM_SECTION_GAP_Y = 8;
 const ALBUM_CARD_EXTRA_HEIGHT = 108;
-const ALBUM_SECTION_HEADER_HEIGHT = 72;
+const ALBUM_SECTION_HEADER_HEIGHT = 24;
 const ALBUM_OVERSCAN_ROWS = 2;
 
 const handleAlbumClick = (albumKey: string) => {
@@ -236,7 +237,7 @@ const albumSections = computed(() => {
 
 type AlbumSectionEntry = { album: AlbumListItem; index: number };
 type AlbumVirtualHeaderRow = { type: 'header'; key: string; title: string };
-type AlbumVirtualItemsRow = { type: 'items'; key: string; items: AlbumSectionEntry[] };
+type AlbumVirtualItemsRow = { type: 'items'; key: string; items: AlbumSectionEntry[]; bottomGap: number };
 type AlbumVirtualRow = AlbumVirtualHeaderRow | AlbumVirtualItemsRow;
 type MeasuredAlbumVirtualHeaderRow = AlbumVirtualHeaderRow & { top: number; height: number };
 type MeasuredAlbumVirtualItemsRow = AlbumVirtualItemsRow & { top: number; height: number };
@@ -253,10 +254,12 @@ const groupedAlbumRows = computed<AlbumVirtualRow[]>(() => {
     });
 
     for (let start = 0; start < section.items.length; start += albumGridColumns.value) {
+      const isLastRowInSection = start + albumGridColumns.value >= section.items.length;
       rows.push({
         type: 'items',
         key: `items::${section.key}::${start}`,
         items: section.items.slice(start, start + albumGridColumns.value),
+        bottomGap: isLastRowInSection ? ALBUM_SECTION_GAP_Y : ALBUM_GRID_GAP_Y,
       });
     }
   });
@@ -268,7 +271,11 @@ const measuredGroupedAlbumRows = computed<MeasuredAlbumVirtualRow[]>(() => {
   let totalHeight = 0;
 
   return groupedAlbumRows.value.map((row) => {
-    const height = row.type === 'header' ? ALBUM_SECTION_HEADER_HEIGHT : albumRowSpan.value;
+    const height = row.type === 'header'
+      ? ALBUM_SECTION_HEADER_HEIGHT
+      : measuredAlbumCardHeight.value > 0
+        ? measuredAlbumCardHeight.value + row.bottomGap
+        : estimatedAlbumRowSpan.value - ALBUM_GRID_GAP_Y + row.bottomGap;
     const measuredRow = {
       ...row,
       top: totalHeight,
@@ -637,7 +644,7 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <section ref="containerRef" class="albums-scroll-container flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 custom-scrollbar relative z-0" @scroll="handleContainerScroll">
+    <section ref="containerRef" class="albums-scroll-container flex-1 overflow-y-auto px-4 pb-4 pt-2 md:px-6 md:pb-6 md:pt-3 lg:px-8 lg:pb-8 lg:pt-3 custom-scrollbar relative z-0" @scroll="handleContainerScroll">
       <div
         v-if="stickyAlbumHeader"
         class="pointer-events-none sticky top-0 z-20"
@@ -645,13 +652,12 @@ onUnmounted(() => {
         aria-hidden="true"
       >
         <div
-          class="h-[72px] flex items-end gap-3 pb-4"
+          class="h-6 flex items-end gap-3 pb-0"
           :style="{ transform: `translateY(${stickyAlbumHeader.offset})`, willChange: 'transform' }"
         >
           <div class="text-xl md:text-2xl font-black tracking-[0.2em] text-gray-900 dark:text-white/90">
             {{ stickyAlbumHeader.title }}
           </div>
-          <div class="h-px flex-1 bg-gradient-to-r from-gray-300/80 via-gray-200/50 to-transparent dark:from-white/15 dark:via-white/8 dark:to-transparent"></div>
         </div>
       </div>
 
@@ -662,19 +668,18 @@ onUnmounted(() => {
         <template v-for="row in groupedAlbumVirtualState.rows" :key="row.key">
           <div
             v-if="row.type === 'header'"
-            class="h-[72px] flex items-end gap-3 pb-4 transition-opacity duration-150"
+            class="h-6 flex items-end gap-3 pb-0 transition-opacity duration-150"
             :class="{ 'opacity-0': isStickyAlbumHeaderRow(row.key, row.top) }"
           >
             <div class="text-xl md:text-2xl font-black tracking-[0.2em] text-gray-900 dark:text-white/90">
               {{ row.title }}
             </div>
-            <div class="h-px flex-1 bg-gradient-to-r from-gray-300/80 via-gray-200/50 to-transparent dark:from-white/15 dark:via-white/8 dark:to-transparent"></div>
           </div>
 
           <div
             v-else
             class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-x-6"
-            :style="{ paddingBottom: `${ALBUM_GRID_GAP_Y}px` }"
+            :style="{ paddingBottom: `${row.bottomGap}px` }"
           >
             <div
               v-for="item in row.items"
@@ -689,7 +694,7 @@ onUnmounted(() => {
               @mousemove="handleItemMouseMove($event, item.album.key)"
               @click="handleAlbumClick(item.album.key)"
             >
-              <div class="relative w-full aspect-square mb-3 mt-4" :data-cover-path="item.album.firstSongPath">
+              <div class="relative w-full aspect-square mb-3 mt-1" :data-cover-path="item.album.firstSongPath">
                 <div class="absolute inset-x-2 top-0 bottom-1/2 bg-[#1c1c1c] rounded-t-full shadow-inner origin-bottom translate-y-[-10%] group-hover:translate-y-[-24%] transition-transform duration-500 ease-out z-0 flex items-center justify-center overflow-hidden border border-[#333]">
                   <div class="absolute inset-0 rounded-t-full border border-white/5 scale-90"></div>
                   <div class="absolute inset-0 rounded-t-full border border-white/5 scale-75"></div>
@@ -750,7 +755,7 @@ onUnmounted(() => {
           @mousemove="handleItemMouseMove($event, item.album.key)"
           @click="handleAlbumClick(item.album.key)"
         >
-          <div class="relative w-full aspect-square mb-3 mt-4" :data-cover-path="item.album.firstSongPath">
+          <div class="relative w-full aspect-square mb-3 mt-1" :data-cover-path="item.album.firstSongPath">
             <div class="absolute inset-x-2 top-0 bottom-1/2 bg-[#1c1c1c] rounded-t-full shadow-inner origin-bottom translate-y-[-10%] group-hover:translate-y-[-24%] transition-transform duration-500 ease-out z-0 flex items-center justify-center overflow-hidden border border-[#333]">
               <div class="absolute inset-0 rounded-t-full border border-white/5 scale-90"></div>
               <div class="absolute inset-0 rounded-t-full border border-white/5 scale-75"></div>

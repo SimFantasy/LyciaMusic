@@ -31,9 +31,10 @@ let visibleCoverPaths = new Set<string>();
 const VIEWPORT_SNAPSHOT_KEY = 'artists-current';
 const VIEWPORT_SNAPSHOT_LIMIT = 72;
 const ARTIST_GRID_GAP_Y = 16;
+const ARTIST_SECTION_GAP_Y = 8;
 const ARTIST_ITEM_HEIGHT = 72;
 const ARTIST_ROW_SPAN = ARTIST_ITEM_HEIGHT + ARTIST_GRID_GAP_Y;
-const ARTIST_SECTION_HEADER_HEIGHT = 56;
+const ARTIST_SECTION_HEADER_HEIGHT = 24;
 const ARTIST_OVERSCAN_ROWS = 2;
 
 const handleArtistClick = (artistName: string, firstSongPath?: string) => {
@@ -208,7 +209,7 @@ const artistSections = computed(() => {
 
 type ArtistSectionEntry = { artist: ArtistListItem; index: number };
 type ArtistVirtualHeaderRow = { type: 'header'; key: string; title: string };
-type ArtistVirtualItemsRow = { type: 'items'; key: string; items: ArtistSectionEntry[] };
+type ArtistVirtualItemsRow = { type: 'items'; key: string; items: ArtistSectionEntry[]; bottomGap: number };
 type ArtistVirtualRow = ArtistVirtualHeaderRow | ArtistVirtualItemsRow;
 type MeasuredArtistVirtualHeaderRow = ArtistVirtualHeaderRow & { top: number; height: number };
 type MeasuredArtistVirtualItemsRow = ArtistVirtualItemsRow & { top: number; height: number };
@@ -225,10 +226,12 @@ const groupedArtistRows = computed<ArtistVirtualRow[]>(() => {
     });
 
     for (let start = 0; start < section.items.length; start += artistGridColumns.value) {
+      const isLastRowInSection = start + artistGridColumns.value >= section.items.length;
       rows.push({
         type: 'items',
         key: `items::${section.key}::${start}`,
         items: section.items.slice(start, start + artistGridColumns.value),
+        bottomGap: isLastRowInSection ? ARTIST_SECTION_GAP_Y : ARTIST_GRID_GAP_Y,
       });
     }
   });
@@ -240,7 +243,7 @@ const measuredGroupedArtistRows = computed<MeasuredArtistVirtualRow[]>(() => {
   let totalHeight = 0;
 
   return groupedArtistRows.value.map((row) => {
-    const height = row.type === 'header' ? ARTIST_SECTION_HEADER_HEIGHT : ARTIST_ROW_SPAN;
+    const height = row.type === 'header' ? ARTIST_SECTION_HEADER_HEIGHT : ARTIST_ITEM_HEIGHT + row.bottomGap;
     const measuredRow = {
       ...row,
       top: totalHeight,
@@ -596,7 +599,7 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <section ref="containerRef" class="artists-scroll-container flex-1 overflow-y-auto p-8 custom-scrollbar relative z-0" @scroll="handleContainerScroll">
+    <section ref="containerRef" class="artists-scroll-container flex-1 overflow-y-auto px-4 pb-4 pt-2 md:px-6 md:pb-6 md:pt-3 lg:px-8 lg:pb-8 lg:pt-3 custom-scrollbar relative z-0" @scroll="handleContainerScroll">
       <div
         v-if="stickyArtistHeader"
         class="pointer-events-none sticky top-0 z-20"
@@ -604,13 +607,12 @@ onUnmounted(() => {
         aria-hidden="true"
       >
         <div
-          class="h-14 flex items-end gap-3 pb-4"
+          class="h-6 flex items-end gap-3 pb-0"
           :style="{ transform: `translateY(${stickyArtistHeader.offset})`, willChange: 'transform' }"
         >
           <div class="text-xl md:text-2xl font-black tracking-[0.2em] text-gray-900 dark:text-white/90">
             {{ stickyArtistHeader.title }}
           </div>
-          <div class="h-px flex-1 bg-gradient-to-r from-gray-300/80 via-gray-200/50 to-transparent dark:from-white/15 dark:via-white/8 dark:to-transparent"></div>
         </div>
       </div>
 
@@ -621,18 +623,18 @@ onUnmounted(() => {
         <template v-for="row in groupedArtistVirtualState.rows" :key="row.key">
           <div
             v-if="row.type === 'header'"
-            class="h-14 flex items-end gap-3 pb-4 transition-opacity duration-150"
+            class="h-6 flex items-end gap-3 pb-0 transition-opacity duration-150"
             :class="{ 'opacity-0': isStickyArtistHeaderRow(row.key, row.top) }"
           >
             <div class="text-xl md:text-2xl font-black tracking-[0.2em] text-gray-900 dark:text-white/90">
               {{ row.title }}
             </div>
-            <div class="h-px flex-1 bg-gradient-to-r from-gray-300/80 via-gray-200/50 to-transparent dark:from-white/15 dark:via-white/8 dark:to-transparent"></div>
           </div>
 
           <div
             v-else
-            class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-x-6 pb-4"
+            class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-x-6"
+            :style="{ paddingBottom: `${row.bottomGap}px` }"
           >
             <div
               v-for="item in row.items"
