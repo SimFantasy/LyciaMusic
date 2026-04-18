@@ -4,13 +4,14 @@ import { invoke } from '@tauri-apps/api/core';
 import { usePlaybackStore } from '../../features/playback/store';
 import { useSettingsStore } from '../../features/settings/store';
 import { useLyricsSettingsStore } from '../../features/lyricsSettings/store';
-import { buildSemanticLines } from './classifier';
+import { buildLyricDocument, lyricDocumentToSemanticLines } from './classifier';
 import { getCurrentLyricDisplayLines, semanticLineToLyricLine } from './converters';
 import { prepareParsedLyrics } from './parser';
 import type {
   CurrentLyricDisplayState,
   DesktopLyricsSettings,
   LyricLine,
+  LyricDocument,
   LyricsSettings,
   LyricsStatus,
   SemanticLine,
@@ -20,6 +21,7 @@ export const showDesktopLyrics = ref(false);
 export const showLyricsPlayerSettingsPanel = ref(false);
 export const lyricsStatus = ref<LyricsStatus>('idle');
 export const parsedLyrics = ref<LyricLine[]>([]);
+export const lyricDocument = ref<LyricDocument | null>(null);
 
 const rawLyrics = ref('');
 const semanticLyrics = ref<SemanticLine[]>([]);
@@ -64,20 +66,24 @@ export const desktopLyricsSettings = createSettingsProxy<DesktopLyricsSettings>(
 );
 
 async function parseLyrics(raw: string): Promise<{
+  document: LyricDocument | null;
   semanticLines: SemanticLine[];
   displayLines: LyricLine[];
 }> {
   const parsed = await prepareParsedLyrics(raw);
   if (parsed.length === 0) {
     return {
+      document: null,
       semanticLines: [],
       displayLines: [],
     };
   }
 
-  const semanticLines = buildSemanticLines(parsed);
+  const document = buildLyricDocument(parsed);
+  const semanticLines = lyricDocumentToSemanticLines(document);
 
   return {
+    document,
     semanticLines,
     displayLines: semanticLines.map(semanticLineToLyricLine),
   };
@@ -90,6 +96,7 @@ export async function loadLyrics() {
 
   if (!song) {
     rawLyrics.value = '';
+    lyricDocument.value = null;
     semanticLyrics.value = [];
     parsedLyrics.value = [];
     lyricsStatus.value = 'idle';
@@ -98,6 +105,7 @@ export async function loadLyrics() {
 
   lyricsStatus.value = 'loading';
   rawLyrics.value = '';
+  lyricDocument.value = null;
   semanticLyrics.value = [];
   parsedLyrics.value = [];
 
@@ -110,6 +118,7 @@ export async function loadLyrics() {
     const parsed = await parseLyrics(rawLyrics.value);
     if (requestId !== loadRequestId || playbackStore.currentSong?.path !== song.path) return;
 
+    lyricDocument.value = parsed.document;
     semanticLyrics.value = parsed.semanticLines;
     parsedLyrics.value = parsed.displayLines;
     lyricsStatus.value = parsedLyrics.value.length > 0 ? 'ready' : 'empty';
@@ -117,6 +126,7 @@ export async function loadLyrics() {
     if (requestId !== loadRequestId || playbackStore.currentSong?.path !== song.path) return;
 
     rawLyrics.value = '';
+    lyricDocument.value = null;
     semanticLyrics.value = [];
     parsedLyrics.value = [];
     lyricsStatus.value = 'error';
@@ -210,6 +220,7 @@ export function useLyrics() {
     currentLyricLine,
     currentLyricIndex,
     parsedLyrics,
+    lyricDocument,
     loadLyrics,
     semanticLyrics,
   };

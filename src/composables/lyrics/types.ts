@@ -77,6 +77,74 @@ export interface ParsedLine {
 
 export type ClassificationConfidence = 'explicit' | 'parser-native' | 'heuristic';
 
+export type LyricTrackRole =
+  | 'main'
+  | 'translation'
+  | 'romanization'
+  | 'secondary'
+  | 'alternate-main'
+  | 'background'
+  | 'metadata'
+  | 'unknown';
+
+export type LyricTimingMode = 'line' | 'word' | 'syllable' | 'none';
+
+export interface LyricIssue {
+  code: string;
+  message: string;
+  severity: 'info' | 'warning' | 'error';
+}
+
+export interface LyricTrackLine {
+  id: string;
+  startMs: number;
+  endMs: number;
+  text: string;
+  words?: ParsedWord[];
+  sourceIndex: number;
+  explicitRole?: ExplicitLineRole;
+  roleSource?: ClassificationConfidence;
+  clusterIndex?: number;
+  slotIndex?: number;
+}
+
+export interface LyricTrackAttachment {
+  trackId: string;
+  role: Extract<LyricTrackRole, 'translation' | 'romanization' | 'secondary'>;
+  confidence: number;
+  lineMatchRatio: number;
+}
+
+export interface LyricTrackScores {
+  main: number;
+  translation: number;
+  romanization: number;
+}
+
+export interface LyricTrack {
+  id: string;
+  role: LyricTrackRole;
+  lang?: string;
+  timingMode: LyricTimingMode;
+  sourceFormat: ParsedLineSourceFormat | 'mixed';
+  confidence: number;
+  dominantScript: DominantScript;
+  lines: LyricTrackLine[];
+  attachments: LyricTrackAttachment[];
+  scores?: LyricTrackScores;
+}
+
+export interface LyricDocument {
+  metadata: {
+    totalLines: number;
+    sourceFormats: ParsedLineSourceFormat[];
+  };
+  tracks: LyricTrack[];
+  issues: LyricIssue[];
+  confidence: number;
+  displayTrackId?: string;
+}
+
 export interface SemanticLine {
   startMs: number;
   endMs: number;
