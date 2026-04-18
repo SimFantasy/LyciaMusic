@@ -891,6 +891,43 @@ describe('raw lyrics samples from the common formats checklist', async () => {
     expect(displayLines.map((line) => line.kind)).toEqual(['main', 'romaji', 'translation']);
   });
 
+  it('keeps kanji-heavy japanese enhanced lyrics as the main line when romaji comes first', async () => {
+    const lines = await parseRawToLyricLines([
+      '[00:05.905]<00:05.905>se ka  <00:06.122>i  <00:06.505>wa  <00:07.000>to  <00:07.272>te  <00:07.600>mo  <00:07.943>ki re  <00:08.559>i  <00:09.311>da  <00:09.587>tsu  <00:09.863>ta  <00:10.367>na <00:11.371>',
+      '[00:05.905]<00:05.905>世<00:06.122>界<00:06.505>は<00:07.000>と<00:07.272>て<00:07.600>も<00:07.943>綺<00:08.559>麗<00:09.311>だ<00:09.587>っ<00:09.863>た<00:10.367>な<00:11.371>',
+      '[00:05.905]<00:05.905>世界有多么美丽<00:11.371>',
+      '[00:23.037]<00:23.037>sho  <00:23.292>ka  <00:23.572>no  <00:23.884>su ki  <00:24.476>ma  <00:24.788>ni  <00:25.011>su  <00:25.171>ma  <00:25.315>u  <00:25.667>i chi  <00:26.307>ri n  <00:26.947>no  <00:27.137>ha na  <00:27.817>wa <00:28.291>',
+      '[00:23.037]<00:23.037>書<00:23.292>架<00:23.572>の<00:23.884>隙<00:24.476>間<00:24.788>に<00:25.011>住<00:25.171>ま<00:25.315>う<00:25.667>一<00:26.307>輪<00:26.947>の<00:27.137>花<00:27.817>は<00:28.291>',
+      '[00:23.037]<00:23.037>在书架罅隙里栖居着一朵花<00:28.291>',
+    ].join('\n'));
+
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({
+      text: '世界はとても綺麗だったな',
+      translation: '世界有多么美丽',
+    });
+    expect(lines[0]?.romaji.replace(/\s+/gu, ' ').trim()).toBe('se ka i wa to te mo ki re i da tsu ta na');
+    expect(lines[0]?.words?.map((word) => word.text)).toEqual([
+      '世',
+      '界',
+      'は',
+      'と',
+      'て',
+      'も',
+      '綺',
+      '麗',
+      'だ',
+      'っ',
+      'た',
+      'な',
+    ]);
+    expect(lines[1]).toMatchObject({
+      text: '書架の隙間に住まう一輪の花は',
+      translation: '在书架罅隙里栖居着一朵花',
+    });
+    expect(lines[1]?.romaji.replace(/\s+/gu, ' ').trim()).toBe('sho ka no su ki ma ni su ma u i chi ri n no ha na wa');
+  });
+
   it('treats accented latin lyrics as the main line and chinese as translation', async () => {
     const lines = await parseRawToLyricLines([
       '[01:06.009]On ira à la foire',

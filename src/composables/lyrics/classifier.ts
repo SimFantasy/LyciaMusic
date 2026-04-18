@@ -86,6 +86,11 @@ function isPureHan(profile: LineScriptProfile): boolean {
     && profile.hangulCount === 0;
 }
 
+function isJapaneseLikeProfile(profile: LineScriptProfile): boolean {
+  return profile.kanaCount > 0
+    && profile.hangulCount === 0;
+}
+
 function getContentProfile(line: ParsedLine): LineScriptProfile {
   const content = line.text || line.translatedText || line.romanText || '';
   return getLineScriptProfile(content);
@@ -144,7 +149,13 @@ function shouldKeepSeparateForScriptSimilarity(group: ParsedLine[], candidate: P
     return false;
   }
 
-  const candidateScript = getContentProfile(candidate).dominantScript;
+  const candidateProfile = getContentProfile(candidate);
+  const candidateScript = candidateProfile.dominantScript;
+
+  if (isJapaneseLikeProfile(candidateProfile)) {
+    return group.some((line) => isJapaneseLikeProfile(getContentProfile(line)));
+  }
+
   if (candidateScript === 'mixed' || candidateScript === 'other') return false;
 
   return group.some((line) => getContentProfile(line).dominantScript === candidateScript);
@@ -191,8 +202,8 @@ function groupParsedLines(lines: ParsedLine[]): ParsedLine[][] {
 }
 
 function selectHeuristicMainLine(lines: ParsedLine[]): ParsedLine {
-  const kanaLine = lines.find((line) => getContentProfile(line).dominantScript === 'kana');
-  if (kanaLine) return kanaLine;
+  const japaneseLine = lines.find((line) => isJapaneseLikeProfile(getContentProfile(line)));
+  if (japaneseLine) return japaneseLine;
 
   const hangulLine = lines.find((line) => getContentProfile(line).dominantScript === 'hangul');
   if (hangulLine) return hangulLine;
@@ -207,12 +218,13 @@ function classifyHeuristicRole(
   const mainProfile = getContentProfile(main);
   const candidateProfile = getContentProfile(candidate);
 
+  if (isJapaneseLikeProfile(mainProfile) || mainProfile.dominantScript === 'hangul') {
+    if (isPureLatin(candidateProfile)) return 'romaji';
+    if (isPureHan(candidateProfile)) return 'translation';
+    return 'secondary';
+  }
+
   switch (mainProfile.dominantScript) {
-    case 'kana':
-    case 'hangul':
-      if (isPureLatin(candidateProfile)) return 'romaji';
-      if (isPureHan(candidateProfile)) return 'translation';
-      return 'secondary';
     case 'han':
       return isPureLatin(candidateProfile) ? 'romaji' : 'secondary';
     case 'latin':
