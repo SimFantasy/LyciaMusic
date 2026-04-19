@@ -174,3 +174,62 @@ fn preserves_inline_english_main_lines_inside_japanese_song() {
     assert_eq!(projector_line.romaji, "wa ta shi no ko ko ro no pu ro je ku ta");
     assert_eq!(projector_line.translation, "早已将你的身影深深烙印");
 }
+
+#[test]
+fn keeps_mixed_japanese_and_english_lines_as_main_when_no_romaji_track_exists() {
+    let payload = build_structured_lyrics_payload(
+        [
+            "[00:43.314]I don't know what I wanted or you made me do",
+            "[00:43.314]我不知自己心之所向 亦不知你对我期望怎样",
+            "[00:49.283]散り散りに刻む",
+            "[00:49.283]于颠沛流离中铭刻下生命的印记",
+            "[00:54.353]本当の世界で笑えるか?",
+            "[00:54.353]在现实世界里还能够展颜欢笑吗",
+            "[01:00.455]Don't you get there?",
+            "[01:00.455]你是否还未抵达目的地？",
+        ]
+        .join("\n"),
+    );
+
+    let english_line = find_display_line_by_time(&payload, 43.314).expect("english line exists");
+    assert_eq!(english_line.text, "I don't know what I wanted or you made me do");
+    assert_eq!(
+        english_line.translation,
+        "我不知自己心之所向 亦不知你对我期望怎样"
+    );
+    assert!(english_line.romaji.is_empty());
+
+    let japanese_line = find_display_line_by_time(&payload, 49.283).expect("japanese line exists");
+    assert_eq!(japanese_line.text, "散り散りに刻む");
+    assert_eq!(japanese_line.translation, "于颠沛流离中铭刻下生命的印记");
+    assert!(japanese_line.romaji.is_empty());
+
+    let final_english_line =
+        find_display_line_by_time(&payload, 60.455).expect("final english line exists");
+    assert_eq!(final_english_line.text, "Don't you get there?");
+    assert_eq!(final_english_line.translation, "你是否还未抵达目的地？");
+    assert!(final_english_line.romaji.is_empty());
+}
+
+#[test]
+fn keeps_french_lines_as_main_with_chinese_translation() {
+    let payload = build_structured_lyrics_payload(
+        [
+            "[01:03.014]Et quand tu briseras ta cage",
+            "[01:03.014]当你挣脱内心的牢笼",
+            "[01:06.009]On ira a la foire",
+            "[01:06.009]我们将一起前往那欢乐的圣地",
+        ]
+        .join("\n"),
+    );
+
+    let first_line = find_display_line_by_time(&payload, 63.014).expect("first french line exists");
+    assert_eq!(first_line.text, "Et quand tu briseras ta cage");
+    assert_eq!(first_line.translation, "当你挣脱内心的牢笼");
+    assert!(first_line.romaji.is_empty());
+
+    let second_line = find_display_line_by_time(&payload, 66.009).expect("second french line exists");
+    assert_eq!(second_line.text, "On ira a la foire");
+    assert_eq!(second_line.translation, "我们将一起前往那欢乐的圣地");
+    assert!(second_line.romaji.is_empty());
+}

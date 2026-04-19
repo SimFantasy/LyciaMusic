@@ -292,6 +292,12 @@ struct ParserCandidate {
     lines: Vec<ParsedLine>,
 }
 
+#[derive(Clone, Debug)]
+struct LayoutTemplateResolution {
+    display_track_index: usize,
+    track_roles: Vec<Option<LyricTrackRole>>,
+}
+
 fn clamp01(value: f64) -> f64 {
     value.clamp(0.0, 1.0)
 }
@@ -301,6 +307,19 @@ fn average(values: &[f64]) -> f64 {
         return 0.0;
     }
     values.iter().sum::<f64>() / values.len() as f64
+}
+
+fn track_word_coverage(track: &LyricTrack) -> f64 {
+    track.lines
+        .iter()
+        .filter(|line| {
+            line.words
+                .as_ref()
+                .map(|words| !words.is_empty())
+                .unwrap_or(false)
+        })
+        .count() as f64
+        / track.lines.len().max(1) as f64
 }
 
 fn sanitize_line_text(text: &str) -> String {
@@ -2125,6 +2144,175 @@ fn track_confidence(role: &LyricTrackRole, scores: &TrackRoleScores) -> f64 {
     }
 }
 
+fn is_han_translation_track(track: &LyricTrack) -> bool {
+    track.dominant_script == DominantScript::Han && !track_has_japanese_like_lines(track)
+}
+
+fn looks_like_romanization_track(track: &LyricTrack) -> bool {
+    track.dominant_script == DominantScript::Latin
+        && score_track_romanization(track) >= (score_track_englishness(track) + 0.05).max(0.34)
+}
+
+fn detect_japanese_with_romaji_translation_template(
+    tracks: &[LyricTrack],
+    alignments: &[Vec<TrackAlignment>],
+) -> Option<LayoutTemplateResolution> {
+    let japanese_candidates = tracks
+        .iter()
+        .enumerate()
+        .filter(|(_, track)| track_has_japanese_like_lines(track))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let han_candidates = tracks
+        .iter()
+        .enumerate()
+        .filter(|(_, track)| is_han_translation_track(track))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let latin_candidates = tracks
+        .iter()
+        .enumerate()
+        .filter(|(_, track)| looks_like_romanization_track(track))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+
+    let mut best_resolution = None;
+    let mut best_score = f64::NEG_INFINITY;
+
+    for japanese_index in japanese_candidates {
+        for han_index in &han_candidates {
+            if *han_index == japanese_index {
+                continue;
+            }
+            let translation_alignment = &alignments[japanese_index][*han_index];
+            if translation_alignment.weighted_score < 0.42 {
+                continue;
+            }
+
+            for latin_index in &latin_candidates {
+                if *latin_index == japanese_index || *latin_index == *han_index {
+                    continue;
+                }
+                let roman_alignment = &alignments[japanese_index][*latin_index];
+                if roman_alignment.weighted_score < 0.42 {
+                    continue;
+                }
+
+                let latin_track = &tracks[*latin_index];
+                let score = translation_alignment.weighted_score
+                    + roman_alignment.weighted_score
+                    + (tracks[japanese_index].lines.len() as f64
+                        / latin_track.lines.len().max(1) as f64)
+                        .min(1.0)
+                    + track_word_coverage(&tracks[japanese_index]) * 0.4
+                    + if track_role_hint(latin_track) == Some(LyricTrackRole::Romanization) {
+                        0.35
+                    } else {
+                        0.0
+                    };
+
+                if score > best_score {
+                    let mut track_roles = vec![None; tracks.len()];
+                    track_roles[japanese_index] = Some(LyricTrackRole::Main);
+                    track_roles[*han_index] = Some(LyricTrackRole::Translation);
+                    track_roles[*latin_index] = Some(LyricTrackRole::Romanization);
+                    best_score = score;
+                    best_resolution = Some(LayoutTemplateResolution {
+                        display_track_index: japanese_index,
+                        track_roles,
+                    });
+                }
+            }
+        }
+    }
+
+    best_resolution
+}
+
+fn detect_main_with_translation_template(
+    tracks: &[LyricTrack],
+    alignments: &[Vec<TrackAlignment>],
+) -> Option<LayoutTemplateResolution> {
+    let translation_candidates = tracks
+        .iter()
+        .enumerate()
+        .filter(|(_, track)| is_han_translation_track(track))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+
+    let mut best_resolution = None;
+    let mut best_score = f64::NEG_INFINITY;
+
+    for (main_index, main_track) in tracks.iter().enumerate() {
+        let has_japanese_like_sibling = tracks.iter().enumerate().any(|(other_index, track)| {
+            other_index != main_index
+                && alignments[main_index][other_index].weighted_score >= 0.4
+                && track_has_japanese_like_lines(track)
+        });
+
+        if is_han_translation_track(main_track)
+            || (has_japanese_like_sibling && looks_like_romanization_track(main_track))
+        {
+            continue;
+        }
+
+        for translation_index in &translation_candidates {
+            if *translation_index == main_index {
+                continue;
+            }
+            let alignment = &alignments[main_index][*translation_index];
+            if alignment.weighted_score < 0.42 {
+                continue;
+            }
+
+            let score = alignment.weighted_score
+                + (main_track.lines.len() as f64
+                    / tracks[*translation_index].lines.len().max(1) as f64)
+                    .min(1.0)
+                + track_word_coverage(main_track) * 0.35
+                + if track_role_hint(&tracks[*translation_index])
+                    == Some(LyricTrackRole::Translation)
+                {
+                    0.2
+                } else {
+                    0.0
+                };
+
+            if score > best_score {
+                let mut track_roles = vec![None; tracks.len()];
+                track_roles[main_index] = Some(LyricTrackRole::Main);
+                track_roles[*translation_index] = Some(LyricTrackRole::Translation);
+                best_score = score;
+                best_resolution = Some(LayoutTemplateResolution {
+                    display_track_index: main_index,
+                    track_roles,
+                });
+            }
+        }
+    }
+
+    best_resolution
+}
+
+fn detect_layout_template(
+    tracks: &[LyricTrack],
+    alignments: &[Vec<TrackAlignment>],
+) -> Option<LayoutTemplateResolution> {
+    if tracks.is_empty() {
+        return None;
+    }
+
+    if tracks.len() == 1 {
+        return Some(LayoutTemplateResolution {
+            display_track_index: 0,
+            track_roles: vec![Some(LyricTrackRole::Main)],
+        });
+    }
+
+    detect_japanese_with_romaji_translation_template(tracks, alignments)
+        .or_else(|| detect_main_with_translation_template(tracks, alignments))
+}
+
 fn resolve_semantic_confidence(lines: &[Option<&LyricTrackLine>]) -> ClassificationConfidence {
     if lines.iter().any(|line| {
         line.and_then(|value| value.role_source.clone()) == Some(ClassificationConfidence::Explicit)
@@ -2569,19 +2757,30 @@ pub fn build_lyric_document(parsed_lines: &[ParsedLine]) -> Option<LyricDocument
         })
         .collect::<Vec<_>>();
 
-    let mut display_track_index = 0usize;
-    let mut display_track_score = f64::NEG_INFINITY;
+    let template_resolution = detect_layout_template(&tracks, &alignments);
+    let display_track_index = template_resolution
+        .as_ref()
+        .map(|resolution| resolution.display_track_index)
+        .unwrap_or_else(|| {
+            let mut best_track_index = 0usize;
+            let mut best_track_score = f64::NEG_INFINITY;
 
-    for (track_index, track) in tracks.iter().enumerate() {
-        let score = score_main_track(track, &tracks, &alignments, track_index);
-        if score > display_track_score {
-            display_track_score = score;
-            display_track_index = track_index;
-        }
-    }
+            for (track_index, track) in tracks.iter().enumerate() {
+                let score = score_main_track(track, &tracks, &alignments, track_index);
+                if score > best_track_score {
+                    best_track_score = score;
+                    best_track_index = track_index;
+                }
+            }
+
+            best_track_index
+        });
 
     for track_index in 0..tracks.len() {
         let main_score = score_main_track(&tracks[track_index], &tracks, &alignments, track_index);
+        let template_role = template_resolution
+            .as_ref()
+            .and_then(|resolution| resolution.track_roles[track_index].clone());
         if track_index == display_track_index {
             let scores = TrackRoleScores {
                 main: main_score,
@@ -2606,7 +2805,9 @@ pub fn build_lyric_document(parsed_lines: &[ParsedLine]) -> Option<LyricDocument
         );
         scores.main = main_score;
 
-        let role = if alignment.weighted_score < 0.25 {
+        let role = if let Some(role) = template_role {
+            role
+        } else if alignment.weighted_score < 0.25 {
             if tracks[track_index].lines.len() as f64
                 >= tracks[display_track_index].lines.len() as f64 * 0.6
                 && tracks[track_index].dominant_script
