@@ -1742,7 +1742,18 @@ fn looks_like_english_phrase(text: &str) -> bool {
 
     let average_token_length =
         tokens.iter().map(|token| token.len() as f64).sum::<f64>() / tokens.len() as f64;
-    average_token_length >= 3.0 && score_romanized_latin_text(text) < 0.42
+    let english_phrase_words = [
+        "can", "give", "hey", "i", "kiss", "last", "love", "me", "more", "one", "than", "you",
+        "your",
+    ];
+    let keyword_hits = tokens
+        .iter()
+        .filter(|token| english_phrase_words.contains(&token.as_str()))
+        .count();
+
+    average_token_length >= 3.0
+        && keyword_hits >= 2
+        && score_romanized_latin_text(text) < 0.42
 }
 
 fn score_englishness(text: &str) -> f64 {
@@ -1794,6 +1805,15 @@ fn score_romanized_latin_text(text: &str) -> f64 {
         / tokens.len() as f64;
     let short_token_ratio =
         tokens.iter().filter(|token| token.len() <= 4).count() as f64 / tokens.len() as f64;
+    let syllable_ending_ratio = tokens
+        .iter()
+        .filter(|token| {
+            token.ends_with(['a', 'e', 'i', 'o', 'u'])
+                || token.ends_with('n')
+                || token.ends_with("ng")
+        })
+        .count() as f64
+        / tokens.len() as f64;
     let vowel_ratio = average(
         &tokens
             .iter()
@@ -1822,6 +1842,7 @@ fn score_romanized_latin_text(text: &str) -> f64 {
     clamp01(
         (roman_pattern_ratio * 0.45)
             + (short_token_ratio * 0.2)
+            + (syllable_ending_ratio * if tokens.len() >= 3 { 0.14 } else { 0.06 })
             + (vowel_ratio * 0.22)
             + if tokens.iter().any(|token| token.len() == 1) {
                 0.08
@@ -2315,6 +2336,9 @@ fn score_cluster_main_candidate(
     let has_latin_peer = group
         .iter()
         .any(|(_, _, line)| line.script_profile.dominant_script == DominantScript::Latin);
+    let has_han_peer = group
+        .iter()
+        .any(|(_, _, line)| line.script_profile.dominant_script == DominantScript::Han);
     let first_non_latin_source_index = group
         .iter()
         .filter(|(_, _, line)| line.script_profile.dominant_script != DominantScript::Latin)
@@ -2365,6 +2389,9 @@ fn score_cluster_main_candidate(
             score += 1.8;
         } else if romanization >= englishness + 0.08 {
             score -= 1.4;
+        }
+        if has_han_peer && looks_like_english_phrase(&candidate_line.text) {
+            score += 3.2;
         }
     } else if has_latin_peer {
         if let Some(first_non_latin_source_index) = first_non_latin_source_index {
@@ -2462,6 +2489,15 @@ fn resolve_display_line_roles<'a>(
     Option<&'a LyricTrackLine>,
     Option<&'a LyricTrackLine>,
 ) {
+    if let Some(translation_line) = translation_line {
+        if translation_line.script_profile.dominant_script == DominantScript::Latin
+            && main_line.script_profile.dominant_script != DominantScript::Latin
+            && looks_like_english_phrase(&translation_line.text)
+        {
+            return (translation_line, Some(main_line), None);
+        }
+    }
+
     if let Some(roman_line) = roman_line {
         if roman_line.script_profile.dominant_script == DominantScript::Latin
             && main_line.script_profile.dominant_script != DominantScript::Latin
@@ -2480,6 +2516,31 @@ fn resolve_display_line_roles<'a>(
     }
 
     (main_line, translation_line, roman_line)
+}
+
+fn normalize_semantic_line_display_roles(mut line: SemanticLine) -> SemanticLine {
+    let main_is_latin =
+        get_line_script_profile(&line.main_text).dominant_script == DominantScript::Latin;
+    let translation_is_missing = line
+        .translation_text
+        .as_ref()
+        .map(|text| text.trim().is_empty())
+        .unwrap_or(true);
+    let romaji_is_english_phrase = line
+        .roman_text
+        .as_ref()
+        .map(|text| looks_like_english_phrase(text))
+        .unwrap_or(false);
+
+    if !main_is_latin && translation_is_missing && romaji_is_english_phrase {
+        if let Some(english_text) = line.roman_text.take() {
+            line.translation_text = Some(line.main_text.clone());
+            line.main_text = english_text;
+            line.main_words = line.roman_words.take();
+        }
+    }
+
+    line
 }
 
 pub fn build_lyric_document(parsed_lines: &[ParsedLine]) -> Option<LyricDocument> {
@@ -2745,7 +2806,7 @@ pub fn lyric_document_to_semantic_lines(document: &LyricDocument) -> Vec<Semanti
             })
             .collect::<Vec<_>>();
 
-        semantic_lines.push(SemanticLine {
+        semantic_lines.push(normalize_semantic_line_display_roles(SemanticLine {
             start_ms: display_main_line.start_ms,
             end_ms: display_main_line.end_ms,
             main_text: display_main_line.text.clone(),
@@ -2763,7 +2824,7 @@ pub fn lyric_document_to_semantic_lines(document: &LyricDocument) -> Vec<Semanti
                 display_translation_line,
                 display_roman_line,
             ]),
-        });
+        }));
         semantic_line_clusters.push(main_line.cluster_index);
     }
 
@@ -2814,10 +2875,8 @@ pub fn lyric_document_to_semantic_lines(document: &LyricDocument) -> Vec<Semanti
             }
         }
 
-        semantic_lines.push(build_semantic_line_from_orphan_group(
-            document,
-            main_track,
-            &group,
+        semantic_lines.push(normalize_semantic_line_display_roles(
+            build_semantic_line_from_orphan_group(document, main_track, &group),
         ));
     }
 
@@ -2920,7 +2979,10 @@ pub fn build_structured_lyrics_payload(raw_lyrics: String) -> StructuredLyricsPa
 
 #[cfg(test)]
 mod tests {
-    use super::{ParsedLineSourceFormat, build_structured_lyrics_payload, parse_raw_lyrics};
+    use super::{
+        ParsedLineSourceFormat, build_structured_lyrics_payload, parse_raw_lyrics,
+        score_romanized_latin_text,
+    };
 
     #[test]
     fn parses_inline_timestamp_lrc_into_word_timed_lines() {
@@ -3003,5 +3065,34 @@ mod tests {
             vec!["そ", "の日から", "何もかも"]
         );
         assert_eq!(parsed[1].text, "忘れたくないこと");
+    }
+
+    #[test]
+    fn romaji_scoring_prefers_vowel_ending_token_sequences() {
+        let spaced_romaji = "ha ji me te no ru bu ru wa";
+        let compressed_latin = "hajimetenoruburuwa";
+
+        assert!(
+            score_romanized_latin_text(spaced_romaji)
+                > score_romanized_latin_text(compressed_latin)
+        );
+    }
+
+    #[test]
+    fn romaji_scoring_supports_n_and_ng_endings() {
+        let n_ending_romaji = "shi n ji te i ru n da";
+        let ng_ending_pinyin = "xiang xin ni reng zai zhe li";
+
+        assert!(score_romanized_latin_text(n_ending_romaji) > 0.45);
+        assert!(score_romanized_latin_text(ng_ending_pinyin) > 0.35);
+    }
+
+    #[test]
+    fn romaji_scoring_keeps_english_phrases_below_romaji_lines() {
+        let english_phrase = "Can you give me one last kiss";
+        let romaji_line = "mo u to kku ni de a't te ta ka ra";
+
+        assert!(score_romanized_latin_text(english_phrase) < 0.35);
+        assert!(score_romanized_latin_text(romaji_line) > score_romanized_latin_text(english_phrase));
     }
 }
