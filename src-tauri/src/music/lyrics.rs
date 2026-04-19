@@ -9,6 +9,7 @@ use amll_lyric::{
 use regex::Regex;
 use serde::Serialize;
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 
 const MAX_GROUP_TOLERANCE_MS: u32 = 50;
 const MAX_GROUP_SIZE: usize = 3;
@@ -506,6 +507,23 @@ fn get_line_script_profile(text: &str) -> LineScriptProfile {
 
 fn is_japanese_like(profile: &LineScriptProfile) -> bool {
     profile.kana_count > 0 && profile.hangul_count == 0
+}
+
+fn same_script_family(left: &DominantScript, right: &DominantScript) -> bool {
+    let family = |script: &DominantScript| match script {
+        DominantScript::Latin => "latin",
+        DominantScript::Han | DominantScript::Kana | DominantScript::Mixed => "cjk",
+        DominantScript::Hangul => "hangul",
+        DominantScript::Other => "other",
+    };
+
+    family(left) == family(right)
+}
+
+fn track_has_japanese_like_lines(track: &LyricTrack) -> bool {
+    track.lines
+        .iter()
+        .any(|line| is_japanese_like(&line.script_profile))
 }
 
 fn map_track_source_format(source_format: &ParsedLineSourceFormat) -> LyricTrackSourceFormat {
@@ -1716,6 +1734,17 @@ fn tokenize_latin_words(text: &str) -> Vec<String> {
     tokens
 }
 
+fn looks_like_english_phrase(text: &str) -> bool {
+    let tokens = tokenize_latin_words(text);
+    if tokens.len() < 4 {
+        return false;
+    }
+
+    let average_token_length =
+        tokens.iter().map(|token| token.len() as f64).sum::<f64>() / tokens.len() as f64;
+    average_token_length >= 3.0 && score_romanized_latin_text(text) < 0.42
+}
+
 fn score_englishness(text: &str) -> f64 {
     let tokens = tokenize_latin_words(text);
     if tokens.is_empty() {
@@ -1943,6 +1972,13 @@ fn score_main_track(
             .map(|line| line.slot_index.unwrap_or(0) as f64)
             .collect::<Vec<_>>(),
     );
+    let average_source_index = average(
+        &candidate_track
+            .lines
+            .iter()
+            .map(|line| line.source_index)
+            .collect::<Vec<_>>(),
+    );
     let word_coverage = candidate_track
         .lines
         .iter()
@@ -1980,6 +2016,15 @@ fn score_main_track(
             && track.dominant_script == DominantScript::Latin
             && score_track_romanization(track) >= 0.35
     });
+    let has_japanese_like_sibling = tracks.iter().enumerate().any(|(other_index, track)| {
+        other_index != track_index
+            && alignments[track_index][other_index].weighted_score >= 0.35
+            && track_has_japanese_like_lines(track)
+    });
+    let has_any_romanized_latin_track = tracks
+        .iter()
+        .any(|track| track.dominant_script == DominantScript::Latin && score_track_romanization(track) >= 0.35);
+    let has_any_japanese_like_track = tracks.iter().any(|track| track_has_japanese_like_lines(track));
 
     let mut attachment_support = 0.0;
     for (other_index, track) in tracks.iter().enumerate() {
@@ -2017,6 +2062,20 @@ fn score_main_track(
 
     if candidate_track.dominant_script != DominantScript::Latin && has_romanized_latin_sibling {
         score += 3.2;
+    }
+
+    if (has_japanese_like_sibling && has_romanized_latin_sibling)
+        || (has_any_japanese_like_track && has_any_romanized_latin_track)
+    {
+        score += (1.2 - average_slot) * 1.8;
+        if track_has_japanese_like_lines(candidate_track) {
+            score += 4.8;
+        } else if candidate_track.dominant_script == DominantScript::Han {
+            score -= 5.2;
+            if average_source_index > 1.15 {
+                score -= 1.2;
+            }
+        }
     }
 
     if candidate_track.dominant_script == DominantScript::Latin
@@ -2137,6 +2196,290 @@ fn build_aligned_roman_words(
     } else {
         None
     }
+}
+
+fn push_secondary_text(secondary_texts: &mut Option<Vec<String>>, text: String) {
+    if text.is_empty() {
+        return;
+    }
+    let values = secondary_texts.get_or_insert_with(Vec::new);
+    if !values.iter().any(|value| value == &text) {
+        values.push(text);
+    }
+}
+
+fn should_use_line_as_romaji(
+    main_line: &LyricTrackLine,
+    candidate_track: &LyricTrack,
+    candidate_line: &LyricTrackLine,
+) -> bool {
+    if matches!(
+        candidate_track.role,
+        LyricTrackRole::Romanization | LyricTrackRole::Secondary
+    ) && candidate_line.explicit_role == Some(ExplicitLineRole::Roman)
+    {
+        return true;
+    }
+    if candidate_track.role == LyricTrackRole::Romanization {
+        return true;
+    }
+    if candidate_line.script_profile.dominant_script != DominantScript::Latin
+        || main_line.script_profile.dominant_script == DominantScript::Latin
+    {
+        return false;
+    }
+
+    let englishness = score_englishness(&candidate_line.text);
+    let romanization = score_romanized_latin_text(&candidate_line.text);
+
+    romanization >= englishness
+        || (candidate_line.source_index < main_line.source_index && romanization + 0.08 >= englishness)
+}
+
+fn should_use_line_as_translation(
+    main_line: &LyricTrackLine,
+    candidate_track: &LyricTrack,
+    candidate_line: &LyricTrackLine,
+) -> bool {
+    if matches!(
+        candidate_track.role,
+        LyricTrackRole::Translation | LyricTrackRole::Secondary
+    ) && candidate_line.explicit_role == Some(ExplicitLineRole::Translation)
+    {
+        return true;
+    }
+    if candidate_track.role == LyricTrackRole::Translation {
+        return true;
+    }
+    if main_line.script_profile.dominant_script == DominantScript::Latin {
+        return candidate_line.script_profile.dominant_script != DominantScript::Latin;
+    }
+    if candidate_line.script_profile.dominant_script == DominantScript::Latin {
+        return false;
+    }
+    if candidate_line.source_index > main_line.source_index {
+        return true;
+    }
+
+    candidate_line.script_profile.dominant_script == DominantScript::Han
+        && is_japanese_like(&main_line.script_profile)
+}
+
+fn merge_auxiliary_line_into_semantic(
+    semantic_line: &mut SemanticLine,
+    main_line: &LyricTrackLine,
+    candidate_track: &LyricTrack,
+    candidate_line: &LyricTrackLine,
+) {
+    if candidate_line.text == semantic_line.main_text {
+        return;
+    }
+
+    if semantic_line.roman_text.is_none()
+        && should_use_line_as_romaji(main_line, candidate_track, candidate_line)
+    {
+        semantic_line.roman_text = Some(candidate_line.text.clone());
+        semantic_line.roman_words = build_aligned_roman_words(main_line, Some(candidate_line));
+        return;
+    }
+
+    if semantic_line.translation_text.is_none()
+        && should_use_line_as_translation(main_line, candidate_track, candidate_line)
+    {
+        semantic_line.translation_text = Some(candidate_line.text.clone());
+        return;
+    }
+
+    push_secondary_text(&mut semantic_line.secondary_texts, candidate_line.text.clone());
+}
+
+fn score_cluster_main_candidate(
+    document: &LyricDocument,
+    main_track: &LyricTrack,
+    candidate_track: &LyricTrack,
+    candidate_line: &LyricTrackLine,
+    group: &[(usize, usize, LyricTrackLine)],
+) -> f64 {
+    let mut sorted_source_indexes = group
+        .iter()
+        .map(|(_, _, line)| line.source_index)
+        .collect::<Vec<_>>();
+    sorted_source_indexes.sort_by(|left, right| compare_source_index(*left, *right));
+    let median_source_index = sorted_source_indexes[sorted_source_indexes.len() / 2];
+
+    let englishness = score_englishness(&candidate_line.text);
+    let romanization = score_romanized_latin_text(&candidate_line.text);
+    let has_japanese_like_peer = group
+        .iter()
+        .any(|(_, _, line)| is_japanese_like(&line.script_profile));
+    let has_latin_peer = group
+        .iter()
+        .any(|(_, _, line)| line.script_profile.dominant_script == DominantScript::Latin);
+    let first_non_latin_source_index = group
+        .iter()
+        .filter(|(_, _, line)| line.script_profile.dominant_script != DominantScript::Latin)
+        .map(|(_, _, line)| line.source_index)
+        .min_by(|left, right| compare_source_index(*left, *right));
+
+    let mut score = 0.0;
+    score += (2.8 - ((candidate_line.source_index - median_source_index).abs() * 2.2)).max(-1.4);
+    score += if candidate_line.explicit_role.is_none() { 1.0 } else { -1.0 };
+    score += if candidate_line
+        .words
+        .as_ref()
+        .map(|words| !words.is_empty())
+        .unwrap_or(false)
+    {
+        0.8
+    } else {
+        0.0
+    };
+    score += if same_script_family(
+        &candidate_line.script_profile.dominant_script,
+        &main_track.dominant_script,
+    ) {
+        0.9
+    } else {
+        0.0
+    };
+
+    match candidate_track.role {
+        LyricTrackRole::Main | LyricTrackRole::AlternateMain => score += 1.2,
+        LyricTrackRole::Unknown | LyricTrackRole::Secondary => score += 0.4,
+        LyricTrackRole::Translation | LyricTrackRole::Romanization => score -= 0.6,
+        LyricTrackRole::Background | LyricTrackRole::Metadata => score -= 2.4,
+    }
+
+    if track_has_japanese_like_lines(main_track) && is_japanese_like(&candidate_line.script_profile) {
+        score += 2.2;
+    }
+    if has_japanese_like_peer {
+        if is_japanese_like(&candidate_line.script_profile) {
+            score += 2.2;
+        } else if candidate_line.script_profile.dominant_script == DominantScript::Han {
+            score -= 2.2;
+        }
+    }
+    if candidate_line.script_profile.dominant_script == DominantScript::Latin {
+        if englishness >= romanization + 0.12 {
+            score += 1.8;
+        } else if romanization >= englishness + 0.08 {
+            score -= 1.4;
+        }
+    } else if has_latin_peer {
+        if let Some(first_non_latin_source_index) = first_non_latin_source_index {
+            if (candidate_line.source_index - first_non_latin_source_index).abs() < 0.01 {
+                score += 2.4;
+            } else {
+                score -= 1.4;
+            }
+        }
+    }
+    if candidate_line.script_profile.dominant_script == DominantScript::Han
+        && track_has_japanese_like_lines(main_track)
+        && has_japanese_like_peer
+    {
+        score -= 0.8;
+    }
+    if document
+        .display_track_id
+        .as_ref()
+        .map(|track_id| track_id == &candidate_track.id)
+        .unwrap_or(false)
+    {
+        score += 0.8;
+    }
+
+    score
+}
+
+fn build_semantic_line_from_orphan_group(
+    document: &LyricDocument,
+    main_track: &LyricTrack,
+    group: &[(usize, usize, LyricTrackLine)],
+) -> SemanticLine {
+    let (main_track_index, _main_line_index, main_line) = group
+        .iter()
+        .max_by(|left, right| {
+            score_cluster_main_candidate(
+                document,
+                main_track,
+                &document.tracks[left.0],
+                &left.2,
+                group,
+            )
+            .partial_cmp(&score_cluster_main_candidate(
+                document,
+                main_track,
+                &document.tracks[right.0],
+                &right.2,
+                group,
+            ))
+            .unwrap_or(Ordering::Equal)
+        })
+        .cloned()
+        .expect("orphan group is non-empty");
+
+    let mut semantic_line = SemanticLine {
+        start_ms: main_line.start_ms,
+        end_ms: main_line.end_ms,
+        main_text: main_line.text.clone(),
+        main_words: main_line.words.clone(),
+        translation_text: None,
+        roman_text: None,
+        roman_words: None,
+        secondary_texts: None,
+        confidence: resolve_semantic_confidence(&[Some(&main_line)]),
+    };
+
+    for (track_index, _line_index, candidate_line) in group.iter() {
+        if *track_index == main_track_index && candidate_line.id == main_line.id {
+            continue;
+        }
+        merge_auxiliary_line_into_semantic(
+            &mut semantic_line,
+            &main_line,
+            &document.tracks[*track_index],
+            candidate_line,
+        );
+    }
+
+    semantic_line.confidence = resolve_semantic_confidence(
+        &group
+            .iter()
+            .map(|(_, _, line)| Some(line))
+            .collect::<Vec<_>>(),
+    );
+    semantic_line
+}
+
+fn resolve_display_line_roles<'a>(
+    main_line: &'a LyricTrackLine,
+    translation_line: Option<&'a LyricTrackLine>,
+    roman_line: Option<&'a LyricTrackLine>,
+) -> (
+    &'a LyricTrackLine,
+    Option<&'a LyricTrackLine>,
+    Option<&'a LyricTrackLine>,
+) {
+    if let Some(roman_line) = roman_line {
+        if roman_line.script_profile.dominant_script == DominantScript::Latin
+            && main_line.script_profile.dominant_script != DominantScript::Latin
+            && looks_like_english_phrase(&roman_line.text)
+        {
+            return (roman_line, Some(main_line), None);
+        }
+    }
+
+    if main_line.script_profile.dominant_script == DominantScript::Han {
+        if let Some(translation_line) = translation_line {
+            if is_japanese_like(&translation_line.script_profile) {
+                return (translation_line, Some(main_line), roman_line);
+            }
+        }
+    }
+
+    (main_line, translation_line, roman_line)
 }
 
 pub fn build_lyric_document(parsed_lines: &[ParsedLine]) -> Option<LyricDocument> {
@@ -2332,6 +2675,7 @@ pub fn lyric_document_to_semantic_lines(document: &LyricDocument) -> Vec<Semanti
 
     let mut attached_line_keys: Vec<(usize, usize)> = Vec::new();
     let mut semantic_lines = Vec::new();
+    let mut semantic_line_clusters = Vec::new();
 
     for (main_index, main_line) in main_track.lines.iter().enumerate() {
         let translation_entry = translation_tracks.iter().find_map(|(track_index, track)| {
@@ -2373,6 +2717,8 @@ pub fn lyric_document_to_semantic_lines(document: &LyricDocument) -> Vec<Semanti
             attached_line_keys.push((track_index, aux_index));
             document.tracks[track_index].lines.get(aux_index)
         });
+        let (display_main_line, display_translation_line, display_roman_line) =
+            resolve_display_line_roles(main_line, translation_line, roman_line);
 
         let secondary_texts = secondary_tracks
             .iter()
@@ -2400,27 +2746,28 @@ pub fn lyric_document_to_semantic_lines(document: &LyricDocument) -> Vec<Semanti
             .collect::<Vec<_>>();
 
         semantic_lines.push(SemanticLine {
-            start_ms: main_line.start_ms,
-            end_ms: main_line.end_ms,
-            main_text: main_line.text.clone(),
-            main_words: main_line.words.clone(),
-            translation_text: translation_line.map(|line| line.text.clone()),
-            roman_text: roman_line.map(|line| line.text.clone()),
-            roman_words: build_aligned_roman_words(main_line, roman_line),
+            start_ms: display_main_line.start_ms,
+            end_ms: display_main_line.end_ms,
+            main_text: display_main_line.text.clone(),
+            main_words: display_main_line.words.clone(),
+            translation_text: display_translation_line.map(|line| line.text.clone()),
+            roman_text: display_roman_line.map(|line| line.text.clone()),
+            roman_words: build_aligned_roman_words(display_main_line, display_roman_line),
             secondary_texts: if secondary_texts.is_empty() {
                 None
             } else {
                 Some(secondary_texts)
             },
             confidence: resolve_semantic_confidence(&[
-                Some(main_line),
-                translation_line,
-                roman_line,
+                Some(display_main_line),
+                display_translation_line,
+                display_roman_line,
             ]),
         });
+        semantic_line_clusters.push(main_line.cluster_index);
     }
 
-    let mut orphan_lines = Vec::new();
+    let mut orphan_groups = BTreeMap::<Option<usize>, Vec<(usize, usize, LyricTrackLine)>>::new();
     for (track_index, track) in document.tracks.iter().enumerate() {
         if track.id == main_track.id {
             continue;
@@ -2431,21 +2778,49 @@ pub fn lyric_document_to_semantic_lines(document: &LyricDocument) -> Vec<Semanti
                 continue;
             }
 
-            orphan_lines.push(SemanticLine {
-                start_ms: line.start_ms,
-                end_ms: line.end_ms,
-                main_text: line.text.clone(),
-                main_words: line.words.clone(),
-                translation_text: None,
-                roman_text: None,
-                roman_words: None,
-                secondary_texts: None,
-                confidence: resolve_semantic_confidence(&[Some(line)]),
-            });
+            orphan_groups
+                .entry(line.cluster_index)
+                .or_default()
+                .push((track_index, line_index, line.clone()));
         }
     }
 
-    semantic_lines.extend(orphan_lines);
+    for (cluster_index, group) in orphan_groups {
+        if let Some(existing_index) = cluster_index.and_then(|cluster| {
+            semantic_line_clusters
+                .iter()
+                .position(|value| *value == Some(cluster))
+        }) {
+            let existing_main_text = semantic_lines[existing_index].main_text.clone();
+            let existing_main_line = document
+                .tracks
+                .iter()
+                .flat_map(|track| track.lines.iter())
+                .find(|line| {
+                    line.cluster_index == cluster_index && line.text == existing_main_text
+                })
+                .cloned();
+
+            if let Some(existing_main_line) = existing_main_line {
+                for (track_index, _line_index, line) in group {
+                    merge_auxiliary_line_into_semantic(
+                        &mut semantic_lines[existing_index],
+                        &existing_main_line,
+                        &document.tracks[track_index],
+                        &line,
+                    );
+                }
+                continue;
+            }
+        }
+
+        semantic_lines.push(build_semantic_line_from_orphan_group(
+            document,
+            main_track,
+            &group,
+        ));
+    }
+
     semantic_lines.sort_by(|left, right| {
         left.start_ms
             .cmp(&right.start_ms)
