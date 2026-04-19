@@ -86,6 +86,18 @@ function isPureHan(profile: LineScriptProfile): boolean {
     && profile.hangulCount === 0;
 }
 
+function isJapaneseLike(profile: LineScriptProfile): boolean {
+  return profile.kanaCount > 0
+    && profile.latinCount === 0
+    && profile.hangulCount === 0;
+}
+
+function isKoreanLike(profile: LineScriptProfile): boolean {
+  return profile.hangulCount > 0
+    && profile.latinCount === 0
+    && profile.kanaCount === 0;
+}
+
 function getContentProfile(line: ParsedLine): LineScriptProfile {
   const content = line.text || line.translatedText || line.romanText || '';
   return getLineScriptProfile(content);
@@ -191,11 +203,11 @@ function groupParsedLines(lines: ParsedLine[]): ParsedLine[][] {
 }
 
 function selectHeuristicMainLine(lines: ParsedLine[]): ParsedLine {
-  const kanaLine = lines.find((line) => getContentProfile(line).dominantScript === 'kana');
-  if (kanaLine) return kanaLine;
+  const japaneseLine = lines.find((line) => isJapaneseLike(getContentProfile(line)));
+  if (japaneseLine) return japaneseLine;
 
-  const hangulLine = lines.find((line) => getContentProfile(line).dominantScript === 'hangul');
-  if (hangulLine) return hangulLine;
+  const koreanLine = lines.find((line) => isKoreanLike(getContentProfile(line)));
+  if (koreanLine) return koreanLine;
 
   return lines[0];
 }
@@ -207,12 +219,13 @@ function classifyHeuristicRole(
   const mainProfile = getContentProfile(main);
   const candidateProfile = getContentProfile(candidate);
 
+  if (isJapaneseLike(mainProfile) || isKoreanLike(mainProfile)) {
+    if (isPureLatin(candidateProfile)) return 'romaji';
+    if (isPureHan(candidateProfile)) return 'translation';
+    return 'secondary';
+  }
+
   switch (mainProfile.dominantScript) {
-    case 'kana':
-    case 'hangul':
-      if (isPureLatin(candidateProfile)) return 'romaji';
-      if (isPureHan(candidateProfile)) return 'translation';
-      return 'secondary';
     case 'han':
       return isPureLatin(candidateProfile) ? 'romaji' : 'secondary';
     case 'latin':

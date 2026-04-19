@@ -746,6 +746,10 @@ describe('raw lyrics samples from the common formats checklist', async () => {
     return buildSemanticLines(parsed).map(semanticLineToLyricLine);
   }
 
+  function normalizeWhitespace(text: string) {
+    return text.replace(/\s+/g, ' ').trim();
+  }
+
   it('parses inline timestamp chinese lrc into timed words', async () => {
     const lines = await parseRawToLyricLines([
       '[00:00.000]如[00:00.375]果[00:00.750]当[00:01.125]时[00:01.500] [00:01.875]-[00:02.250] [00:02.625]许[00:03.000]嵩[00:03.375]',
@@ -889,6 +893,43 @@ describe('raw lyrics samples from the common formats checklist', async () => {
 
     const displayLines = getCurrentLyricDisplayLines(lines[0]!, true, true);
     expect(displayLines.map((line) => line.kind)).toEqual(['main', 'romaji', 'translation']);
+  });
+
+  it('keeps mixed kana-kanji enhanced japanese lines as the main lyric even when romaji comes first', async () => {
+    const lines = await parseRawToLyricLines([
+      '[00:00.624]<00:00.624>ki mi  <00:01.040>ga  <00:01.347>bo ku  <00:02.384>ni  <00:02.945>mi  <00:03.336>se  <00:03.656>te  <00:04.024>ku  <00:04.560>re  <00:05.042>ta <00:05.905>',
+      '[00:00.624]<00:00.624>君<00:01.040>が<00:01.347>僕<00:02.384>に<00:02.945>見<00:03.336>せ<00:03.656>て<00:04.024>く<00:04.560>れ<00:05.042>た<00:05.905>',
+      '[00:00.624]<00:00.624>是你让我看到了<00:05.905>',
+      '[00:05.905]<00:05.905>se ka  <00:06.122>i  <00:06.505>wa  <00:07.000>to  <00:07.272>te  <00:07.600>mo  <00:07.943>ki re  <00:08.559>i  <00:09.311>da  <00:09.587>tsu  <00:09.863>ta  <00:10.367>na <00:11.371>',
+      '[00:05.905]<00:05.905>世<00:06.122>界<00:06.505>は<00:07.000>と<00:07.272>て<00:07.600>も<00:07.943>綺<00:08.559>麗<00:09.311>だ<00:09.587>っ<00:09.863>た<00:10.367>な<00:11.371>',
+      '[00:05.905]<00:05.905>世界有多么美丽<00:11.371>',
+    ].join('\n'));
+
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({
+      text: '君が僕に見せてくれた',
+      translation: '是你让我看到了',
+    });
+    expect(normalizeWhitespace(lines[0]?.romaji || '')).toBe('ki mi ga bo ku ni mi se te ku re ta');
+    expect(lines[1]).toMatchObject({
+      text: '世界はとても綺麗だったな',
+      translation: '世界有多么美丽',
+    });
+    expect(normalizeWhitespace(lines[1]?.romaji || '')).toBe('se ka i wa to te mo ki re i da tsu ta na');
+    expect(lines[1]?.words?.map((word) => word.text)).toEqual([
+      '世',
+      '界',
+      'は',
+      'と',
+      'て',
+      'も',
+      '綺',
+      '麗',
+      'だ',
+      'っ',
+      'た',
+      'な',
+    ]);
   });
 
   it('treats accented latin lyrics as the main line and chinese as translation', async () => {
