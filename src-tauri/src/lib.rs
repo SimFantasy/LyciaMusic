@@ -36,8 +36,9 @@ use statistics::{
     add_to_history, clear_recent_history, get_behavior_stats, get_favorite_album_catalog,
     get_favorite_artist_catalog, get_favorite_song_paths_view, get_format_distribution,
     get_library_stats, get_quality_distribution, get_recent_album_catalog, get_recent_history,
-    get_recent_playlist_catalog, get_recent_song_paths_view, import_recent_history, record_play,
-    remove_from_recent_history,
+    get_recent_playlist_catalog, get_recent_song_paths_view, import_recent_history,
+    import_statistics_file, preview_statistics_import, record_play, remove_from_recent_history,
+    export_statistics_file,
 };
 use system_fonts::get_system_fonts;
 use toolbox::{apply_rename, open_external_program, preview_rename, refresh_folder_songs};
@@ -114,6 +115,9 @@ pub fn run() {
             get_recent_song_paths_view,
             get_recent_playlist_catalog,
             import_recent_history,
+            export_statistics_file,
+            preview_statistics_import,
+            import_statistics_file,
             remove_from_recent_history,
             clear_recent_history,
             get_behavior_stats,

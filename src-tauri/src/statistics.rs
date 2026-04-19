@@ -2,9 +2,12 @@ use crate::database::DbState;
 use crate::music::utils::{format_distribution_bucket, is_lossless_audio, normalize_path};
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 // =====================================================
 // 辅助函数
@@ -25,6 +28,611 @@ fn is_invalid_name(name: &str) -> bool {
 /// 判断是否为 Hi-Res (24bit + >=48kHz)
 fn is_hires(bit_depth: Option<i64>, sample_rate: i64) -> bool {
     bit_depth.unwrap_or(0) >= 24 && sample_rate >= 48000
+}
+
+const SUPPORTED_STATS_VERSION: i64 = 1;
+const RECENT_PLAY_LIMIT: i64 = 300;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortableSongIdentity {
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub duration_ms: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub track_number: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortableSongStats {
+    pub play_count: i64,
+    pub play_time_ms: i64,
+    pub full_play_count: i64,
+    pub skip_count: i64,
+    pub first_played_at: Option<String>,
+    pub last_played_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortableSongStatsEntry {
+    pub song_identity: PortableSongIdentity,
+    pub song_stats: PortableSongStats,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortableGlobalStats {
+    pub total_play_count: i64,
+    pub total_play_time_ms: i64,
+    pub first_played_at: Option<String>,
+    pub last_played_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortableDailyStats {
+    pub date: String,
+    pub play_count: i64,
+    pub play_time_ms: i64,
+    pub unique_songs: i64,
+    pub unique_artists: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortableHourlyStats {
+    pub hour: i64,
+    pub play_count: i64,
+    pub play_time_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortableRecentPlay {
+    pub played_at: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub duration_ms: i64,
+    pub listened_ms: i64,
+    pub is_full_play: bool,
+    pub is_skip: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortableStatisticsPayload {
+    pub global: PortableGlobalStats,
+    pub songs: Vec<PortableSongStatsEntry>,
+    pub daily: Vec<PortableDailyStats>,
+    pub hourly: Vec<PortableHourlyStats>,
+    #[serde(default)]
+    pub recent_plays: Vec<PortableRecentPlay>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortableStatisticsExport {
+    pub format: String,
+    pub version: i64,
+    pub exported_at: String,
+    pub app_version: String,
+    pub export_id: String,
+    pub library_fingerprint: Option<String>,
+    pub stats: PortableStatisticsPayload,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatisticsExportOptions {
+    pub file_path: String,
+    pub include_recent_plays: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatisticsImportPreviewOptions {
+    pub file_path: String,
+}
+
+#[derive(Debug, Deserialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub enum StatisticsImportMode {
+    Overwrite,
+    Merge,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatisticsImportOptions {
+    pub file_path: String,
+    pub mode: StatisticsImportMode,
+    pub continue_duplicate_import: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatisticsExportResult {
+    pub file_path: String,
+    pub export_id: String,
+    pub exported_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatisticsImportPreview {
+    pub version: i64,
+    pub exported_at: String,
+    pub app_version: String,
+    pub export_id: String,
+    pub song_stats_count: usize,
+    pub daily_stats_count: usize,
+    pub recent_plays_count: usize,
+    pub matched_song_count: usize,
+    pub unmatched_song_count: usize,
+    pub duplicate_import_detected: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatisticsImportResult {
+    pub mode: String,
+    pub matched_song_count: usize,
+    pub unmatched_song_count: usize,
+    pub merged_song_count: usize,
+    pub imported_recent_plays_count: usize,
+    pub duplicate_import_skipped: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordPlayPayload {
+    pub song_path: String,
+    pub listened_ms: i64,
+    pub duration_ms: i64,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub track_number: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct LibraryMatchCandidate {
+    path: String,
+    identity: PortableSongIdentity,
+}
+
+#[derive(Default)]
+struct LibraryMatchIndex {
+    strict: HashMap<String, Vec<LibraryMatchCandidate>>,
+    weak_artist: HashMap<String, Vec<LibraryMatchCandidate>>,
+    weak_title: HashMap<String, Vec<LibraryMatchCandidate>>,
+}
+
+fn now_unix_seconds() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+}
+
+fn now_unix_millis() -> i128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i128
+}
+
+fn now_iso_timestamp() -> Result<String, String> {
+    OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .map_err(|e| e.to_string())
+}
+
+fn unix_seconds_to_iso(timestamp: i64) -> Result<String, String> {
+    OffsetDateTime::from_unix_timestamp(timestamp)
+        .map_err(|e| e.to_string())?
+        .format(&Rfc3339)
+        .map_err(|e| e.to_string())
+}
+
+fn normalize_identity_text(value: &str) -> String {
+    value
+        .trim()
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn parse_track_number_value(value: Option<&str>) -> Option<i64> {
+    value
+        .unwrap_or_default()
+        .split(['/', '\\'])
+        .next()
+        .and_then(|raw| {
+            let digits: String = raw.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+            if digits.is_empty() {
+                None
+            } else {
+                digits.parse::<i64>().ok()
+            }
+        })
+}
+
+fn strict_identity_key(identity: &PortableSongIdentity) -> String {
+    format!(
+        "{}|{}|{}|{}",
+        normalize_identity_text(&identity.title),
+        normalize_identity_text(&identity.artist),
+        normalize_identity_text(&identity.album),
+        identity.duration_ms.max(0),
+    )
+}
+
+fn weak_artist_identity_key(identity: &PortableSongIdentity) -> String {
+    format!(
+        "{}|{}|{}",
+        normalize_identity_text(&identity.title),
+        normalize_identity_text(&identity.artist),
+        identity.duration_ms.max(0),
+    )
+}
+
+fn weak_title_identity_key(identity: &PortableSongIdentity) -> String {
+    format!(
+        "{}|{}",
+        normalize_identity_text(&identity.title),
+        identity.duration_ms.max(0),
+    )
+}
+
+fn recent_play_dedupe_key(entry: &PortableRecentPlay) -> String {
+    format!(
+        "{}|{}|{}|{}",
+        entry.played_at,
+        normalize_identity_text(&entry.title),
+        normalize_identity_text(&entry.artist),
+        entry.duration_ms.max(0),
+    )
+}
+
+fn resolve_song_identity(
+    title: &str,
+    artist: &str,
+    album: &str,
+    duration_ms: i64,
+    track_number: Option<i64>,
+    fallback_path: Option<&str>,
+) -> PortableSongIdentity {
+    let fallback_title = fallback_path
+        .and_then(|path| Path::new(path).file_stem())
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "Unknown".to_string());
+
+    PortableSongIdentity {
+        title: if title.trim().is_empty() {
+            fallback_title
+        } else {
+            title.trim().to_string()
+        },
+        artist: artist.trim().to_string(),
+        album: album.trim().to_string(),
+        duration_ms: duration_ms.max(0),
+        track_number,
+    }
+}
+
+fn derive_play_flags(listened_ms: i64, duration_ms: i64) -> (bool, bool) {
+    if listened_ms <= 0 || duration_ms <= 0 {
+        return (false, false);
+    }
+
+    let full_threshold = ((duration_ms as f64) * 0.9).round() as i64;
+    let skip_threshold = ((duration_ms as f64) * 0.5).round() as i64;
+    let is_full_play = listened_ms >= full_threshold.max(duration_ms - 5_000);
+    let is_skip = !is_full_play && listened_ms < skip_threshold.min(30_000);
+    (is_full_play, is_skip)
+}
+
+fn sqlite_local_date(conn: &rusqlite::Connection, played_at: i64) -> Result<String, String> {
+    conn.query_row(
+        "SELECT strftime('%Y-%m-%d', ?1, 'unixepoch', 'localtime')",
+        [played_at],
+        |row| row.get(0),
+    )
+    .map_err(|e| e.to_string())
+}
+
+fn sqlite_local_hour(conn: &rusqlite::Connection, played_at: i64) -> Result<i64, String> {
+    conn.query_row(
+        "SELECT CAST(strftime('%H', ?1, 'unixepoch', 'localtime') AS INTEGER)",
+        [played_at],
+        |row| row.get(0),
+    )
+    .map_err(|e| e.to_string())
+}
+
+fn get_statistics_meta(conn: &rusqlite::Connection, key: &str) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT value FROM statistics_meta WHERE key = ?1",
+        [key],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+fn set_statistics_meta(conn: &rusqlite::Connection, key: &str, value: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO statistics_meta (key, value)
+         VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        rusqlite::params![key, value],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn clear_aggregate_statistics(conn: &rusqlite::Connection) -> Result<(), String> {
+    conn.execute("DELETE FROM global_stats", []).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM song_stats", []).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM daily_stats", []).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM hourly_stats", []).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM daily_unique_song_entries", [])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM daily_unique_artist_entries", [])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM recent_plays", []).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn merge_global_stats(
+    conn: &rusqlite::Connection,
+    global: &PortableGlobalStats,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO global_stats (id, total_play_count, total_play_time_ms, first_played_at, last_played_at)
+         VALUES (1, ?1, ?2, ?3, ?4)
+         ON CONFLICT(id) DO UPDATE SET
+           total_play_count = global_stats.total_play_count + excluded.total_play_count,
+           total_play_time_ms = global_stats.total_play_time_ms + excluded.total_play_time_ms,
+           first_played_at = CASE
+             WHEN global_stats.first_played_at IS NULL THEN excluded.first_played_at
+             WHEN excluded.first_played_at IS NULL THEN global_stats.first_played_at
+             WHEN excluded.first_played_at < global_stats.first_played_at THEN excluded.first_played_at
+             ELSE global_stats.first_played_at
+           END,
+           last_played_at = CASE
+             WHEN global_stats.last_played_at IS NULL THEN excluded.last_played_at
+             WHEN excluded.last_played_at IS NULL THEN global_stats.last_played_at
+             WHEN excluded.last_played_at > global_stats.last_played_at THEN excluded.last_played_at
+             ELSE global_stats.last_played_at
+           END",
+        rusqlite::params![
+            global.total_play_count,
+            global.total_play_time_ms,
+            global.first_played_at,
+            global.last_played_at,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn upsert_song_stats(
+    conn: &rusqlite::Connection,
+    identity: &PortableSongIdentity,
+    stats: &PortableSongStats,
+) -> Result<(), String> {
+    let strict_key = strict_identity_key(identity);
+    conn.execute(
+        "INSERT INTO song_stats (
+            strict_identity_key, title, artist, album, duration_ms, track_number,
+            play_count, play_time_ms, full_play_count, skip_count, first_played_at, last_played_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+         ON CONFLICT(strict_identity_key) DO UPDATE SET
+            title = excluded.title,
+            artist = excluded.artist,
+            album = excluded.album,
+            duration_ms = excluded.duration_ms,
+            track_number = excluded.track_number,
+            play_count = song_stats.play_count + excluded.play_count,
+            play_time_ms = song_stats.play_time_ms + excluded.play_time_ms,
+            full_play_count = song_stats.full_play_count + excluded.full_play_count,
+            skip_count = song_stats.skip_count + excluded.skip_count,
+            first_played_at = CASE
+              WHEN song_stats.first_played_at IS NULL THEN excluded.first_played_at
+              WHEN excluded.first_played_at IS NULL THEN song_stats.first_played_at
+              WHEN excluded.first_played_at < song_stats.first_played_at THEN excluded.first_played_at
+              ELSE song_stats.first_played_at
+            END,
+            last_played_at = CASE
+              WHEN song_stats.last_played_at IS NULL THEN excluded.last_played_at
+              WHEN excluded.last_played_at IS NULL THEN song_stats.last_played_at
+              WHEN excluded.last_played_at > song_stats.last_played_at THEN excluded.last_played_at
+              ELSE song_stats.last_played_at
+            END",
+        rusqlite::params![
+            strict_key,
+            identity.title,
+            identity.artist,
+            identity.album,
+            identity.duration_ms,
+            identity.track_number,
+            stats.play_count,
+            stats.play_time_ms,
+            stats.full_play_count,
+            stats.skip_count,
+            stats.first_played_at,
+            stats.last_played_at,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn upsert_daily_stats(conn: &rusqlite::Connection, daily: &PortableDailyStats) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO daily_stats (date, play_count, play_time_ms, unique_songs, unique_artists)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(date) DO UPDATE SET
+            play_count = daily_stats.play_count + excluded.play_count,
+            play_time_ms = daily_stats.play_time_ms + excluded.play_time_ms,
+            unique_songs = MAX(daily_stats.unique_songs, excluded.unique_songs),
+            unique_artists = MAX(daily_stats.unique_artists, excluded.unique_artists)",
+        rusqlite::params![
+            daily.date,
+            daily.play_count,
+            daily.play_time_ms,
+            daily.unique_songs,
+            daily.unique_artists,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn upsert_hourly_stats(conn: &rusqlite::Connection, hourly: &PortableHourlyStats) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO hourly_stats (hour, play_count, play_time_ms)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(hour) DO UPDATE SET
+            play_count = hourly_stats.play_count + excluded.play_count,
+            play_time_ms = hourly_stats.play_time_ms + excluded.play_time_ms",
+        rusqlite::params![hourly.hour, hourly.play_count, hourly.play_time_ms],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn prune_recent_plays(conn: &rusqlite::Connection) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM recent_plays
+         WHERE id NOT IN (
+           SELECT id FROM recent_plays ORDER BY played_at DESC, id DESC LIMIT ?1
+         )",
+        [RECENT_PLAY_LIMIT],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn insert_recent_play(conn: &rusqlite::Connection, entry: &PortableRecentPlay) -> Result<bool, String> {
+    let affected = conn
+        .execute(
+            "INSERT OR IGNORE INTO recent_plays (
+                recent_dedupe_key, played_at, title, artist, album, duration_ms, listened_ms, is_full_play, is_skip
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![
+                recent_play_dedupe_key(entry),
+                entry.played_at,
+                entry.title,
+                entry.artist,
+                entry.album,
+                entry.duration_ms,
+                entry.listened_ms,
+                if entry.is_full_play { 1 } else { 0 },
+                if entry.is_skip { 1 } else { 0 },
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    prune_recent_plays(conn)?;
+    Ok(affected > 0)
+}
+
+fn record_unique_daily_entries(
+    conn: &rusqlite::Connection,
+    date: &str,
+    identity: &PortableSongIdentity,
+) -> Result<(bool, bool), String> {
+    let song_added = conn
+        .execute(
+            "INSERT OR IGNORE INTO daily_unique_song_entries (date, song_identity_key) VALUES (?1, ?2)",
+            rusqlite::params![date, strict_identity_key(identity)],
+        )
+        .map_err(|e| e.to_string())?
+        > 0;
+
+    let artist_key = normalize_identity_text(&identity.artist);
+    let artist_added = if artist_key.is_empty() {
+        false
+    } else {
+        conn.execute(
+            "INSERT OR IGNORE INTO daily_unique_artist_entries (date, artist_key) VALUES (?1, ?2)",
+            rusqlite::params![date, artist_key],
+        )
+        .map_err(|e| e.to_string())?
+            > 0
+    };
+
+    Ok((song_added, artist_added))
+}
+
+fn record_aggregate_play(
+    conn: &rusqlite::Connection,
+    identity: &PortableSongIdentity,
+    played_at: i64,
+    listened_ms: i64,
+    is_full_play: bool,
+    is_skip: bool,
+) -> Result<(), String> {
+    let played_at_iso = unix_seconds_to_iso(played_at)?;
+    merge_global_stats(
+        conn,
+        &PortableGlobalStats {
+            total_play_count: 1,
+            total_play_time_ms: listened_ms.max(0),
+            first_played_at: Some(played_at_iso.clone()),
+            last_played_at: Some(played_at_iso.clone()),
+        },
+    )?;
+
+    upsert_song_stats(
+        conn,
+        identity,
+        &PortableSongStats {
+            play_count: 1,
+            play_time_ms: listened_ms.max(0),
+            full_play_count: if is_full_play { 1 } else { 0 },
+            skip_count: if is_skip { 1 } else { 0 },
+            first_played_at: Some(played_at_iso.clone()),
+            last_played_at: Some(played_at_iso.clone()),
+        },
+    )?;
+
+    let date = sqlite_local_date(conn, played_at)?;
+    let (is_new_song, is_new_artist) = record_unique_daily_entries(conn, &date, identity)?;
+    upsert_daily_stats(
+        conn,
+        &PortableDailyStats {
+            date,
+            play_count: 1,
+            play_time_ms: listened_ms.max(0),
+            unique_songs: if is_new_song { 1 } else { 0 },
+            unique_artists: if is_new_artist { 1 } else { 0 },
+        },
+    )?;
+
+    let hour = sqlite_local_hour(conn, played_at)?;
+    upsert_hourly_stats(
+        conn,
+        &PortableHourlyStats {
+            hour,
+            play_count: 1,
+            play_time_ms: listened_ms.max(0),
+        },
+    )?;
+
+    insert_recent_play(
+        conn,
+        &PortableRecentPlay {
+            played_at: played_at_iso,
+            title: identity.title.clone(),
+            artist: identity.artist.clone(),
+            album: identity.album.clone(),
+            duration_ms: identity.duration_ms,
+            listened_ms: listened_ms.max(0),
+            is_full_play,
+            is_skip,
+        },
+    )?;
+
+    Ok(())
 }
 
 // =====================================================
@@ -583,6 +1191,441 @@ fn lookup_song_id(conn: &rusqlite::Connection, normalized_path: &str) -> Option<
     .ok()
 }
 
+fn build_library_match_index(conn: &rusqlite::Connection) -> Result<LibraryMatchIndex, String> {
+    let mut stmt = conn
+        .prepare("SELECT path, title, artist, album, duration, track_number FROM songs")
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                row.get::<_, Option<i64>>(4)?.unwrap_or_default(),
+                row.get::<_, Option<String>>(5)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut index = LibraryMatchIndex::default();
+
+    for row in rows.flatten() {
+        let identity = resolve_song_identity(
+            &row.1,
+            &row.2,
+            &row.3,
+            row.4.max(0) * 1000,
+            parse_track_number_value(row.5.as_deref()),
+            Some(&row.0),
+        );
+        let candidate = LibraryMatchCandidate {
+            path: row.0,
+            identity: identity.clone(),
+        };
+
+        index
+            .strict
+            .entry(strict_identity_key(&identity))
+            .or_default()
+            .push(candidate.clone());
+        index
+            .weak_artist
+            .entry(weak_artist_identity_key(&identity))
+            .or_default()
+            .push(candidate.clone());
+        index
+            .weak_title
+            .entry(weak_title_identity_key(&identity))
+            .or_default()
+            .push(candidate);
+    }
+
+    Ok(index)
+}
+
+fn select_unique_candidate(
+    map: &HashMap<String, Vec<LibraryMatchCandidate>>,
+    key: &str,
+) -> Option<LibraryMatchCandidate> {
+    map.get(key).and_then(|candidates| {
+        if candidates.len() == 1 {
+            candidates.first().cloned()
+        } else {
+            None
+        }
+    })
+}
+
+fn match_song_identity(
+    index: &LibraryMatchIndex,
+    identity: &PortableSongIdentity,
+) -> Option<LibraryMatchCandidate> {
+    select_unique_candidate(&index.strict, &strict_identity_key(identity))
+        .or_else(|| select_unique_candidate(&index.weak_artist, &weak_artist_identity_key(identity)))
+        .or_else(|| select_unique_candidate(&index.weak_title, &weak_title_identity_key(identity)))
+}
+
+fn ensure_statistics_aggregates(conn: &rusqlite::Connection) -> Result<(), String> {
+    if get_statistics_meta(conn, "aggregates_backfilled")?
+        .as_deref()
+        .is_some_and(|value| value == "1")
+    {
+        return Ok(());
+    }
+
+    clear_aggregate_statistics(conn)?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT s.path, s.title, s.artist, s.album, s.duration, s.track_number, ph.played_at, ph.played_seconds
+             FROM play_history ph
+             INNER JOIN songs s ON ph.song_id = s.id
+             WHERE ph.event = 'play' AND ph.song_id IS NOT NULL
+             ORDER BY ph.played_at ASC, ph.id ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                row.get::<_, Option<i64>>(4)?.unwrap_or_default(),
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, i64>(6)?,
+                row.get::<_, i64>(7).unwrap_or(0),
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+
+    for row in rows.flatten() {
+        let identity = resolve_song_identity(
+            &row.1,
+            &row.2,
+            &row.3,
+            row.4.max(0) * 1000,
+            parse_track_number_value(row.5.as_deref()),
+            Some(&row.0),
+        );
+        let listened_ms = row.7.max(0) * 1000;
+        let (is_full_play, is_skip) = derive_play_flags(listened_ms, identity.duration_ms);
+        record_aggregate_play(conn, &identity, row.6, listened_ms, is_full_play, is_skip)?;
+    }
+
+    set_statistics_meta(conn, "aggregates_backfilled", "1")?;
+    Ok(())
+}
+
+fn load_portable_export(file_path: &str) -> Result<PortableStatisticsExport, String> {
+    let raw = fs::read_to_string(file_path).map_err(|e| e.to_string())?;
+    let export: PortableStatisticsExport =
+        serde_json::from_str(&raw).map_err(|_| "文件格式不正确或已损坏".to_string())?;
+
+    if export.format != "lycia-stats" {
+        return Err("文件格式不正确或已损坏".to_string());
+    }
+
+    if export.version > SUPPORTED_STATS_VERSION {
+        return Err("该统计文件版本过新，当前版本暂不支持".to_string());
+    }
+
+    Ok(export)
+}
+
+fn query_global_stats(conn: &rusqlite::Connection) -> Result<PortableGlobalStats, String> {
+    let stats = conn
+        .query_row(
+        "SELECT total_play_count, total_play_time_ms, first_played_at, last_played_at
+         FROM global_stats
+         WHERE id = 1",
+        [],
+        |row| {
+            Ok(PortableGlobalStats {
+                total_play_count: row.get::<_, i64>(0)?,
+                total_play_time_ms: row.get::<_, i64>(1)?,
+                first_played_at: row.get::<_, Option<String>>(2)?,
+                last_played_at: row.get::<_, Option<String>>(3)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|e| e.to_string())?
+    .unwrap_or(PortableGlobalStats {
+        total_play_count: 0,
+        total_play_time_ms: 0,
+        first_played_at: None,
+        last_played_at: None,
+    });
+
+    Ok(stats)
+}
+
+fn query_song_stats(conn: &rusqlite::Connection) -> Result<Vec<PortableSongStatsEntry>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT title, artist, album, duration_ms, track_number,
+                    play_count, play_time_ms, full_play_count, skip_count, first_played_at, last_played_at
+             FROM song_stats
+             ORDER BY play_count DESC, play_time_ms DESC, title COLLATE NOCASE ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(PortableSongStatsEntry {
+                song_identity: PortableSongIdentity {
+                    title: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                    artist: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                    album: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    duration_ms: row.get::<_, i64>(3).unwrap_or(0),
+                    track_number: row.get::<_, Option<i64>>(4)?,
+                },
+                song_stats: PortableSongStats {
+                    play_count: row.get::<_, i64>(5).unwrap_or(0),
+                    play_time_ms: row.get::<_, i64>(6).unwrap_or(0),
+                    full_play_count: row.get::<_, i64>(7).unwrap_or(0),
+                    skip_count: row.get::<_, i64>(8).unwrap_or(0),
+                    first_played_at: row.get::<_, Option<String>>(9)?,
+                    last_played_at: row.get::<_, Option<String>>(10)?,
+                },
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows.filter_map(|row| row.ok()).collect())
+}
+
+fn query_daily_stats(conn: &rusqlite::Connection) -> Result<Vec<PortableDailyStats>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT date, play_count, play_time_ms, unique_songs, unique_artists
+             FROM daily_stats
+             ORDER BY date ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(PortableDailyStats {
+                date: row.get(0)?,
+                play_count: row.get::<_, i64>(1).unwrap_or(0),
+                play_time_ms: row.get::<_, i64>(2).unwrap_or(0),
+                unique_songs: row.get::<_, i64>(3).unwrap_or(0),
+                unique_artists: row.get::<_, i64>(4).unwrap_or(0),
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows.filter_map(|row| row.ok()).collect())
+}
+
+fn query_hourly_stats(conn: &rusqlite::Connection) -> Result<Vec<PortableHourlyStats>, String> {
+    let mut buckets = vec![
+        PortableHourlyStats {
+            hour: 0,
+            play_count: 0,
+            play_time_ms: 0,
+        };
+        24
+    ];
+
+    for (index, bucket) in buckets.iter_mut().enumerate() {
+        bucket.hour = index as i64;
+    }
+
+    let mut stmt = conn
+        .prepare("SELECT hour, play_count, play_time_ms FROM hourly_stats")
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1).unwrap_or(0),
+                row.get::<_, i64>(2).unwrap_or(0),
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+
+    for row in rows.flatten() {
+        if (0..24).contains(&row.0) {
+            buckets[row.0 as usize].play_count = row.1;
+            buckets[row.0 as usize].play_time_ms = row.2;
+        }
+    }
+
+    Ok(buckets)
+}
+
+fn query_recent_plays(conn: &rusqlite::Connection) -> Result<Vec<PortableRecentPlay>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT played_at, title, artist, album, duration_ms, listened_ms, is_full_play, is_skip
+             FROM recent_plays
+             ORDER BY played_at DESC, id DESC
+             LIMIT ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([RECENT_PLAY_LIMIT], |row| {
+            Ok(PortableRecentPlay {
+                played_at: row.get(0)?,
+                title: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                artist: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                album: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                duration_ms: row.get::<_, i64>(4).unwrap_or(0),
+                listened_ms: row.get::<_, i64>(5).unwrap_or(0),
+                is_full_play: row.get::<_, i64>(6).unwrap_or(0) > 0,
+                is_skip: row.get::<_, i64>(7).unwrap_or(0) > 0,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows.filter_map(|row| row.ok()).collect())
+}
+
+fn aggregate_behavior_stats(conn: &rusqlite::Connection) -> Result<BehaviorStats, String> {
+    ensure_statistics_aggregates(conn)?;
+
+    let global = query_global_stats(conn)?;
+    let song_entries = query_song_stats(conn)?;
+    let index = build_library_match_index(conn)?;
+
+    let mut top_songs = Vec::new();
+    let mut seen_paths = HashSet::new();
+    for entry in song_entries.iter().filter(|entry| entry.song_stats.play_count > 0) {
+        let Some(candidate) = match_song_identity(&index, &entry.song_identity) else {
+            continue;
+        };
+        if !seen_paths.insert(candidate.path.clone()) {
+            continue;
+        }
+        top_songs.push(TopSong {
+            song_path: candidate.path,
+            play_count: entry.song_stats.play_count,
+            value: entry.song_stats.play_count,
+        });
+        if top_songs.len() >= 5 {
+            break;
+        }
+    }
+
+    let mut duration_entries = song_entries.clone();
+    duration_entries.sort_by(|left, right| {
+        right
+            .song_stats
+            .play_time_ms
+            .cmp(&left.song_stats.play_time_ms)
+            .then_with(|| right.song_stats.play_count.cmp(&left.song_stats.play_count))
+    });
+
+    let mut top_songs_by_duration = Vec::new();
+    let mut seen_duration_paths = HashSet::new();
+    for entry in duration_entries
+        .iter()
+        .filter(|entry| entry.song_stats.play_time_ms > 0)
+    {
+        let Some(candidate) = match_song_identity(&index, &entry.song_identity) else {
+            continue;
+        };
+        if !seen_duration_paths.insert(candidate.path.clone()) {
+            continue;
+        }
+        top_songs_by_duration.push(TopSong {
+            song_path: candidate.path,
+            play_count: entry.song_stats.play_count,
+            value: entry.song_stats.play_time_ms / 1000,
+        });
+        if top_songs_by_duration.len() >= 5 {
+            break;
+        }
+    }
+
+    let mut artist_map = HashMap::<String, i64>::new();
+    let mut album_map = HashMap::<String, i64>::new();
+    for entry in &song_entries {
+        if !is_invalid_name(&entry.song_identity.artist) {
+            *artist_map.entry(entry.song_identity.artist.clone()).or_default() +=
+                entry.song_stats.play_count;
+        }
+        if !is_invalid_name(&entry.song_identity.album) {
+            *album_map.entry(entry.song_identity.album.clone()).or_default() +=
+                entry.song_stats.play_count;
+        }
+    }
+
+    let mut top_artists: Vec<TopArtist> = artist_map
+        .into_iter()
+        .map(|(artist, play_count)| TopArtist { artist, play_count })
+        .collect();
+    top_artists.sort_by(|a, b| {
+        b.play_count
+            .cmp(&a.play_count)
+            .then_with(|| a.artist.to_lowercase().cmp(&b.artist.to_lowercase()))
+    });
+    top_artists.truncate(5);
+
+    let mut top_albums: Vec<TopAlbum> = album_map
+        .into_iter()
+        .map(|(album, play_count)| TopAlbum { album, play_count })
+        .collect();
+    top_albums.sort_by(|a, b| {
+        b.play_count
+            .cmp(&a.play_count)
+            .then_with(|| a.album.to_lowercase().cmp(&b.album.to_lowercase()))
+    });
+    top_albums.truncate(5);
+
+    let hourly_rows = query_hourly_stats(conn)?;
+    let mut hour_distribution = vec![0; 24];
+    for row in hourly_rows {
+        if (0..24).contains(&row.hour) {
+            hour_distribution[row.hour as usize] = row.play_count;
+        }
+    }
+
+    let mut recent_activity = vec![0; 7];
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT CAST(julianday(date) - julianday(date('now', 'localtime')) AS INTEGER) AS day_offset,
+                    play_time_ms
+             FROM daily_stats
+             WHERE date >= date('now', 'localtime', '-6 day')",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0).unwrap_or(0),
+                row.get::<_, i64>(1).unwrap_or(0),
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+    for row in rows.flatten() {
+        if (-6..=0).contains(&row.0) {
+            recent_activity[(row.0 + 6) as usize] = row.1 / 1000;
+        }
+    }
+
+    Ok(BehaviorStats {
+        total_plays: global.total_play_count,
+        total_duration: global.total_play_time_ms / 1000,
+        top_songs,
+        top_songs_by_duration,
+        top_artists,
+        top_albums,
+        hour_distribution,
+        recent_activity,
+    })
+}
+
+
 fn insert_history_event(
     conn: &rusqlite::Connection,
     normalized_path: &str,
@@ -678,6 +1721,177 @@ pub fn get_recent_history(
         .map_err(|e| e.to_string())?;
 
     Ok(rows.filter_map(|row| row.ok()).collect())
+}
+
+#[tauri::command]
+pub fn export_statistics_file(
+    db: State<DbState>,
+    options: StatisticsExportOptions,
+) -> Result<StatisticsExportResult, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    ensure_statistics_aggregates(&conn)?;
+
+    let exported_at = now_iso_timestamp()?;
+    let export_id = format!("stats-{}-{}", now_unix_seconds(), now_unix_millis());
+    let payload = PortableStatisticsExport {
+        format: "lycia-stats".to_string(),
+        version: SUPPORTED_STATS_VERSION,
+        exported_at: exported_at.clone(),
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+        export_id: export_id.clone(),
+        library_fingerprint: None,
+        stats: PortableStatisticsPayload {
+            global: query_global_stats(&conn)?,
+            songs: query_song_stats(&conn)?,
+            daily: query_daily_stats(&conn)?,
+            hourly: query_hourly_stats(&conn)?,
+            recent_plays: if options.include_recent_plays {
+                query_recent_plays(&conn)?
+            } else {
+                Vec::new()
+            },
+        },
+    };
+
+    let content = serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?;
+    fs::write(&options.file_path, content).map_err(|e| e.to_string())?;
+
+    Ok(StatisticsExportResult {
+        file_path: options.file_path,
+        export_id,
+        exported_at,
+    })
+}
+
+#[tauri::command]
+pub fn preview_statistics_import(
+    db: State<DbState>,
+    options: StatisticsImportPreviewOptions,
+) -> Result<StatisticsImportPreview, String> {
+    let export = load_portable_export(&options.file_path)?;
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    ensure_statistics_aggregates(&conn)?;
+    let match_index = build_library_match_index(&conn)?;
+
+    let matched_song_count = export
+        .stats
+        .songs
+        .iter()
+        .filter(|entry| match_song_identity(&match_index, &entry.song_identity).is_some())
+        .count();
+    let duplicate_import_detected = conn
+        .query_row(
+            "SELECT 1 FROM imported_exports_log WHERE export_id = ?1",
+            [&export.export_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .is_some();
+
+    Ok(StatisticsImportPreview {
+        version: export.version,
+        exported_at: export.exported_at,
+        app_version: export.app_version,
+        export_id: export.export_id,
+        song_stats_count: export.stats.songs.len(),
+        daily_stats_count: export.stats.daily.len(),
+        recent_plays_count: export.stats.recent_plays.len(),
+        matched_song_count,
+        unmatched_song_count: export.stats.songs.len().saturating_sub(matched_song_count),
+        duplicate_import_detected,
+    })
+}
+
+#[tauri::command]
+pub fn import_statistics_file(
+    db: State<DbState>,
+    options: StatisticsImportOptions,
+) -> Result<StatisticsImportResult, String> {
+    let export = load_portable_export(&options.file_path)?;
+    let mut conn = db.conn.lock().map_err(|e| e.to_string())?;
+    ensure_statistics_aggregates(&conn)?;
+
+    let already_imported = conn
+        .query_row(
+            "SELECT 1 FROM imported_exports_log WHERE export_id = ?1",
+            [&export.export_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .is_some();
+
+    if already_imported && !options.continue_duplicate_import {
+        return Err("该统计备份似乎已经导入过".to_string());
+    }
+
+    let match_index = build_library_match_index(&conn)?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    if matches!(options.mode, StatisticsImportMode::Overwrite) {
+        clear_aggregate_statistics(&tx)?;
+        tx.execute("DELETE FROM imported_exports_log", [])
+            .map_err(|e| e.to_string())?;
+    }
+
+    set_statistics_meta(&tx, "aggregates_backfilled", "1")?;
+    merge_global_stats(&tx, &export.stats.global)?;
+
+    let mut matched_song_count = 0usize;
+    let mut unmatched_song_count = 0usize;
+    let mut merged_song_count = 0usize;
+
+    for entry in &export.stats.songs {
+        let target_identity = match match_song_identity(&match_index, &entry.song_identity) {
+            Some(candidate) => {
+                matched_song_count += 1;
+                candidate.identity
+            }
+            None => {
+                unmatched_song_count += 1;
+                entry.song_identity.clone()
+            }
+        };
+
+        upsert_song_stats(&tx, &target_identity, &entry.song_stats)?;
+        merged_song_count += 1;
+    }
+
+    for daily in &export.stats.daily {
+        upsert_daily_stats(&tx, daily)?;
+    }
+
+    for hourly in &export.stats.hourly {
+        upsert_hourly_stats(&tx, hourly)?;
+    }
+
+    let mut imported_recent_plays_count = 0usize;
+    for entry in &export.stats.recent_plays {
+        if insert_recent_play(&tx, entry)? {
+            imported_recent_plays_count += 1;
+        }
+    }
+
+    tx.execute(
+        "INSERT OR REPLACE INTO imported_exports_log (export_id, imported_at) VALUES (?1, ?2)",
+        rusqlite::params![export.export_id, now_iso_timestamp()?],
+    )
+    .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(StatisticsImportResult {
+        mode: match options.mode {
+            StatisticsImportMode::Overwrite => "overwrite".to_string(),
+            StatisticsImportMode::Merge => "merge".to_string(),
+        },
+        matched_song_count,
+        unmatched_song_count,
+        merged_song_count,
+        imported_recent_plays_count,
+        duplicate_import_skipped: already_imported,
+    })
 }
 
 #[tauri::command]
@@ -1051,11 +2265,11 @@ pub fn clear_recent_history(db: State<DbState>) -> Result<(), String> {
 
 /// 记录一次播放事件（通过 song_path 查找 song_id）
 #[tauri::command]
-pub fn record_play(db: State<DbState>, song_path: String, duration: i64) -> Result<(), String> {
+pub fn record_play(db: State<DbState>, payload: RecordPlayPayload) -> Result<(), String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
     // 规范化路径，确保与数据库中的路径格式一致
-    let normalized_path = normalize_path(&song_path);
+    let normalized_path = normalize_path(&payload.song_path);
 
     // 通过 path 查找 song_id
     let song_id: Option<i64> = conn
@@ -1077,11 +2291,30 @@ pub fn record_play(db: State<DbState>, song_path: String, duration: i64) -> Resu
         .unwrap()
         .as_secs() as i64;
 
+    let played_seconds = (payload.listened_ms.max(0) / 1000).max(0);
     conn.execute(
         "INSERT INTO play_history (song_path, song_id, played_at, played_seconds, event) VALUES (?1, ?2, ?3, ?4, 'play')",
-        rusqlite::params![&normalized_path, song_id, now, duration],
+        rusqlite::params![&normalized_path, song_id, now, played_seconds],
     )
     .map_err(|e| e.to_string())?;
+
+    let identity = resolve_song_identity(
+        &payload.title,
+        &payload.artist,
+        &payload.album,
+        payload.duration_ms,
+        parse_track_number_value(payload.track_number.as_deref()),
+        Some(&payload.song_path),
+    );
+    let (is_full_play, is_skip) = derive_play_flags(payload.listened_ms, payload.duration_ms);
+    record_aggregate_play(
+        &conn,
+        &identity,
+        now,
+        payload.listened_ms,
+        is_full_play,
+        is_skip,
+    )?;
 
     Ok(())
 }
@@ -1125,6 +2358,10 @@ pub fn get_behavior_stats(
     time_range: TimeRange,
 ) -> Result<BehaviorStats, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+    if matches!(time_range, TimeRange::All) {
+        return aggregate_behavior_stats(&conn);
+    }
 
     // 构建时间条件
     let time_condition = match time_range.to_timestamp_from() {

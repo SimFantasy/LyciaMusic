@@ -31,6 +31,34 @@ export interface RecentHistoryImportRecord {
   playedAt: number;
 }
 
+export interface StatisticsExportResult {
+  filePath: string;
+  exportId: string;
+  exportedAt: string;
+}
+
+export interface StatisticsImportPreview {
+  version: number;
+  exportedAt: string;
+  appVersion: string;
+  exportId: string;
+  songStatsCount: number;
+  dailyStatsCount: number;
+  recentPlaysCount: number;
+  matchedSongCount: number;
+  unmatchedSongCount: number;
+  duplicateImportDetected: boolean;
+}
+
+export interface StatisticsImportResult {
+  mode: 'overwrite' | 'merge';
+  matchedSongCount: number;
+  unmatchedSongCount: number;
+  mergedSongCount: number;
+  importedRecentPlaysCount: number;
+  duplicateImportSkipped: boolean;
+}
+
 export interface PlayAudioOptions {
   path: string;
   title: string;
@@ -123,7 +151,18 @@ export interface TauriCommandMap {
   parse_audio_files: { payload: { paths: string[] }; response: Song[] };
   set_volume: { payload: { volume: number }; response: void };
   get_playback_progress: { payload: undefined; response: number };
-  record_play: { payload: { songPath: string; duration: number }; response: void };
+  record_play: {
+    payload: {
+      songPath: string;
+      listenedMs: number;
+      durationMs: number;
+      title: string;
+      artist: string;
+      album: string;
+      trackNumber?: string;
+    };
+    response: void;
+  };
   get_song_cover_thumbnail: { payload: { path: string }; response: string };
   get_song_cover: { payload: { path: string }; response: string };
   clear_cover_cache: { payload: undefined; response: void };
@@ -174,6 +213,22 @@ export interface TauriCommandMap {
   import_recent_history: {
     payload: { entries: RecentHistoryImportRecord[] };
     response: void;
+  };
+  export_statistics_file: {
+    payload: { filePath: string; includeRecentPlays: boolean };
+    response: StatisticsExportResult;
+  };
+  preview_statistics_import: {
+    payload: { filePath: string };
+    response: StatisticsImportPreview;
+  };
+  import_statistics_file: {
+    payload: {
+      filePath: string;
+      mode: 'overwrite' | 'merge';
+      continueDuplicateImport: boolean;
+    };
+    response: StatisticsImportResult;
   };
   set_mini_boundary_enabled: { payload: { enabled: boolean }; response: void };
   set_dark_mode_for_window: { payload: { dark: boolean }; response: void };

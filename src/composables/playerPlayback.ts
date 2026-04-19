@@ -143,7 +143,15 @@ export const createPlayerPlayback = ({
 
     const totalDuration = accumulatedTime + currentSession;
     if (totalDuration >= 10) {
-      playbackApi.recordPlay(song.path, Math.floor(totalDuration))
+      playbackApi.recordPlay({
+        songPath: song.path,
+        listenedMs: Math.floor(totalDuration * 1000),
+        durationMs: Math.floor(song.duration * 1000),
+        title: getSmtcTitle(song),
+        artist: song.artist || '',
+        album: song.album || '',
+        trackNumber: song.track_number,
+      })
         .catch(error => console.warn('record_play failed:', error));
     }
 
