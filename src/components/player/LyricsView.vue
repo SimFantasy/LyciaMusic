@@ -744,6 +744,16 @@ onUnmounted(() => {
 .amll-host :deep(.amll-lyric-player [class*="_lyricLine_"]) {
   text-align: var(--lyrics-text-align, left);
   transform-origin: var(--lyrics-line-transform-origin, 0%) center;
+  display: flex;
+  flex-direction: column;
+}
+
+.amll-host :deep(.amll-lyric-player [class*="_lyricLine_"] > :nth-child(2)) {
+  order: 2;
+}
+
+.amll-host :deep(.amll-lyric-player [class*="_lyricLine_"] > :nth-child(3)) {
+  order: 1;
 }
 
 .lyrics-align-left {

@@ -9,6 +9,7 @@ import type {
 
 const MAX_GROUP_TOLERANCE_MS = 50;
 const MAX_GROUP_SIZE = 3;
+const ROMAN_ALIGNMENT_TOLERANCE_MS = 80;
 
 function resolveDominantScript(profile: Omit<LineScriptProfile, 'dominantScript'>): DominantScript {
   const counts = [
@@ -88,13 +89,11 @@ function isPureHan(profile: LineScriptProfile): boolean {
 
 function isJapaneseLike(profile: LineScriptProfile): boolean {
   return profile.kanaCount > 0
-    && profile.latinCount === 0
     && profile.hangulCount === 0;
 }
 
 function isKoreanLike(profile: LineScriptProfile): boolean {
   return profile.hangulCount > 0
-    && profile.latinCount === 0
     && profile.kanaCount === 0;
 }
 
@@ -298,15 +297,56 @@ function mergeAlignedRomanWords(main: ParsedLine, romajiLine: ParsedLine | null)
 
   const romajiWords = romajiLine?.words ?? [];
   if (mainWords.length === 0 || romajiWords.length === 0) return romajiWords.length > 0 ? romajiWords : undefined;
-  if (mainWords.length !== romajiWords.length) return undefined;
+  if (mainWords.length === romajiWords.length) {
+    const allAligned = mainWords.every((word, index) => {
+      const romajiWord = romajiWords[index];
+      return Math.abs(word.startMs - romajiWord.startMs) <= ROMAN_ALIGNMENT_TOLERANCE_MS
+        && Math.abs(word.endMs - romajiWord.endMs) <= ROMAN_ALIGNMENT_TOLERANCE_MS;
+    });
 
-  const allAligned = mainWords.every((word, index) => {
-    const romajiWord = romajiWords[index];
-    return Math.abs(word.startMs - romajiWord.startMs) <= 80
-      && Math.abs(word.endMs - romajiWord.endMs) <= 80;
-  });
+    if (allAligned) return romajiWords;
+  }
 
-  return allAligned ? romajiWords : undefined;
+  const mergedTexts = mainWords.map(() => '');
+
+  for (const romajiWord of romajiWords) {
+    const romajiCenter = (romajiWord.startMs + romajiWord.endMs) / 2;
+    let bestIndex = -1;
+    let bestOverlap = Number.NEGATIVE_INFINITY;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (let index = 0; index < mainWords.length; index += 1) {
+      const mainWord = mainWords[index];
+      const expandedStart = mainWord.startMs - ROMAN_ALIGNMENT_TOLERANCE_MS;
+      const expandedEnd = mainWord.endMs + ROMAN_ALIGNMENT_TOLERANCE_MS;
+      const overlap = Math.min(expandedEnd, romajiWord.endMs) - Math.max(expandedStart, romajiWord.startMs);
+      const mainCenter = (mainWord.startMs + mainWord.endMs) / 2;
+      const distance = Math.abs(mainCenter - romajiCenter);
+
+      if (
+        overlap > bestOverlap
+        || (overlap === bestOverlap && distance < bestDistance)
+      ) {
+        bestIndex = index;
+        bestOverlap = overlap;
+        bestDistance = distance;
+      }
+    }
+
+    if (bestIndex >= 0) {
+      mergedTexts[bestIndex] += romajiWord.text;
+    }
+  }
+
+  const mergedRomanWords = mainWords
+    .map((word, index) => ({
+      text: mergedTexts[index],
+      startMs: word.startMs,
+      endMs: word.endMs,
+    }))
+    .filter((word) => word.text.trim().length > 0);
+
+  return mergedRomanWords.length > 0 ? mergedRomanWords : undefined;
 }
 
 export function buildSemanticLines(lines: ParsedLine[]): SemanticLine[] {

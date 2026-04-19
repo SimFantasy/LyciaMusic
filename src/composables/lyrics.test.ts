@@ -736,6 +736,7 @@ describe('lyrics settings normalization', async () => {
 describe('raw lyrics samples from the common formats checklist', async () => {
   const {
     buildSemanticLines,
+    convertLyricsToAmlLines,
     prepareParsedLyrics,
     semanticLineToLyricLine,
     getCurrentLyricDisplayLines,
@@ -929,6 +930,76 @@ describe('raw lyrics samples from the common formats checklist', async () => {
       'っ',
       'た',
       'な',
+    ]);
+  });
+
+  it('keeps english-prefixed japanese lines as the main lyric instead of promoting romaji', async () => {
+    const lines = await parseRawToLyricLines([
+      '[00:18.924]<00:18.924>Silent <00:19.467><00:19.468>haze <00:19.679>ka <00:20.231>su <00:20.269><00:20.270>mi <00:20.606>ga <00:20.989>chi <00:21.041><00:21.042>ni <00:21.411><00:21.412>to <00:21.923>ra <00:22.117><00:22.118>e <00:22.638>ru <00:23.149>ka <00:23.596><00:23.597>ge <00:24.213>',
+      '[00:18.924]<00:18.924>Silent <00:19.468>haze <00:19.679>霞<00:20.270>み<00:20.606>が<00:20.990>ち<00:21.043>に<00:21.412>捉<00:22.118>え<00:22.638>る<00:23.150>影<00:24.214>',
+      '[00:18.924]<00:18.924>静谧薄雾中捕捉到那朦胧的身影<00:25.010>',
+    ].join('\n'));
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({
+      text: 'Silent haze 霞みがちに捉える影',
+      translation: '静谧薄雾中捕捉到那朦胧的身影',
+    });
+    expect(normalizeWhitespace(lines[0]?.romaji || '')).toBe('Silent haze ka su mi ga chi ni to ra e ru ka ge');
+    expect(lines[0]?.words?.map((word) => word.text)).toEqual([
+      'Silent ',
+      'haze ',
+      '霞',
+      'み',
+      'が',
+      'ち',
+      'に',
+      '捉',
+      'え',
+      'る',
+      '影',
+    ]);
+  });
+
+  it('aggregates multi-syllable romaji fragments into timed AML karaoke words', async () => {
+    const lines = await parseRawToLyricLines([
+      '[01:06.435]<01:06.435>a <01:06.534><01:06.535>o <01:06.718><01:06.719>i <01:06.934>da <01:07.206><01:07.207>so <01:07.535>ra <01:08.127>ga <01:09.118><01:09.119>i <01:09.582><01:09.583>ro <01:10.166>wo <01:10.765><01:10.766>ka <01:11.039><01:11.040>e <01:11.247>ru <01:11.446>ka <01:11.852><01:11.853>ra <01:12.159>',
+      '[01:06.435]<01:06.435>仰<01:06.719>い<01:06.935>だ<01:07.207>空<01:08.128>が<01:09.119>色<01:10.167>を<01:10.767>変<01:11.040>え<01:11.247>る<01:11.447>か<01:11.854>ら<01:12.160>',
+      '[01:06.435]<01:06.435>仰望的天空终将不复昔日色彩<01:12.570>',
+    ].join('\n'));
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.words?.map((word) => normalizeWhitespace(word.romaji || ''))).toEqual([
+      'a o',
+      'i',
+      'da',
+      'so ra',
+      'ga',
+      'i ro',
+      'wo',
+      'ka',
+      'e',
+      'ru',
+      'ka',
+      'ra',
+    ]);
+
+    const amlLines = convertLyricsToAmlLines(lines, true, true);
+    expect(amlLines).toHaveLength(1);
+    expect(amlLines[0]?.romanLyric).toBe('');
+    expect(amlLines[0]?.words.map((word) => normalizeWhitespace(word.romanWord || ''))).toEqual([
+      'a o',
+      'i',
+      'da',
+      'so ra',
+      'ga',
+      'i ro',
+      'wo',
+      'ka',
+      'e',
+      'ru',
+      'ka',
+      'ra',
     ]);
   });
 
