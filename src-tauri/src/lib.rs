@@ -16,17 +16,16 @@ use app_runtime::{consume_pending_open_paths, handle_single_instance, setup_app}
 use database::clear_all_app_data;
 use foreground_window::get_foreground_fullscreen_state;
 use music::{
-    add_library_folder, add_sidebar_folder, batch_move_music_files, create_folder, delete_folder,
-    delete_music_file, get_folder_children, get_folder_first_song, get_library_album_catalog,
-    get_library_artist_catalog, get_library_folders, get_library_hierarchy,
-    get_library_song_paths_by_album, get_library_song_paths_by_artist,
+    add_library_folder, add_sidebar_folder, batch_move_music_files, clear_cover_cache,
+    create_folder, delete_folder, delete_music_file, get_folder_children, get_folder_first_song,
+    get_library_album_catalog, get_library_artist_catalog, get_library_folders,
+    get_library_hierarchy, get_library_song_paths_by_album, get_library_song_paths_by_artist,
     get_library_song_paths_for_all_view, get_library_song_paths_for_folder_view,
     get_library_songs_cached, get_sidebar_folders, get_sidebar_hierarchy, get_song_cover,
-    get_song_cover_thumbnail, get_song_detail, get_song_lyrics, is_directory,
-    move_file_to_folder, move_music_file, parse_audio_files, remove_library_folder,
-    remove_sidebar_folder,
-    scan_folder_as_playlists, scan_library, scan_music_folder, show_in_folder,
-    clear_cover_cache,
+    get_song_cover_thumbnail, get_song_detail, get_song_lyrics, get_song_lyrics_payload,
+    is_directory, move_file_to_folder, move_music_file, parse_audio_files, remove_library_folder,
+    remove_sidebar_folder, scan_folder_as_playlists, scan_library, scan_music_folder,
+    show_in_folder,
 };
 use player::{
     get_current_output_device, get_output_devices, get_playback_progress, pause_audio, play_audio,
@@ -63,6 +62,7 @@ pub fn run() {
             get_song_cover,
             clear_cover_cache,
             get_song_lyrics,
+            get_song_lyrics_payload,
             get_song_detail,
             batch_move_music_files,
             move_music_file,

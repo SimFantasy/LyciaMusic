@@ -3,6 +3,7 @@
 pub mod covers;
 pub mod files;
 pub mod library;
+pub mod lyrics;
 pub mod scanner;
 pub mod sidebar;
 pub mod tags;
@@ -16,7 +17,8 @@ pub use types::*;
 pub use covers::{clear_cover_cache, get_song_cover, get_song_cover_thumbnail, run_cache_cleanup};
 pub use files::{
     batch_move_music_files, create_folder, delete_folder, delete_music_file, get_song_detail,
-    get_song_lyrics, is_directory, move_file_to_folder, move_music_file, show_in_folder,
+    get_song_lyrics, get_song_lyrics_payload, is_directory, move_file_to_folder, move_music_file,
+    show_in_folder,
 };
 pub use library::{
     add_library_folder, get_folder_children, get_library_album_catalog, get_library_artist_catalog,

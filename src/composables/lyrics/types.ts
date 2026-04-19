@@ -24,6 +24,13 @@ export interface LyricLine {
   secondary?: string[];
 }
 
+export interface LyricsPayload {
+  rawLyrics: string;
+  document?: LyricDocument;
+  semanticLines: SemanticLine[];
+  displayLines: LyricLine[];
+}
+
 export interface LyricWord {
   text: string;
   start: number;

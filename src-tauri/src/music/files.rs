@@ -1,5 +1,6 @@
 // music/files.rs - 文件操作命令
 
+use super::lyrics::{build_structured_lyrics_payload, StructuredLyricsPayload};
 use super::tags::{extract_detail_metadata, extract_embedded_lyrics, read_tagged_file_from_path};
 use super::types::SongDetail;
 use crate::database::DbState;
@@ -81,24 +82,36 @@ fn sync_moved_song_paths(
     tx.commit().map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub async fn get_song_lyrics(path: String) -> Result<String, String> {
-    if let Ok(tagged_file) = read_tagged_file_from_path(Path::new(&path)) {
+fn read_song_lyrics_raw(path: &str) -> String {
+    if let Ok(tagged_file) = read_tagged_file_from_path(Path::new(path)) {
         if let Some(lyrics) = extract_embedded_lyrics(&tagged_file) {
-            return Ok(lyrics);
+            return lyrics;
         }
     }
 
-    let path_obj = Path::new(&path);
+    let path_obj = Path::new(path);
     if let Some(content) = read_sidecar_lrc(path_obj) {
-        return Ok(content);
+        return content;
     }
 
-    Ok(String::new())
+    String::new()
 }
 
 #[tauri::command]
-pub async fn get_song_detail(path: String, db_state: State<'_, DbState>) -> Result<SongDetail, String> {
+pub async fn get_song_lyrics(path: String) -> Result<String, String> {
+    Ok(read_song_lyrics_raw(&path))
+}
+
+#[tauri::command]
+pub async fn get_song_lyrics_payload(path: String) -> Result<StructuredLyricsPayload, String> {
+    Ok(build_structured_lyrics_payload(read_song_lyrics_raw(&path)))
+}
+
+#[tauri::command]
+pub async fn get_song_detail(
+    path: String,
+    db_state: State<'_, DbState>,
+) -> Result<SongDetail, String> {
     let normalized_path = normalize_path(&path);
     let path_obj = Path::new(&path);
     let mut detail = SongDetail {
@@ -311,9 +324,3 @@ pub fn move_file_to_folder(
 pub fn is_directory(path: String) -> bool {
     Path::new(&path).is_dir()
 }
-
-
-
-
-
-
