@@ -3,7 +3,7 @@ import { computed, ref, onMounted, watch } from 'vue';
 
 const TEXT = {
   lossless: '\u65e0\u635f',
-  lossy: '\u6709\u635f',
+  lossy: '\u6807\u51c6',
   compressed: '\u538b\u7f29',
   other: '\u5176\u4ed6',
   tracksSuffix: '\u9996',
