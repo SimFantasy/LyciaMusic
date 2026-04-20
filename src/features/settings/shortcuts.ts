@@ -235,6 +235,21 @@ export const formatShortcutBinding = (binding: ShortcutBinding | null, emptyLabe
   return parts.join(' + ');
 };
 
+export const toGlobalShortcutAccelerator = (binding: ShortcutBinding | null) => {
+  if (!binding) {
+    return null;
+  }
+
+  const parts: string[] = [];
+  if (binding.shift) parts.push('shift');
+  if (binding.ctrl) parts.push('control');
+  if (binding.alt) parts.push('alt');
+  if (binding.meta) parts.push('super');
+  parts.push(binding.code);
+
+  return parts.join('+');
+};
+
 export const areShortcutBindingsEqual = (
   left: ShortcutBinding | null,
   right: ShortcutBinding | null,

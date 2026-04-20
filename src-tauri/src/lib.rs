@@ -54,6 +54,7 @@ pub fn run() {
             handle_single_instance(app, argv);
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| setup_app(app))
         .invoke_handler(tauri::generate_handler![

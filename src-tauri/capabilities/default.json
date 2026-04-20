@@ -37,6 +37,10 @@
     "core:window:allow-set-effects",
     "core:window:allow-start-resize-dragging",
     "core:window:allow-outer-size",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-register-all",
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-unregister-all",
     "opener:default",
     "dialog:default"
   ]
