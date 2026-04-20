@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, onBeforeUnmount, reactive, watch } from 'vue';
 import { useLibraryBrowse } from '../../features/library/useLibraryBrowse';
 import { useCoverCache } from '../../composables/useCoverCache';
 
@@ -62,7 +62,9 @@ const emit = defineEmits<{
 }>();
 
 const { canonicalSongs } = useLibraryBrowse();
-const { coverCache, preloadCovers } = useCoverCache();
+const { coverCache, loadCover, touchCoverPaths, preloadPriorityCovers } = useCoverCache();
+const displayedCoverUrls = reactive(new Map<string, string>());
+let trackedSongPaths = new Set<string>();
 
 function normalizePath(path: string): string {
   return path.replace(/\\/g, '/').toLowerCase();
@@ -75,8 +77,41 @@ function getCoverUrl(songPath: string): string | null {
     return null;
   }
 
-  const cover = coverCache.get(songPath);
+  const cover = displayedCoverUrls.get(songPath) ?? coverCache.get(songPath);
   return cover || null;
+}
+
+function syncDisplayedCoverUrls(paths: string[]) {
+  const nextPaths = Array.from(new Set(paths.filter(Boolean)));
+  trackedSongPaths = new Set(nextPaths);
+
+  for (const path of Array.from(displayedCoverUrls.keys())) {
+    if (!trackedSongPaths.has(path)) {
+      displayedCoverUrls.delete(path);
+    }
+  }
+
+  touchCoverPaths(nextPaths);
+
+  nextPaths.forEach((path) => {
+    const cachedUrl = coverCache.get(path);
+    if (cachedUrl) {
+      displayedCoverUrls.set(path, cachedUrl);
+      return;
+    }
+
+    if (displayedCoverUrls.has(path)) {
+      return;
+    }
+
+    void loadCover(path).then((coverUrl) => {
+      if (!coverUrl || !trackedSongPaths.has(path)) {
+        return;
+      }
+
+      displayedCoverUrls.set(path, coverUrl);
+    });
+  });
 }
 
 function getSongInfo(path: string) {
@@ -149,8 +184,14 @@ const peakHour = computed(() => {
 const peakTimeDesc = computed(() => `${getHourLabel(peakHour.value)} ${peakHour.value}:00 - ${peakHour.value + 1}:00`);
 
 watch(allSongPaths, paths => {
-  preloadCovers(paths);
+  syncDisplayedCoverUrls(paths);
+  preloadPriorityCovers(paths);
 }, { immediate: true });
+
+onBeforeUnmount(() => {
+  displayedCoverUrls.clear();
+  trackedSongPaths = new Set<string>();
+});
 </script>
 
 <template>
