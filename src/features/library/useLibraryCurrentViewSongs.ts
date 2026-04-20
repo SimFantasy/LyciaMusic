@@ -656,11 +656,12 @@ export function useLibraryCurrentViewSongs({
     return [];
   });
 
-  const currentViewSongs = computed(() =>
-    materializeSongPaths(currentViewSongPaths.value),
-  );
+  const currentViewSongs = computed(() => {
+    canonicalSongPaths.value;
+    return materializeSongPaths(currentViewSongPaths.value);
+  });
 
-  const currentViewSongCount = computed(() => currentViewSongPaths.value.length);
+  const currentViewSongCount = computed(() => currentViewSongs.value.length);
 
   return {
     currentViewSongPaths,

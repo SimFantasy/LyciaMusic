@@ -5,7 +5,13 @@ import {
   startLibraryScanSession,
 } from './playerLibraryScan';
 import type { ScanLibraryOptions } from './playerLibraryScan';
-import type { AlbumCatalogItem, ArtistCatalogItem, LibrarySong, Song } from '../types';
+import type {
+  AlbumCatalogItem,
+  ArtistCatalogItem,
+  LibraryScanVisibility,
+  LibrarySong,
+  Song,
+} from '../types';
 import { useLibraryAllSongPathCache } from './useLibraryAllSongPathCache';
 import { useLibraryCollectionSongPathCache } from './useLibraryCollectionSongPathCache';
 import { useLibraryDetailSongPathCache } from './useLibraryDetailSongPathCache';
@@ -15,8 +21,16 @@ import { useLibraryStore } from '../features/library/store';
 let hasBootstrappedLibrary = false;
 let libraryBootstrapPromise: Promise<void> | null = null;
 let libraryRefreshPromise: Promise<void> | null = null;
+let queuedLibraryRefreshOptions: Required<ScanLibraryOptions> | null = null;
+let queuedLibraryRefreshPromise: Promise<void> | null = null;
 let libraryRefreshIdleId: number | null = null;
 let libraryRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+const LIBRARY_SCAN_VISIBILITY_PRIORITY: Record<LibraryScanVisibility, number> = {
+  silent: 1,
+  inline: 2,
+  hero: 3,
+};
 
 interface CreatePlayerLibraryRuntimeDeps {
   fetchLibraryFolders: () => Promise<void>;
@@ -45,6 +59,34 @@ export const createPlayerLibraryRuntime = ({
   const { clearLibraryDetailSongPathCache } = useLibraryDetailSongPathCache();
   const { clearLibraryFolderSongPathCache } = useLibraryFolderSongPathCache();
 
+  const clearLibraryPathCaches = () => {
+    clearLibraryAllSongPathCache();
+    clearLibraryCollectionSongPathCache();
+    clearLibraryDetailSongPathCache();
+    clearLibraryFolderSongPathCache();
+  };
+
+  const mergeQueuedScanOptions = (
+    current: Required<ScanLibraryOptions> | null,
+    next: Required<ScanLibraryOptions>,
+  ): Required<ScanLibraryOptions> => {
+    if (!current) {
+      return next;
+    }
+
+    return {
+      trigger:
+        next.trigger === 'bootstrap' && current.trigger !== 'bootstrap'
+          ? current.trigger
+          : next.trigger,
+      visibility:
+        LIBRARY_SCAN_VISIBILITY_PRIORITY[next.visibility] >= LIBRARY_SCAN_VISIBILITY_PRIORITY[current.visibility]
+          ? next.visibility
+          : current.visibility,
+      sourcePath: next.sourcePath || current.sourcePath,
+    };
+  };
+
   const cancelScheduledLibraryRefresh = () => {
     if (libraryRefreshTimer) {
       clearTimeout(libraryRefreshTimer);
@@ -54,6 +96,7 @@ export const createPlayerLibraryRuntime = ({
       window.cancelIdleCallback(libraryRefreshIdleId);
       libraryRefreshIdleId = null;
     }
+    queuedLibraryRefreshOptions = null;
   };
 
   const loadLibrarySongsFromCache = async () => {
@@ -62,10 +105,7 @@ export const createPlayerLibraryRuntime = ({
       const songs = await invoke<LibrarySong[]>('get_library_songs_cached');
       libraryStore.setLibrarySongs(songs);
       libraryStore.setSourceSongs(songs);
-      clearLibraryAllSongPathCache();
-      clearLibraryCollectionSongPathCache();
-      clearLibraryDetailSongPathCache();
-      clearLibraryFolderSongPathCache();
+      clearLibraryPathCaches();
       refreshStateSongReferences(songs);
       await fetchFolderTree();
     } catch (error) {
@@ -92,7 +132,23 @@ export const createPlayerLibraryRuntime = ({
 
     if (libraryRefreshPromise) {
       startLibraryScanSession(resolvedOptions);
-      return libraryRefreshPromise;
+      queuedLibraryRefreshOptions = mergeQueuedScanOptions(queuedLibraryRefreshOptions, resolvedOptions);
+
+      if (!queuedLibraryRefreshPromise) {
+        queuedLibraryRefreshPromise = libraryRefreshPromise
+          .then(async () => {
+            while (queuedLibraryRefreshOptions) {
+              const nextOptions = queuedLibraryRefreshOptions;
+              queuedLibraryRefreshOptions = null;
+              await scanLibrary(nextOptions);
+            }
+          })
+          .finally(() => {
+            queuedLibraryRefreshPromise = null;
+          });
+      }
+
+      return queuedLibraryRefreshPromise;
     }
 
     cancelScheduledLibraryRefresh();
@@ -114,10 +170,7 @@ export const createPlayerLibraryRuntime = ({
         const songs = await invoke<LibrarySong[]>('scan_library');
         libraryStore.setLibrarySongs(songs);
         libraryStore.setSourceSongs(songs);
-        clearLibraryAllSongPathCache();
-        clearLibraryCollectionSongPathCache();
-        clearLibraryDetailSongPathCache();
-        clearLibraryFolderSongPathCache();
+        clearLibraryPathCaches();
         refreshStateSongReferences(songs);
         await Promise.all([
           fetchLibraryFolders(),
