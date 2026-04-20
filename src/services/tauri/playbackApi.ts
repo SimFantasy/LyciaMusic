@@ -19,7 +19,7 @@ export const playbackApi = {
     album: string;
     trackNumber?: string;
   }) =>
-    tauriInvoke('record_play', payload),
+    tauriInvoke('record_play', { payload }),
   playAudio: (options: PlayAudioOptions): Promise<void> => tauriInvoke('play_audio', options),
   updatePlaybackMetadata: (options: UpdatePlaybackMetadataOptions): Promise<void> =>
     tauriInvoke('update_playback_metadata', options),

@@ -153,13 +153,15 @@ export interface TauriCommandMap {
   get_playback_progress: { payload: undefined; response: number };
   record_play: {
     payload: {
-      songPath: string;
-      listenedMs: number;
-      durationMs: number;
-      title: string;
-      artist: string;
-      album: string;
-      trackNumber?: string;
+      payload: {
+        songPath: string;
+        listenedMs: number;
+        durationMs: number;
+        title: string;
+        artist: string;
+        album: string;
+        trackNumber?: string;
+      };
     };
     response: void;
   };

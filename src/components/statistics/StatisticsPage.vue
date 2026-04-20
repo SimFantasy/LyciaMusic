@@ -276,7 +276,15 @@ function hideCard(cardTitle: string) {
 onMounted(async () => {
   loadHiddenSettings();
   statisticsStore.cancelHeavyDataRelease();
+  const hadBehaviorStats = !!behaviorStats.value;
   await statisticsStore.ensureLoaded(currentBehaviorTimeRange.value);
+  if (hadBehaviorStats) {
+    try {
+      await statisticsStore.refreshBehaviorOnly(currentBehaviorTimeRange.value);
+    } catch (e) {
+      console.warn('Failed to refresh behavior stats on enter:', e);
+    }
+  }
 });
 
 onUnmounted(() => {
