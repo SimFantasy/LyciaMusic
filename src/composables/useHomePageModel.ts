@@ -167,7 +167,6 @@ export function useHomePageModel() {
     libraryHierarchy: folderTree,
     sourceSongs,
     refreshFolder,
-    refreshAllFolders,
     fetchFolderTree,
     createFolder,
     deleteFolder,

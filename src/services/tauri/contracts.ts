@@ -215,18 +215,29 @@ export interface TauriCommandMap {
     response: void;
   };
   export_statistics_file: {
-    payload: { filePath: string; includeRecentPlays: boolean };
+    payload: {
+      options: {
+        filePath: string;
+        includeRecentPlays: boolean;
+      };
+    };
     response: StatisticsExportResult;
   };
   preview_statistics_import: {
-    payload: { filePath: string };
+    payload: {
+      options: {
+        filePath: string;
+      };
+    };
     response: StatisticsImportPreview;
   };
   import_statistics_file: {
     payload: {
-      filePath: string;
-      mode: 'overwrite' | 'merge';
-      continueDuplicateImport: boolean;
+      options: {
+        filePath: string;
+        mode: 'overwrite' | 'merge';
+        continueDuplicateImport: boolean;
+      };
     };
     response: StatisticsImportResult;
   };

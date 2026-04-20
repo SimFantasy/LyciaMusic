@@ -7,6 +7,10 @@ import { useLibraryStore } from '../features/library/store';
 import { useNavigationStore } from '../shared/stores/navigation';
 import { usePlaybackStore } from '../features/playback/store';
 import { useSettingsStore } from '../features/settings/store';
+import { useLibraryAllSongPathCache } from './useLibraryAllSongPathCache';
+import { useLibraryCollectionSongPathCache } from './useLibraryCollectionSongPathCache';
+import { useLibraryDetailSongPathCache } from './useLibraryDetailSongPathCache';
+import { useLibraryFolderSongPathCache } from './useLibraryFolderSongPathCache';
 
 interface CreatePlayerFileManagerDeps {
   removeLibraryFolderLinked: (
@@ -111,6 +115,15 @@ const findNode = (
 
 const sanitizePathSegment = (value: string) => value.replace(/[<>:"/\\|?*]/g, '_').trim();
 
+const normalizePathForMatch = (path: string) =>
+  path.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+
+const isSongInFolderScope = (folderPath: string, songPath: string) => {
+  const normalizedFolder = normalizePathForMatch(folderPath);
+  const normalizedSong = normalizePathForMatch(songPath);
+  return normalizedSong === normalizedFolder || normalizedSong.startsWith(`${normalizedFolder}/`);
+};
+
 export const createPlayerFileManager = ({
   removeLibraryFolderLinked,
   removeFromHistory,
@@ -121,6 +134,10 @@ export const createPlayerFileManager = ({
   const navigationStore = useNavigationStore();
   const playbackStore = usePlaybackStore();
   const settingsStore = useSettingsStore();
+  const { clearLibraryAllSongPathCache } = useLibraryAllSongPathCache();
+  const { clearLibraryCollectionSongPathCache } = useLibraryCollectionSongPathCache();
+  const { clearLibraryDetailSongPathCache } = useLibraryDetailSongPathCache();
+  const { clearLibraryFolderSongPathCache } = useLibraryFolderSongPathCache();
   const { canonicalSongs, libraryHierarchy, sourceSongs, watchedFolders } = storeToRefs(libraryStore);
   const { favoritePaths, playlists, recentSongs } = storeToRefs(collectionsStore);
   const { currentSong, playQueue, tempQueue } = storeToRefs(playbackStore);
@@ -140,6 +157,13 @@ export const createPlayerFileManager = ({
     });
 
     return changed ? nextSongs : songs;
+  };
+
+  const clearLibraryPathCaches = () => {
+    clearLibraryAllSongPathCache();
+    clearLibraryCollectionSongPathCache();
+    clearLibraryDetailSongPathCache();
+    clearLibraryFolderSongPathCache();
   };
 
   const deleteFolder = async (path: string) => {
@@ -242,8 +266,37 @@ export const createPlayerFileManager = ({
 
   const refreshFolder = async (folderPath: string) => {
     const newSongs = await fileApi.scanMusicFolder(folderPath);
-    const otherSongs = sourceSongs.value.filter(song => !song.path.startsWith(folderPath));
-    sourceSongs.value = [...otherSongs, ...newSongs];
+    const removedPaths = canonicalSongs.value
+      .filter(song => isSongInFolderScope(folderPath, song.path))
+      .map(song => song.path)
+      .filter(path => !newSongs.some(song => song.path === path));
+    const keepSong = (song: Song) => !isSongInFolderScope(folderPath, song.path);
+
+    sourceSongs.value = [...sourceSongs.value.filter(keepSong), ...newSongs];
+    canonicalSongs.value = [...canonicalSongs.value.filter(keepSong), ...newSongs];
+    clearLibraryPathCaches();
+
+    if (removedPaths.length > 0) {
+      const removedPathSet = new Set(removedPaths);
+      favoritePaths.value = favoritePaths.value.filter(path => !removedPathSet.has(path));
+      playlists.value.forEach((playlist) => {
+        playlist.songPaths = playlist.songPaths.filter(path => !removedPathSet.has(path));
+      });
+      recentSongs.value = recentSongs.value.filter(item => !removedPathSet.has(item.path));
+      playQueue.value = playQueue.value.filter(song => !removedPathSet.has(song.path));
+      tempQueue.value = tempQueue.value.filter(song => !removedPathSet.has(song.path));
+
+      if (currentSong.value && removedPathSet.has(currentSong.value.path)) {
+        currentSong.value = null;
+      }
+
+      await removeFromHistory(removedPaths);
+    }
+
+    return {
+      removedCount: removedPaths.length,
+      removedPaths,
+    };
   };
 
   const removeFolder = (folderPath: string) => {
