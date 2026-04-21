@@ -131,7 +131,7 @@ export interface LibraryScanSession {
 export interface ThemeSettings {
   mode: 'light' | 'dark' | 'custom';
   dynamicBgType: 'none' | 'flow' | 'blur';
-  windowMaterial: 'none' | 'mica' | 'acrylic';
+  windowMaterial: 'none' | 'mica' | 'acrylic' | 'blur';
   flowColorBoost: number;
   flowDepth: number;
   flowSpeed: number;

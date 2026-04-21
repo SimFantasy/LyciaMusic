@@ -242,7 +242,7 @@ const restoreAppSettings = (
     }
 
     const savedWindowMaterial = typeof savedTheme.windowMaterial === 'string'
-      && ['none', 'mica', 'acrylic'].includes(savedTheme.windowMaterial)
+      && ['none', 'mica', 'acrylic', 'blur'].includes(savedTheme.windowMaterial)
       ? savedTheme.windowMaterial as typeof currentSettings.theme.windowMaterial
       : currentSettings.theme.windowMaterial;
 

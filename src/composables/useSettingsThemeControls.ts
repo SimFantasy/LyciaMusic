@@ -4,6 +4,8 @@ import { useThemeSettings } from './useThemeSettings';
 import { useWindowMaterial, type WindowMaterialMode } from './windowMaterial';
 
 const clampFlowValue = (value: number) => Math.min(100, Math.max(0, Math.round(value)));
+type SelectableWindowMaterialMode = Exclude<WindowMaterialMode, 'none'>;
+type WindowMaterialDisabledReason = 'windows' | 'windows11' | 'transparency' | 'theme-conflict' | null;
 
 export function useSettingsThemeControls() {
   const { theme, patchTheme, setThemeMode, setDynamicBackgroundType, setWindowMaterial } = useThemeSettings();
@@ -32,11 +34,7 @@ export function useSettingsThemeControls() {
   const hasWindowMaterialThemeConflict = computed(
     () => colorScheme.value === 'custom' || theme.value.dynamicBgType !== 'none',
   );
-  const windowMaterialDisabledReason = computed<'windows11' | 'transparency' | 'theme-conflict' | null>(() => {
-    if (!isWindows11.value) {
-      return 'windows11';
-    }
-
+  const windowMaterialSharedDisabledReason = computed<Exclude<WindowMaterialDisabledReason, 'windows' | 'windows11'>>(() => {
     if (capabilities.value.systemTransparencyEnabled === false) {
       return 'transparency';
     }
@@ -47,6 +45,10 @@ export function useSettingsThemeControls() {
 
     return null;
   });
+  const windowMaterialDisabledReason = computed<WindowMaterialDisabledReason>(() => (
+    windowMaterialSharedDisabledReason.value
+      ?? (capabilities.value.isWindows ? null : 'windows')
+  ));
   const isWindowMaterialDisabled = computed(() => windowMaterialDisabledReason.value !== null);
   const isDynamicBgDisabled = computed(
     () => colorScheme.value === 'custom' || hasWindowMaterialSelected.value,
@@ -67,13 +69,33 @@ export function useSettingsThemeControls() {
     }
   };
 
-  const toggleWindowMaterial = (mode: Exclude<WindowMaterialMode, 'none'>) => {
-    if (isWindowMaterialDisabled.value) {
+  const getWindowMaterialModeDisabledReason = (mode: SelectableWindowMaterialMode): WindowMaterialDisabledReason => {
+    if ((mode === 'acrylic' || mode === 'mica') && !isWindows11.value) {
+      return 'windows11';
+    }
+
+    if (mode === 'blur' && (!capabilities.value.isWindows || !capabilities.value.supportsBlur)) {
+      return 'windows';
+    }
+
+    return windowMaterialSharedDisabledReason.value;
+  };
+
+  const isWindowMaterialModeDisabled = (mode: SelectableWindowMaterialMode) => (
+    getWindowMaterialModeDisabledReason(mode) !== null
+  );
+
+  const isWindowMaterialButtonDisabled = (mode: SelectableWindowMaterialMode) => (
+    materialMode.value !== mode && isWindowMaterialModeDisabled(mode)
+  );
+
+  const toggleWindowMaterial = (mode: SelectableWindowMaterialMode) => {
+    if (materialMode.value === mode) {
+      materialMode.value = 'none';
       return;
     }
 
-    if (materialMode.value === mode) {
-      materialMode.value = 'none';
+    if (isWindowMaterialModeDisabled(mode)) {
       return;
     }
 
@@ -126,6 +148,7 @@ export function useSettingsThemeControls() {
     isWindows11,
     hasWindowMaterialSelected,
     isWindowMaterialDisabled,
+    isWindowMaterialButtonDisabled,
     windowMaterialDisabledReason,
     isDynamicBgDisabled,
     showFlowTuning,

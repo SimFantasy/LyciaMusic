@@ -95,6 +95,7 @@ export interface WindowMaterialCapabilities {
   isWindows: boolean;
   supportsAcrylic: boolean;
   supportsMica: boolean;
+  supportsBlur: boolean;
   systemTransparencyEnabled: boolean | null;
   windowsBuildNumber: number | null;
 }

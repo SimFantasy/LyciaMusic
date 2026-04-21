@@ -17,7 +17,8 @@ const TEXT = {
   dynamicBlur: '\u9759\u6001\u6a21\u7cca',
   dynamicDisabledHint: '\u81ea\u5b9a\u4e49\u76ae\u80a4\u6216\u7a97\u53e3\u6750\u8d28\u542f\u7528\u65f6\uff0c\u52a8\u6001\u80cc\u666f\u4f1a\u81ea\u52a8\u505c\u7528\u3002',
   windowMaterialTitle: '\u7a97\u53e3\u6750\u8d28',
-  windowMaterialUnsupportedHint: '\u4ec5 Windows 11 \u652f\u6301\u3002',
+  windowMaterialBlur: '\u6bdb\u73bb\u7483',
+  windowMaterialUnsupportedHint: '\u4ec5 Windows 10 / 11 \u652f\u6301\u3002',
   windowMaterialTransparencyHint: '\u9700\u5728\u7cfb\u7edf\u8bbe\u7f6e\u4e2d\u5f00\u542f\u900f\u660e\u6548\u679c\u540e\u624d\u53ef\u7528\u3002',
   windowMaterialConflictHint: '\u5173\u95ed\u52a8\u6001\u80cc\u666f\u6216\u81ea\u5b9a\u4e49\u76ae\u80a4\u540e\u53ef\u7528\u3002',
 };
@@ -49,6 +50,7 @@ const {
   colorScheme,
   materialMode,
   isWindowMaterialDisabled,
+  isWindowMaterialButtonDisabled,
   windowMaterialDisabledReason,
   isDynamicBgDisabled,
   showFlowTuning,
@@ -301,15 +303,18 @@ const {
         class=""
         :class="isWindowMaterialDisabled ? 'opacity-50' : ''"
       >
-        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
           <button
             type="button"
             class="rounded-xl border px-4 py-3 text-left transition-all"
-            :class="materialMode === 'acrylic'
-              ? 'border-[#EC4141] bg-[#EC4141]/8 shadow-sm'
-              : 'border-gray-200/70 hover:border-[#EC4141]/40 hover:bg-white/40 dark:border-white/10 dark:hover:bg-white/10'"
-            :disabled="isWindowMaterialDisabled"
-            :aria-disabled="isWindowMaterialDisabled"
+            :class="[
+              materialMode === 'acrylic'
+                ? 'border-[#EC4141] bg-[#EC4141]/8 shadow-sm'
+                : 'border-gray-200/70 hover:border-[#EC4141]/40 hover:bg-white/40 dark:border-white/10 dark:hover:bg-white/10',
+              isWindowMaterialButtonDisabled('acrylic') ? 'cursor-not-allowed opacity-45' : '',
+            ]"
+            :disabled="isWindowMaterialButtonDisabled('acrylic')"
+            :aria-disabled="isWindowMaterialButtonDisabled('acrylic')"
             @click="toggleWindowMaterial('acrylic')"
           >
             <div class="flex items-center justify-between gap-3">
@@ -326,11 +331,14 @@ const {
           <button
             type="button"
             class="rounded-xl border px-4 py-3 text-left transition-all"
-            :class="materialMode === 'mica'
-              ? 'border-[#EC4141] bg-[#EC4141]/8 shadow-sm'
-              : 'border-gray-200/70 hover:border-[#EC4141]/40 hover:bg-white/40 dark:border-white/10 dark:hover:bg-white/10'"
-            :disabled="isWindowMaterialDisabled"
-            :aria-disabled="isWindowMaterialDisabled"
+            :class="[
+              materialMode === 'mica'
+                ? 'border-[#EC4141] bg-[#EC4141]/8 shadow-sm'
+                : 'border-gray-200/70 hover:border-[#EC4141]/40 hover:bg-white/40 dark:border-white/10 dark:hover:bg-white/10',
+              isWindowMaterialButtonDisabled('mica') ? 'cursor-not-allowed opacity-45' : '',
+            ]"
+            :disabled="isWindowMaterialButtonDisabled('mica')"
+            :aria-disabled="isWindowMaterialButtonDisabled('mica')"
             @click="toggleWindowMaterial('mica')"
           >
             <div class="flex items-center justify-between gap-3">
@@ -343,9 +351,33 @@ const {
               </span>
             </div>
           </button>
+
+          <button
+            type="button"
+            class="rounded-xl border px-4 py-3 text-left transition-all"
+            :class="[
+              materialMode === 'blur'
+                ? 'border-[#EC4141] bg-[#EC4141]/8 shadow-sm'
+                : 'border-gray-200/70 hover:border-[#EC4141]/40 hover:bg-white/40 dark:border-white/10 dark:hover:bg-white/10',
+              isWindowMaterialButtonDisabled('blur') ? 'cursor-not-allowed opacity-45' : '',
+            ]"
+            :disabled="isWindowMaterialButtonDisabled('blur')"
+            :aria-disabled="isWindowMaterialButtonDisabled('blur')"
+            @click="toggleWindowMaterial('blur')"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ TEXT.windowMaterialBlur }}</span>
+              <span
+                v-if="materialMode === 'blur'"
+                class="flex h-5 w-5 items-center justify-center rounded-full bg-[#EC4141] text-[11px] text-white"
+              >
+                &#10003;
+              </span>
+            </div>
+          </button>
         </div>
       </div>
-      <p v-if="windowMaterialDisabledReason === 'windows11'" class="text-xs text-amber-600 dark:text-amber-400">
+      <p v-if="windowMaterialDisabledReason === 'windows'" class="text-xs text-amber-600 dark:text-amber-400">
         {{ TEXT.windowMaterialUnsupportedHint }}
       </p>
       <p v-else-if="windowMaterialDisabledReason === 'transparency'" class="text-xs text-amber-600 dark:text-amber-400">
