@@ -56,7 +56,9 @@ const handleEnterBatchMode = () => {
           class="bg-white/1 hover:bg-white/10 border border-white/1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 w-7 h-7 flex items-center justify-center rounded-full transition active:scale-95 shadow-sm hover:border-gray-200 dark:hover:border-white/20"
           title="播放全部"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 5.5v13l10-6.5-10-6.5Z" />
+          </svg>
         </button>
 
         <!-- 全部添加至播放列表 -->
@@ -65,11 +67,13 @@ const handleEnterBatchMode = () => {
           class="bg-white/1 hover:bg-white/10 border border-white/1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 w-7 h-7 flex items-center justify-center rounded-full transition active:scale-95 shadow-sm hover:border-gray-200 dark:hover:border-white/20"
           title="全部添加至播放列表"
         >
-          <!-- 播放三角形 + 右下角加号 -->
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-            <path d="M6.3 2.84A1.5 1.5 0 004 4.11v11.78a1.5 1.5 0 002.3 1.27l9.344-5.891a1.5 1.5 0 000-2.538L6.3 2.84z" />
-            <circle cx="15" cy="15" r="4.5" fill="currentColor" stroke="white" stroke-width="1.5"/>
-            <path d="M15 13v4M13 15h4" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          <!-- 队列列表 + 加号 -->
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3.5 6H17" />
+            <path d="M3.5 12H14" />
+            <path d="M3.5 18H11" />
+            <path d="M18 14v6" />
+            <path d="M15 17h6" />
           </svg>
         </button>
 

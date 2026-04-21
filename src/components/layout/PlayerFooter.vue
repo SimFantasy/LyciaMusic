@@ -318,7 +318,7 @@ onUnmounted(() => {
           : 'text-gray-800 dark:text-white bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 border-black/5 dark:border-white/5'"
       >
         <svg v-if="isPlaying" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 fill-current" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
-        <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 ml-1 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+        <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 fill-current" viewBox="0 0 24 24"><path d="M8.3 5v14l11-7z" /></svg>
       </button>
 
       <button @click="nextSong" 
