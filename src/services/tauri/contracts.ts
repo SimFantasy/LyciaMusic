@@ -21,6 +21,14 @@ export interface AudioOutputStatus {
   follows_system_default: boolean;
 }
 
+export type LyricsStorageSource = 'embedded' | 'sidecar' | 'empty';
+
+export interface SongLyricsForEdit {
+  lyrics: string;
+  source: LyricsStorageSource;
+  sourcePath: string | null;
+}
+
 export interface RecentHistoryRecord {
   songPath: string;
   playedAt: number;
@@ -169,6 +177,16 @@ export interface TauriCommandMap {
   get_song_cover: { payload: { path: string }; response: string };
   clear_cover_cache: { payload: undefined; response: void };
   get_song_lyrics: { payload: { path: string }; response: string };
+  get_song_lyrics_for_edit: { payload: { path: string }; response: SongLyricsForEdit };
+  save_song_lyrics: {
+    payload: {
+      path: string;
+      lyrics: string;
+      source: LyricsStorageSource;
+      sourcePath: string | null;
+    };
+    response: SongLyricsForEdit;
+  };
   get_song_detail: { payload: { path: string }; response: SongDetail };
   play_audio: { payload: PlayAudioOptions; response: void };
   update_playback_metadata: { payload: UpdatePlaybackMetadataOptions; response: void };

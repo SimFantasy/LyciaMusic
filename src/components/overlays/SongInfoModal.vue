@@ -4,6 +4,7 @@ import type { Song, SongDetail } from '../../types';
 import { useCoverCache } from '../../composables/useCoverCache';
 import { usePlayer } from '../../composables/player';
 import { useSongDetailCache } from '../../composables/useSongDetailCache';
+import type { LyricsStorageSource } from '../../services/tauri/contracts';
 import { tauriInvoke } from '../../services/tauri/invoke';
 
 const props = defineProps<{
@@ -22,10 +23,16 @@ const isClosing = ref(false);
 const currentSongDetail = ref<SongDetail | null>(null);
 const lyricsText = ref('');
 const originalLyricsText = ref('');
+const lyricsSource = ref<LyricsStorageSource>('empty');
+const lyricsSourcePath = ref<string | null>(null);
 const isLyricsLoading = ref(false);
+const isLyricsSaving = ref(false);
 const lyricsError = ref('');
 const isLyricsEditorExpanded = ref(false);
+const isLyricsEditorTransitioning = ref(false);
+const pendingLyricsExpanded = ref<boolean | null>(null);
 let detailRequestId = 0;
+let lyricsExpandTimer: ReturnType<typeof window.setTimeout> | null = null;
 
 const handleClose = () => {
   if (isClosing.value) return;
@@ -45,9 +52,14 @@ watch(
       currentSongDetail.value = null;
       lyricsText.value = '';
       originalLyricsText.value = '';
+      lyricsSource.value = 'empty';
+      lyricsSourcePath.value = null;
       lyricsError.value = '';
       isLyricsLoading.value = false;
+      isLyricsSaving.value = false;
       isLyricsEditorExpanded.value = false;
+      isLyricsEditorTransitioning.value = false;
+      pendingLyricsExpanded.value = null;
       setTimeout(() => {
         if (requestId === detailRequestId) {
           coverUrl.value = '';
@@ -58,15 +70,25 @@ watch(
 
     isClosing.value = false;
     isLyricsLoading.value = true;
+    isLyricsSaving.value = false;
+    lyricsSource.value = 'empty';
+    lyricsSourcePath.value = null;
     lyricsError.value = '';
     isLyricsEditorExpanded.value = false;
+    isLyricsEditorTransitioning.value = false;
+    pendingLyricsExpanded.value = null;
 
     const [url, detail, lyricsResult] = await Promise.all([
       loadCover(path),
       loadSongDetail(path).catch(() => null),
-      tauriInvoke('get_song_lyrics', { path })
-        .then((lyrics) => ({ lyrics, error: '' }))
-        .catch((error) => ({ lyrics: '', error: String(error) })),
+      tauriInvoke('get_song_lyrics_for_edit', { path })
+        .then((lyrics) => ({ ...lyrics, error: '' }))
+        .catch((error) => ({
+          lyrics: '',
+          source: 'empty' as LyricsStorageSource,
+          sourcePath: null,
+          error: String(error),
+        })),
     ]);
 
     if (requestId !== detailRequestId || !props.visible || path !== (props.song?.path ?? '')) {
@@ -77,6 +99,8 @@ watch(
     currentSongDetail.value = detail;
     lyricsText.value = lyricsResult.lyrics;
     originalLyricsText.value = lyricsResult.lyrics;
+    lyricsSource.value = lyricsResult.source;
+    lyricsSourcePath.value = lyricsResult.sourcePath;
     lyricsError.value = lyricsResult.error;
     isLyricsLoading.value = false;
   },
@@ -92,7 +116,12 @@ const handleKeydown = (e: KeyboardEvent) => {
 };
 
 onMounted(() => window.addEventListener('keydown', handleKeydown));
-onUnmounted(() => window.removeEventListener('keydown', handleKeydown));
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown);
+  if (lyricsExpandTimer !== null) {
+    window.clearTimeout(lyricsExpandTimer);
+  }
+});
 
 const handleOpenFolder = () => {
   if (props.song?.path) {
@@ -109,8 +138,45 @@ const handleClearLyrics = () => {
   lyricsText.value = '';
 };
 
+const handleSaveLyrics = async () => {
+  if (!props.song?.path || isLyricsSaving.value) return;
+
+  isLyricsSaving.value = true;
+  lyricsError.value = '';
+
+  try {
+    const savedLyrics = await tauriInvoke('save_song_lyrics', {
+      path: props.song.path,
+      lyrics: lyricsText.value,
+      source: lyricsSource.value,
+      sourcePath: lyricsSourcePath.value,
+    });
+    originalLyricsText.value = lyricsText.value;
+    lyricsSource.value = savedLyrics.source;
+    lyricsSourcePath.value = savedLyrics.sourcePath;
+  } catch (error) {
+    lyricsError.value = String(error);
+  } finally {
+    isLyricsSaving.value = false;
+  }
+};
+
 const toggleLyricsEditorExpanded = () => {
-  isLyricsEditorExpanded.value = !isLyricsEditorExpanded.value;
+  if (lyricsExpandTimer !== null) {
+    window.clearTimeout(lyricsExpandTimer);
+    lyricsExpandTimer = null;
+  }
+
+  const nextExpanded = !isLyricsEditorExpanded.value;
+  pendingLyricsExpanded.value = nextExpanded;
+  isLyricsEditorTransitioning.value = true;
+
+  lyricsExpandTimer = window.setTimeout(() => {
+    isLyricsEditorExpanded.value = nextExpanded;
+    isLyricsEditorTransitioning.value = false;
+    pendingLyricsExpanded.value = null;
+    lyricsExpandTimer = null;
+  }, 360);
 };
 
 const displaySong = computed(() => {
@@ -191,6 +257,9 @@ const formatTime = (timestampSeconds?: number) => {
         :class="[
           isClosing ? 'scale-95 opacity-0 translate-y-4' : 'scale-100 opacity-100 translate-y-0',
           isLyricsEditorExpanded ? 'song-info-stage--lyrics-expanded' : '',
+          isLyricsEditorTransitioning ? 'song-info-stage--lyrics-transitioning' : '',
+          pendingLyricsExpanded === true ? 'song-info-stage--lyrics-expanding' : '',
+          pendingLyricsExpanded === false ? 'song-info-stage--lyrics-collapsing' : '',
         ]"
       >
         <!-- 模态框主体 -->
@@ -328,7 +397,7 @@ const formatTime = (timestampSeconds?: number) => {
               <div
                 v-if="displaySong"
                 class="lyrics-editor-inline-song"
-                :class="isLyricsEditorExpanded ? '' : 'lyrics-editor-inline-song--hidden'"
+                :class="isLyricsEditorExpanded || pendingLyricsExpanded === true ? '' : 'lyrics-editor-inline-song--hidden'"
               >
                 <div class="lyrics-editor-cover">
                   <img v-if="coverUrl" :src="coverUrl" alt="" />
@@ -349,10 +418,10 @@ const formatTime = (timestampSeconds?: number) => {
             <button
               type="button"
               class="lyrics-editor-expand-button"
-              :title="isLyricsEditorExpanded ? '还原歌词编辑器' : '放大歌词编辑器'"
+              :title="isLyricsEditorExpanded || pendingLyricsExpanded === true ? '还原歌词编辑器' : '放大歌词编辑器'"
               @click="toggleLyricsEditorExpanded"
             >
-              <svg v-if="!isLyricsEditorExpanded" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg v-if="!isLyricsEditorExpanded && pendingLyricsExpanded !== true" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
               </svg>
               <svg v-else class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -372,14 +441,19 @@ const formatTime = (timestampSeconds?: number) => {
           <div v-if="lyricsError" class="lyrics-editor-error">{{ lyricsError }}</div>
 
           <div class="lyrics-editor-actions">
-            <button type="button" class="modal-action-button" :disabled="!hasLyricsChanged" @click="handleResetLyrics">
+            <button type="button" class="modal-action-button" :disabled="!hasLyricsChanged || isLyricsSaving" @click="handleResetLyrics">
               恢复
             </button>
-            <button type="button" class="modal-action-button" :disabled="!lyricsText" @click="handleClearLyrics">
+            <button type="button" class="modal-action-button" :disabled="!lyricsText || isLyricsSaving" @click="handleClearLyrics">
               清空
             </button>
-            <button type="button" class="modal-action-button modal-action-button--primary" disabled>
-              保存
+            <button
+              type="button"
+              class="modal-action-button modal-action-button--primary"
+              :disabled="!hasLyricsChanged || isLyricsSaving"
+              @click="handleSaveLyrics"
+            >
+              {{ isLyricsSaving ? '保存中' : '保存' }}
             </button>
           </div>
         </aside>
@@ -422,7 +496,13 @@ const formatTime = (timestampSeconds?: number) => {
   gap: 0;
 }
 
-.song-info-stage--lyrics-expanded .song-info-main {
+.song-info-stage--lyrics-expanding,
+.song-info-stage--lyrics-collapsing {
+  gap: 18px;
+}
+
+.song-info-stage--lyrics-expanded .song-info-main,
+.song-info-stage--lyrics-expanding .song-info-main {
   flex-basis: 0;
   width: 0;
   opacity: 0;
@@ -432,6 +512,20 @@ const formatTime = (timestampSeconds?: number) => {
 
 .song-info-stage--lyrics-expanded .lyrics-editor-panel {
   flex-basis: 100%;
+}
+
+.song-info-stage--lyrics-transitioning .lyrics-editor-panel {
+  contain: paint;
+}
+
+.song-info-stage--lyrics-expanding .lyrics-editor-panel,
+.song-info-stage--lyrics-collapsing .lyrics-editor-panel {
+  flex-basis: 380px;
+}
+
+.song-info-stage--lyrics-expanding .lyrics-editor-textarea,
+.song-info-stage--lyrics-collapsing .lyrics-editor-textarea {
+  visibility: hidden;
 }
 
 .song-info-main,

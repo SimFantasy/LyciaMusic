@@ -1,6 +1,6 @@
 // music/types.rs - 数据结构定义
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 
 /// 并发控制状态
@@ -70,6 +70,22 @@ pub struct SongDetail {
     pub container: Option<String>,
     pub codec: Option<String>,
     pub file_size: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum LyricsStorageSource {
+    Embedded,
+    Sidecar,
+    Empty,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SongLyricsForEdit {
+    pub lyrics: String,
+    pub source: LyricsStorageSource,
+    pub source_path: Option<String>,
 }
 
 #[derive(Serialize, Clone, Debug)]
