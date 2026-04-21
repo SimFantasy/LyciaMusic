@@ -3,6 +3,10 @@ import { computed, ref, type CSSProperties, type Ref } from 'vue';
 
 import {
   DEFAULT_DESKTOP_PLAYER_ALIGNMENT,
+  DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR,
+  DEFAULT_DESKTOP_CUSTOM_ROMAJI_COLOR,
+  DEFAULT_DESKTOP_CUSTOM_TRANSLATION_COLOR,
+  DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR,
   DEFAULT_PLAYER_FONT_PRESET,
   DEFAULT_PLAYER_FONT_SCALE,
   DEFAULT_PLAYER_LINE_GAP,
@@ -67,6 +71,10 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     isLocked: false,
     persistLock: false,
     colorScheme: 'auto',
+    customPlayedColor: DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR,
+    customUnplayedColor: DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR,
+    customRomajiColor: DEFAULT_DESKTOP_CUSTOM_ROMAJI_COLOR,
+    customTranslationColor: DEFAULT_DESKTOP_CUSTOM_TRANSLATION_COLOR,
     playerFontScale: DEFAULT_PLAYER_FONT_SCALE,
     playerLineGap: DEFAULT_PLAYER_LINE_GAP,
     playerOffsetX: DEFAULT_PLAYER_OFFSET_X,
@@ -209,6 +217,15 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     '--lyrics-offset-y': `${settings.value.playerOffsetY}%`,
   }));
   const resolvedPalette = computed(() => {
+    if (settings.value.colorScheme === 'custom') {
+      return [
+        settings.value.customPlayedColor,
+        settings.value.customPlayedColor,
+        settings.value.customPlayedColor,
+        settings.value.customUnplayedColor,
+      ];
+    }
+
     if (settings.value.colorScheme === 'auto') {
       return normalizeThemeColors(themeColors.value);
     }
@@ -223,9 +240,17 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
       '--desktop-accent-b': resolvedPalette.value[1],
       '--desktop-accent-c': resolvedPalette.value[2],
       '--desktop-accent-d': resolvedPalette.value[3],
-      '--desktop-text-primary': 'rgba(255, 255, 255, 0.98)',
+      '--desktop-text-primary': settings.value.colorScheme === 'custom'
+        ? settings.value.customUnplayedColor
+        : 'rgba(255, 255, 255, 0.98)',
       '--desktop-text-secondary': 'rgba(255, 255, 255, 0.88)',
       '--desktop-text-tertiary': 'rgba(255, 255, 255, 0.76)',
+      '--desktop-romaji-color': settings.value.colorScheme === 'custom'
+        ? settings.value.customRomajiColor
+        : 'color-mix(in srgb, var(--desktop-accent-d) 42%, var(--desktop-text-secondary))',
+      '--desktop-translation-color': settings.value.colorScheme === 'custom'
+        ? settings.value.customTranslationColor
+        : 'color-mix(in srgb, var(--desktop-accent-c) 28%, var(--desktop-text-tertiary))',
       outline: shouldShowSurface ? '1px solid rgba(255, 255, 255, 0.16)' : 'none',
     } as Record<string, string>;
   });

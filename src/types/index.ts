@@ -161,7 +161,7 @@ export interface SidebarSettings {
 }
 
 export type LyricsPlayerAlignment = 'left' | 'center' | 'right';
-export type LyricsColorScheme = 'auto' | 'default' | 'pink' | 'blue' | 'green' | 'white';
+export type LyricsColorScheme = 'auto' | 'default' | 'pink' | 'blue' | 'green' | 'white' | 'custom';
 export type LyricsFontPreset = string;
 
 export interface LyricsSettings {
@@ -182,6 +182,10 @@ export interface DesktopLyricsSettings {
   isLocked: boolean;
   persistLock: boolean;
   colorScheme: LyricsColorScheme;
+  customPlayedColor: string;
+  customUnplayedColor: string;
+  customRomajiColor: string;
+  customTranslationColor: string;
   playerFontScale: number;
   playerLineGap: number;
   playerOffsetX: number;

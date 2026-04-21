@@ -277,13 +277,13 @@ const {
 }
 
 .desktop-lyric-sub--romaji {
-  color: color-mix(in srgb, var(--desktop-accent-d) 42%, var(--desktop-text-secondary));
-  text-shadow: 0 0 16px color-mix(in srgb, var(--desktop-accent-d) 14%, transparent);
+  color: var(--desktop-romaji-color);
+  text-shadow: 0 0 16px color-mix(in srgb, var(--desktop-romaji-color) 20%, transparent);
 }
 
 .desktop-lyric-sub--translation {
-  color: color-mix(in srgb, var(--desktop-accent-c) 28%, var(--desktop-text-tertiary));
-  text-shadow: 0 0 12px color-mix(in srgb, var(--desktop-accent-c) 10%, transparent);
+  color: var(--desktop-translation-color);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--desktop-translation-color) 18%, transparent);
 }
 
 .lyrics-align-left {
