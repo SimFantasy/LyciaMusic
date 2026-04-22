@@ -54,6 +54,7 @@ export const defaultThemeSettings: ThemeSettings = {
   flowDepth: 30,
   flowSpeed: 52,
   flowTexture: 34,
+  windowBlurTint: 50,
   customBgPath: '',
   opacity: 0.8,
   blur: 20,

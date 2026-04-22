@@ -26,15 +26,11 @@ const TEXT = {
 const FLOW_TEXT = {
   panelTitle: '\u6d41\u5149\u5fae\u8c03',
   colorBoost: '\u8272\u5f69\u5f3a\u5ea6',
-  colorBoostHint: '\u8ba9\u80cc\u666f\u66f4\u67d4\u548c\u6216\u66f4\u663e\u8272',
   depth: '\u660e\u6697\u6df1\u5ea6',
-  depthHint: '\u8c03\u6574\u80cc\u666f\u66f4\u901a\u900f\u8fd8\u662f\u66f4\u6df1\u9083',
   speed: '\u6d41\u52a8\u901f\u5ea6',
-  speedHint: '\u63a7\u5236\u5149\u5f71\u6e38\u8d70\u7684\u8282\u594f',
   texture: '\u7eb9\u7406\u5f3a\u5ea6',
-  textureHint: '\u8c03\u6574\u566a\u70b9\u7ec6\u8282\uff0c\u51b3\u5b9a\u80cc\u666f\u7684\u8d28\u611f',
   subtle: '\u67d4\u548c',
-  vivid: '\u9c9c\u660e',
+  vivid: '\u9c9c\u8273',
   airy: '\u901a\u900f',
   deep: '\u6df1\u9083',
   calm: '\u8212\u7f13',
@@ -42,6 +38,14 @@ const FLOW_TEXT = {
   clean: '\u5e72\u51c0',
   textured: '\u7ec6\u817b',
   toggleLabel: '\u5c55\u5f00\u6216\u6536\u8d77\u6d41\u5149\u5fae\u8c03',
+};
+
+const BLUR_TEXT = {
+  panelTitle: '\u906e\u7f69\u6d53\u5ea6',
+  tint: '\u906e\u7f69\u6d53\u6de1',
+  clear: '\u901a\u900f',
+  solid: '\u5b9e\u8272',
+  toggleLabel: '\u5c55\u5f00\u6216\u6536\u8d77\u6bdb\u73bb\u7483\u5fae\u8c03',
 };
 
 const {
@@ -54,15 +58,18 @@ const {
   windowMaterialDisabledReason,
   isDynamicBgDisabled,
   showFlowTuning,
+  showBlurTuning,
   setColorScheme,
   setDynamicType,
   toggleWindowMaterial,
   openCustomModal,
   toggleFlowTuning,
+  toggleBlurTuning,
   setFlowColorBoost,
   setFlowDepth,
   setFlowSpeed,
   setFlowTexture,
+  setWindowBlurTint,
 } = useSettingsThemeControls();
 </script>
 
@@ -113,91 +120,97 @@ const {
         <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
         {{ TEXT.dynamicTitle }}
       </h2>
-      <div
-        class="space-y-4"
-        :class="isDynamicBgDisabled ? 'pointer-events-none opacity-50' : ''"
-      >
-        <div>
-          <div class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ TEXT.dynamicHint }}</div>
+      <div class="space-y-4">
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-medium">
+          <span
+            :class="isDynamicBgDisabled
+              ? 'text-gray-500 dark:text-white/45'
+              : 'text-gray-800 dark:text-gray-200'"
+          >
+            {{ TEXT.dynamicHint }}
+          </span>
+          <span v-if="isDynamicBgDisabled" class="text-amber-600 dark:text-amber-400">
+            {{ TEXT.dynamicDisabledHint }}
+          </span>
         </div>
 
-        <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <button
-            type="button"
-            class="rounded-xl border px-4 py-3 text-left transition-all"
-            :class="theme.dynamicBgType === 'none'
-              ? 'border-[#EC4141] bg-[#EC4141]/8 shadow-sm'
-              : 'border-gray-200/70 hover:border-[#EC4141]/40 hover:bg-white/40 dark:border-white/10 dark:hover:bg-white/10'"
-            @click="setDynamicType('none')"
-          >
-            <div class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ TEXT.dynamicOff }}</div>
-          </button>
-
-          <div class="relative">
+        <div :class="isDynamicBgDisabled ? 'pointer-events-none opacity-50' : ''">
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
             <button
               type="button"
-              class="w-full rounded-xl border px-4 py-3 pr-12 text-left transition-all"
-              :class="theme.dynamicBgType === 'flow'
+              class="rounded-xl border px-4 py-3 text-left transition-all"
+              :class="theme.dynamicBgType === 'none'
                 ? 'border-[#EC4141] bg-[#EC4141]/8 shadow-sm'
                 : 'border-gray-200/70 hover:border-[#EC4141]/40 hover:bg-white/40 dark:border-white/10 dark:hover:bg-white/10'"
-              @click="setDynamicType('flow')"
+              @click="setDynamicType('none')"
             >
-              <div class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ TEXT.dynamicFlow }}</div>
+              <div class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ TEXT.dynamicOff }}</div>
             </button>
+
+            <div class="relative">
+              <button
+                type="button"
+                class="w-full rounded-xl border px-4 py-3 pr-12 text-left transition-all"
+                :class="theme.dynamicBgType === 'flow'
+                  ? 'border-[#EC4141] bg-[#EC4141]/8 shadow-sm'
+                  : 'border-gray-200/70 hover:border-[#EC4141]/40 hover:bg-white/40 dark:border-white/10 dark:hover:bg-white/10'"
+                @click="setDynamicType('flow')"
+              >
+                <div class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ TEXT.dynamicFlow }}</div>
+              </button>
+
+              <button
+                type="button"
+                class="absolute bottom-3 right-3 rounded-full p-1 text-[#EC4141]/70 opacity-40 transition-all duration-300 hover:bg-[#EC4141]/10 hover:opacity-100"
+                :class="showFlowTuning && theme.dynamicBgType === 'flow' ? 'bg-[#EC4141]/10 opacity-100' : ''"
+                :aria-label="FLOW_TEXT.toggleLabel"
+                @click.stop="toggleFlowTuning"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-4 w-4 transition-transform duration-300"
+                  :class="showFlowTuning && theme.dynamicBgType === 'flow' ? 'rotate-180' : ''"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
 
             <button
               type="button"
-              class="absolute bottom-3 right-3 rounded-full p-1 text-[#EC4141]/70 opacity-40 transition-all duration-300 hover:bg-[#EC4141]/10 hover:opacity-100"
-              :class="showFlowTuning && theme.dynamicBgType === 'flow' ? 'bg-[#EC4141]/10 opacity-100' : ''"
-              :aria-label="FLOW_TEXT.toggleLabel"
-              @click.stop="toggleFlowTuning"
+              class="rounded-xl border px-4 py-3 text-left transition-all"
+              :class="theme.dynamicBgType === 'blur'
+                ? 'border-[#EC4141] bg-[#EC4141]/8 shadow-sm'
+                : 'border-gray-200/70 hover:border-[#EC4141]/40 hover:bg-white/40 dark:border-white/10 dark:hover:bg-white/10'"
+              @click="setDynamicType('blur')"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4 transition-transform duration-300"
-                :class="showFlowTuning && theme.dynamicBgType === 'flow' ? 'rotate-180' : ''"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-              </svg>
+              <div class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ TEXT.dynamicBlur }}</div>
             </button>
           </div>
 
-          <button
-            type="button"
-            class="rounded-xl border px-4 py-3 text-left transition-all"
-            :class="theme.dynamicBgType === 'blur'
-              ? 'border-[#EC4141] bg-[#EC4141]/8 shadow-sm'
-              : 'border-gray-200/70 hover:border-[#EC4141]/40 hover:bg-white/40 dark:border-white/10 dark:hover:bg-white/10'"
-            @click="setDynamicType('blur')"
-          >
-            <div class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ TEXT.dynamicBlur }}</div>
-          </button>
-        </div>
-
-        <transition name="flow-panel">
-          <div
-            v-if="theme.dynamicBgType === 'flow' && showFlowTuning && !isDynamicBgDisabled"
-            class="rounded-2xl border border-[#EC4141]/15 bg-white/50 p-4 shadow-sm dark:border-white/8 dark:bg-black/25"
-          >
-            <div class="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <div class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ FLOW_TEXT.panelTitle }}</div>
-                <div class="text-xs text-gray-600 dark:text-white/60">Lycia Flow</div>
+          <transition name="flow-panel">
+            <div
+              v-if="theme.dynamicBgType === 'flow' && showFlowTuning && !isDynamicBgDisabled"
+              class="mt-4 rounded-2xl border border-[#EC4141]/15 bg-white/50 p-4 shadow-sm dark:border-white/8 dark:bg-black/25"
+            >
+              <div class="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <div class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ FLOW_TEXT.panelTitle }}</div>
+                  <div class="text-xs text-gray-600 dark:text-white/60">Lycia Flow</div>
+                </div>
+                <div class="rounded-full bg-[#EC4141]/10 px-2.5 py-1 text-[11px] font-medium text-[#EC4141]">
+                  {{ theme.flowColorBoost }} / {{ theme.flowDepth }} / {{ theme.flowSpeed }} / {{ theme.flowTexture }}
+                </div>
               </div>
-              <div class="rounded-full bg-[#EC4141]/10 px-2.5 py-1 text-[11px] font-medium text-[#EC4141]">
-                {{ theme.flowColorBoost }} / {{ theme.flowDepth }} / {{ theme.flowSpeed }} / {{ theme.flowTexture }}
-              </div>
-            </div>
 
-            <div class="space-y-4">
+              <div class="space-y-4">
               <label class="block">
                 <div class="mb-1.5 flex items-center justify-between gap-4">
                   <div>
                     <div class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ FLOW_TEXT.colorBoost }}</div>
-                    <div class="text-xs text-gray-600 dark:text-white/60">{{ FLOW_TEXT.colorBoostHint }}</div>
                   </div>
                   <div class="text-xs font-medium tabular-nums text-[#EC4141]">{{ theme.flowColorBoost }}</div>
                 </div>
@@ -220,7 +233,6 @@ const {
                 <div class="mb-1.5 flex items-center justify-between gap-4">
                   <div>
                     <div class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ FLOW_TEXT.depth }}</div>
-                    <div class="text-xs text-gray-600 dark:text-white/60">{{ FLOW_TEXT.depthHint }}</div>
                   </div>
                   <div class="text-xs font-medium tabular-nums text-[#EC4141]">{{ theme.flowDepth }}</div>
                 </div>
@@ -243,7 +255,6 @@ const {
                 <div class="mb-1.5 flex items-center justify-between gap-4">
                   <div>
                     <div class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ FLOW_TEXT.speed }}</div>
-                    <div class="text-xs text-gray-600 dark:text-white/60">{{ FLOW_TEXT.speedHint }}</div>
                   </div>
                   <div class="text-xs font-medium tabular-nums text-[#EC4141]">{{ theme.flowSpeed }}</div>
                 </div>
@@ -266,7 +277,6 @@ const {
                 <div class="mb-1.5 flex items-center justify-between gap-4">
                   <div>
                     <div class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ FLOW_TEXT.texture }}</div>
-                    <div class="text-xs text-gray-600 dark:text-white/60">{{ FLOW_TEXT.textureHint }}</div>
                   </div>
                   <div class="text-xs font-medium tabular-nums text-[#EC4141]">{{ theme.flowTexture }}</div>
                 </div>
@@ -288,9 +298,7 @@ const {
           </div>
         </transition>
 
-        <p v-if="isDynamicBgDisabled" class="text-xs text-amber-600 dark:text-amber-400">
-          {{ TEXT.dynamicDisabledHint }}
-        </p>
+      </div>
       </div>
     </section>
 
@@ -319,12 +327,6 @@ const {
           >
             <div class="flex items-center justify-between gap-3">
               <span class="text-sm font-semibold text-gray-800 dark:text-gray-200">Acrylic</span>
-              <span
-                v-if="materialMode === 'acrylic'"
-                class="flex h-5 w-5 items-center justify-center rounded-full bg-[#EC4141] text-[11px] text-white"
-              >
-                &#10003;
-              </span>
             </div>
           </button>
 
@@ -343,39 +345,78 @@ const {
           >
             <div class="flex items-center justify-between gap-3">
               <span class="text-sm font-semibold text-gray-800 dark:text-gray-200">Mica</span>
-              <span
-                v-if="materialMode === 'mica'"
-                class="flex h-5 w-5 items-center justify-center rounded-full bg-[#EC4141] text-[11px] text-white"
-              >
-                &#10003;
-              </span>
             </div>
           </button>
 
-          <button
-            type="button"
-            class="rounded-xl border px-4 py-3 text-left transition-all"
-            :class="[
-              materialMode === 'blur'
-                ? 'border-[#EC4141] bg-[#EC4141]/8 shadow-sm'
-                : 'border-gray-200/70 hover:border-[#EC4141]/40 hover:bg-white/40 dark:border-white/10 dark:hover:bg-white/10',
-              isWindowMaterialButtonDisabled('blur') ? 'cursor-not-allowed opacity-45' : '',
-            ]"
-            :disabled="isWindowMaterialButtonDisabled('blur')"
-            :aria-disabled="isWindowMaterialButtonDisabled('blur')"
-            @click="toggleWindowMaterial('blur')"
-          >
-            <div class="flex items-center justify-between gap-3">
-              <span class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ TEXT.windowMaterialBlur }}</span>
-              <span
-                v-if="materialMode === 'blur'"
-                class="flex h-5 w-5 items-center justify-center rounded-full bg-[#EC4141] text-[11px] text-white"
+          <div class="relative">
+            <button
+              type="button"
+              class="w-full rounded-xl border px-4 py-3 pr-12 text-left transition-all"
+              :class="[
+                materialMode === 'blur'
+                  ? 'border-[#EC4141] bg-[#EC4141]/8 shadow-sm'
+                  : 'border-gray-200/70 hover:border-[#EC4141]/40 hover:bg-white/40 dark:border-white/10 dark:hover:bg-white/10',
+                isWindowMaterialButtonDisabled('blur') ? 'cursor-not-allowed opacity-45' : '',
+              ]"
+              :disabled="isWindowMaterialButtonDisabled('blur')"
+              :aria-disabled="isWindowMaterialButtonDisabled('blur')"
+              @click="toggleWindowMaterial('blur')"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ TEXT.windowMaterialBlur }}</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              class="absolute bottom-3 right-3 rounded-full p-1 text-[#EC4141]/70 opacity-40 transition-all duration-300 hover:bg-[#EC4141]/10 hover:opacity-100"
+              :class="showBlurTuning && materialMode === 'blur' ? 'bg-[#EC4141]/10 opacity-100' : ''"
+              :aria-label="BLUR_TEXT.toggleLabel"
+              @click.stop="toggleBlurTuning"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4 transition-transform duration-300"
+                :class="showBlurTuning && materialMode === 'blur' ? 'rotate-180' : ''"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
               >
-                &#10003;
-              </span>
-            </div>
-          </button>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
         </div>
+
+        <transition name="flow-panel">
+          <div
+            v-if="materialMode === 'blur' && showBlurTuning"
+            class="mt-4 rounded-2xl border border-[#EC4141]/15 bg-white/50 p-4 shadow-sm dark:border-white/8 dark:bg-black/25"
+          >
+            <div class="mb-4 flex items-center justify-between gap-3">
+              <div class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ BLUR_TEXT.panelTitle }}</div>
+              <div class="rounded-full bg-[#EC4141]/10 px-2.5 py-1 text-[11px] font-medium text-[#EC4141]">
+                {{ theme.windowBlurTint }}
+              </div>
+            </div>
+
+            <label class="block">
+              <input
+                :value="theme.windowBlurTint"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                class="flow-slider"
+                @input="setWindowBlurTint(Number(($event.target as HTMLInputElement).value))"
+              />
+              <div class="mt-1 flex items-center justify-between text-[11px] text-gray-500 dark:text-white/50">
+                <span>{{ BLUR_TEXT.clear }}</span>
+                <span>{{ BLUR_TEXT.solid }}</span>
+              </div>
+            </label>
+          </div>
+        </transition>
       </div>
       <p v-if="windowMaterialDisabledReason === 'windows'" class="text-xs text-amber-600 dark:text-amber-400">
         {{ TEXT.windowMaterialUnsupportedHint }}

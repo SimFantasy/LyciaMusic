@@ -136,6 +136,7 @@ export interface ThemeSettings {
   flowDepth: number;
   flowSpeed: number;
   flowTexture: number;
+  windowBlurTint: number;
   customBgPath: string; // Legacy field, keeping for compatibility if needed, but we'll use customBackground
   opacity: number;      // Legacy field
   blur: number;         // Legacy field

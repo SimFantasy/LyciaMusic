@@ -12,6 +12,7 @@ export function useSettingsThemeControls() {
   const { capabilities, loadWindowMaterialCapabilities } = useWindowMaterial();
   const showCustomModal = ref(false);
   const showFlowTuning = ref(false);
+  const showBlurTuning = ref(false);
 
   const colorScheme = computed({
     get: () => theme.value.mode,
@@ -92,6 +93,9 @@ export function useSettingsThemeControls() {
   const toggleWindowMaterial = (mode: SelectableWindowMaterialMode) => {
     if (materialMode.value === mode) {
       materialMode.value = 'none';
+      if (mode === 'blur') {
+        showBlurTuning.value = false;
+      }
       return;
     }
 
@@ -100,6 +104,9 @@ export function useSettingsThemeControls() {
     }
 
     materialMode.value = mode;
+    if (mode !== 'blur') {
+      showBlurTuning.value = false;
+    }
   };
 
   const openCustomModal = () => {
@@ -120,6 +127,20 @@ export function useSettingsThemeControls() {
     showFlowTuning.value = !showFlowTuning.value;
   };
 
+  const toggleBlurTuning = () => {
+    if (materialMode.value !== 'blur') {
+      if (isWindowMaterialModeDisabled('blur')) {
+        return;
+      }
+
+      materialMode.value = 'blur';
+      showBlurTuning.value = true;
+      return;
+    }
+
+    showBlurTuning.value = !showBlurTuning.value;
+  };
+
   const setFlowColorBoost = (value: number) => {
     patchTheme({ flowColorBoost: clampFlowValue(value) });
   };
@@ -134,6 +155,10 @@ export function useSettingsThemeControls() {
 
   const setFlowTexture = (value: number) => {
     patchTheme({ flowTexture: clampFlowValue(value) });
+  };
+
+  const setWindowBlurTint = (value: number) => {
+    patchTheme({ windowBlurTint: clampFlowValue(value) });
   };
 
   onMounted(() => {
@@ -152,14 +177,17 @@ export function useSettingsThemeControls() {
     windowMaterialDisabledReason,
     isDynamicBgDisabled,
     showFlowTuning,
+    showBlurTuning,
     setColorScheme,
     setDynamicType,
     toggleWindowMaterial,
     openCustomModal,
     toggleFlowTuning,
+    toggleBlurTuning,
     setFlowColorBoost,
     setFlowDepth,
     setFlowSpeed,
     setFlowTexture,
+    setWindowBlurTint,
   };
 }

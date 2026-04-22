@@ -34,6 +34,7 @@ export function useAppThemeSync() {
     await applyWindowMaterial(
       theme.value.windowMaterial,
       document.documentElement.classList.contains('dark'),
+      theme.value.windowBlurTint,
     );
   };
 

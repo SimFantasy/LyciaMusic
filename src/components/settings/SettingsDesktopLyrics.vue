@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { emit } from '@tauri-apps/api/event';
-import { Check, ChevronDown, RotateCcw, Type } from 'lucide-vue-next';
+import { Check, ChevronDown, RotateCcw } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 
 import {
@@ -695,9 +695,6 @@ onUnmounted(() => {
               :class="isFontPresetMenuOpen ? 'desktop-font-trigger--open' : ''"
               @click="toggleFontPresetMenu"
             >
-              <div class="desktop-font-trigger-icon">
-                <Type :size="16" />
-              </div>
               <div class="min-w-0 flex-1 text-left">
                 <div class="truncate text-[15px] font-semibold text-gray-800 dark:text-gray-100" :style="{ fontFamily: selectedFontFamily }">
                   {{ selectedFontLabel }}
@@ -1039,11 +1036,6 @@ onUnmounted(() => {
     linear-gradient(180deg, rgba(236, 65, 65, 0.16), rgba(255, 255, 255, 0.05));
 }
 
-:global(.dark) .desktop-font-trigger-icon {
-  background: rgba(236, 65, 65, 0.14);
-  color: #ff9a9a;
-}
-
 :global(.dark) .desktop-font-menu {
   border-color: rgba(255, 255, 255, 0.08);
   background: rgba(17, 17, 19, 0.88);
@@ -1094,7 +1086,7 @@ onUnmounted(() => {
 }
 
 .desktop-font-picker--inline {
-  width: min(340px, 100%);
+  width: min(185px, 100%);
   flex-shrink: 0;
 }
 
@@ -1120,16 +1112,10 @@ onUnmounted(() => {
 }
 
 .desktop-font-trigger--compact {
-  min-height: 44px;
-  padding: 8px 12px;
-  border-radius: 12px;
-  gap: 10px;
-}
-
-.desktop-font-trigger--compact .desktop-font-trigger-icon {
-  width: 30px;
-  height: 30px;
+  min-height: 36px;
+  padding: 7px 10px;
   border-radius: 10px;
+  gap: 8px;
 }
 
 .desktop-font-trigger:hover,
@@ -1143,18 +1129,6 @@ onUnmounted(() => {
 .desktop-font-trigger--open {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 244, 244, 0.78));
-}
-
-.desktop-font-trigger-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
-  background: rgba(236, 65, 65, 0.1);
-  color: #ec4141;
-  flex-shrink: 0;
 }
 
 .desktop-font-menu {

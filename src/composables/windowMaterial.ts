@@ -70,8 +70,16 @@ function getAcrylicTint(isDark: boolean): Color {
   return isDark ? [18, 18, 18, 140] : [248, 248, 248, 125];
 }
 
-function getBlurTint(isDark: boolean): Color {
-  return isDark ? [18, 18, 18, 110] : [248, 248, 248, 90];
+function normalizeTintValue(value = 50): number {
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+function getBlurTint(isDark: boolean, tintValue = 50): Color {
+  const value = normalizeTintValue(tintValue);
+  const alpha = isDark
+    ? 50 + Math.round(value * 1.2)
+    : 40 + value;
+  return isDark ? [18, 18, 18, alpha] : [248, 248, 248, alpha];
 }
 
 function getBaseWindowColor(isDark: boolean): Color {
@@ -134,7 +142,11 @@ export async function loadWindowMaterialCapabilities(force = false): Promise<Win
   return loadPromise;
 }
 
-export async function applyWindowMaterial(mode: WindowMaterialMode, isDark: boolean): Promise<ResolvedWindowMaterial> {
+export async function applyWindowMaterial(
+  mode: WindowMaterialMode,
+  isDark: boolean,
+  blurTint = 50,
+): Promise<ResolvedWindowMaterial> {
   const value = await loadWindowMaterialCapabilities();
   const resolved = resolveWindowMaterial(mode, value);
   const appWindow = getCurrentWindow();
@@ -159,7 +171,7 @@ export async function applyWindowMaterial(mode: WindowMaterialMode, isDark: bool
       await windowApi.setDarkModeForWindow(isDark);
       await appWindow.setEffects({
         effects: [Effect.Blur],
-        color: getBlurTint(isDark),
+        color: getBlurTint(isDark, blurTint),
       });
       await trySetWindowShadow(false);
     } else {
