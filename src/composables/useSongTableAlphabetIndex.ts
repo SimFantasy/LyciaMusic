@@ -181,6 +181,13 @@ export function useSongTableAlphabetIndex({
     !isCurrentSongVisibleInViewport.value,
   );
 
+  const showScrollToTopButton = computed(() =>
+    routePath.value === '/' &&
+    currentViewMode.value === 'all' &&
+    songs.value.length > 0 &&
+    scrollTop.value > ROW_HEIGHT,
+  );
+
   const clearHideIndexBarTimer = () => {
     if (hideIndexBarTimer) {
       clearTimeout(hideIndexBarTimer);
@@ -224,6 +231,10 @@ export function useSongTableAlphabetIndex({
     const targetTop = songIndex * ROW_HEIGHT;
     containerRef.value.scrollTo({ top: targetTop, behavior: 'auto' });
     scrollTop.value = targetTop;
+  };
+
+  const scrollToTop = () => {
+    containerRef.value?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const scrollFolderTargetsIntoView = (folderPath: string, rootPath: string | null) => {
@@ -430,6 +441,7 @@ export function useSongTableAlphabetIndex({
     isIndexBarVisible,
     canLocateCurrentSong,
     showLocateCurrentSongButton,
+    showScrollToTopButton,
     handleIndexHotspotEnter,
     handleIndexHotspotMove,
     handleIndexHotspotLeave,
@@ -438,5 +450,6 @@ export function useSongTableAlphabetIndex({
     handleIndexPointerDown,
     showIndexBar,
     scrollToCurrentSong,
+    scrollToTop,
   };
 }

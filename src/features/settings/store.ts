@@ -81,6 +81,7 @@ export const defaultSidebarSettings: SidebarSettings = {
 export const defaultAppSettings: AppSettings = {
   closeToTray: false,
   showQualityBadges: true,
+  enableScrollToTopButton: false,
   // Deprecated compat field. Main folder-source behavior no longer depends on it.
   linkFoldersToLibrary: false,
   lyricsSyncOffset: 0,

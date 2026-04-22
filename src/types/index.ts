@@ -226,6 +226,7 @@ export interface ShortcutSettings {
 export interface AppSettings {
   closeToTray: boolean;
   showQualityBadges: boolean;
+  enableScrollToTopButton: boolean;
   // Deprecated compat field. Retained only for legacy config deserialization.
   linkFoldersToLibrary: boolean;
   lyricsSyncOffset: number;
