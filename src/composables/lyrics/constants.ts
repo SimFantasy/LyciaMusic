@@ -99,6 +99,7 @@ export const defaultDesktopLyricsSettings: DesktopLyricsSettings = {
   isAlwaysOnTop: false,
   alwaysShowShadowBackground: false,
   autoHideWhenFullscreen: true,
+  showDoubleLine: false,
   isLocked: false,
   persistLock: false,
   colorScheme: 'auto',
@@ -226,6 +227,9 @@ export function normalizeDesktopLyricsSettingsPatch(
     autoHideWhenFullscreen: typeof patch.autoHideWhenFullscreen === 'boolean'
       ? patch.autoHideWhenFullscreen
       : defaultDesktopLyricsSettings.autoHideWhenFullscreen,
+    showDoubleLine: typeof patch.showDoubleLine === 'boolean'
+      ? patch.showDoubleLine
+      : defaultDesktopLyricsSettings.showDoubleLine,
     isLocked: typeof patch.isLocked === 'boolean'
       ? patch.isLocked
       : defaultDesktopLyricsSettings.isLocked,

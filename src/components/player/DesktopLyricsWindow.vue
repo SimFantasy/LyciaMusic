@@ -17,7 +17,7 @@ const {
   widgetStyle,
   activeLyricLine,
   blockTransitionKey,
-  visibleSecondaryLines,
+  visibleLyricLines,
   blockStyle,
   handlePayload,
   handlePlaybackPayload,
@@ -83,29 +83,42 @@ const {
                       class="desktop-lyric-block"
                       :style="blockStyle"
                     >
-                      <div class="desktop-lyric-main">
-                        <template v-if="activeLyricLine.words?.length">
-                          <span
-                            v-for="(word, index) in activeLyricLine.words"
-                            :key="`${word.start}-${word.end}-${index}`"
-                            class="desktop-lyric-word"
-                            :style="getWordStyle(word.start, word.end)"
-                          >
-                            {{ word.text }}
-                          </span>
-                        </template>
-                        <template v-else>
-                          {{ activeLyricLine.text }}
-                        </template>
-                      </div>
-
                       <div
-                        v-for="secondaryLine in visibleSecondaryLines"
-                        :key="`${blockTransitionKey}:${secondaryLine.kind}`"
-                        class="desktop-lyric-sub"
-                        :class="`desktop-lyric-sub--${secondaryLine.kind}`"
+                        v-for="displayLine in visibleLyricLines"
+                        :key="`${displayLine.line.time}:${displayLine.line.text}:${displayLine.lineIndex}`"
+                        class="desktop-lyric-row"
+                        :class="{
+                          'desktop-lyric-row--active': displayLine.active,
+                          'desktop-lyric-row--inactive': !displayLine.active,
+                        }"
                       >
-                        {{ secondaryLine.text }}
+                        <div
+                          class="desktop-lyric-main"
+                          :class="{ 'desktop-lyric-main--inactive': !displayLine.active }"
+                        >
+                          <template v-if="displayLine.words.length">
+                            <span
+                              v-for="(word, index) in displayLine.words"
+                              :key="`${word.start}-${word.end}-${index}`"
+                              class="desktop-lyric-word"
+                              :style="displayLine.active ? getWordStyle(word.start, word.end) : undefined"
+                            >
+                              {{ word.text }}
+                            </span>
+                          </template>
+                          <template v-else>
+                            {{ displayLine.line.text }}
+                          </template>
+                        </div>
+
+                        <div
+                          v-for="secondaryLine in displayLine.secondaryLines"
+                          :key="`${displayLine.lineIndex}:${secondaryLine.kind}:${secondaryLine.text}`"
+                          class="desktop-lyric-sub"
+                          :class="`desktop-lyric-sub--${secondaryLine.kind}`"
+                        >
+                          {{ secondaryLine.text }}
+                        </div>
                       </div>
                     </div>
 
@@ -248,6 +261,32 @@ const {
   transform-origin: var(--lyrics-line-transform-origin, 50%) center;
 }
 
+.desktop-lyric-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.12rem * var(--desktop-line-gap, 1));
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  filter: none;
+  transition:
+    opacity 480ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 560ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 480ms ease;
+  will-change: opacity, transform, filter;
+}
+
+.desktop-lyric-row--active {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+.desktop-lyric-row--inactive {
+  opacity: 0.74;
+  transform: translate3d(0, 2px, 0) scale(0.992);
+  filter: saturate(0.94);
+}
+
 .desktop-lyric-main {
   width: 100%;
   font-size: calc(max(26px, min(4.8vw, 6vh)) * var(--desktop-font-scale, 1));
@@ -260,11 +299,30 @@ const {
   text-shadow:
     0 1px 10px rgba(0, 0, 0, 0.18),
     0 0 24px color-mix(in srgb, var(--desktop-accent-a) 14%, transparent);
+  transition:
+    color 460ms ease,
+    font-size 560ms cubic-bezier(0.22, 1, 0.36, 1),
+    font-weight 520ms ease,
+    text-shadow 460ms ease;
+}
+
+.desktop-lyric-main--inactive {
+  font-size: calc(max(20px, min(3.6vw, 4.8vh)) * var(--desktop-font-scale, 1));
+  font-weight: 650;
+  color: color-mix(in srgb, var(--desktop-text-primary) 76%, transparent);
+  text-shadow:
+    0 1px 8px rgba(0, 0, 0, 0.16),
+    0 0 18px color-mix(in srgb, var(--desktop-accent-c) 10%, transparent);
 }
 
 .desktop-lyric-word {
   display: inline-block;
   white-space: pre-wrap;
+  transition:
+    color 420ms ease,
+    opacity 420ms ease,
+    filter 260ms linear,
+    text-shadow 260ms linear;
 }
 
 .desktop-lyric-sub {
@@ -274,6 +332,11 @@ const {
   letter-spacing: 0.03em;
   overflow-wrap: anywhere;
   word-break: break-word;
+  transition:
+    color 460ms ease,
+    opacity 460ms ease,
+    text-shadow 460ms ease,
+    transform 500ms ease;
 }
 
 .desktop-lyric-sub--romaji {

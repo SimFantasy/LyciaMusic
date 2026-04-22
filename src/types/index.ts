@@ -180,6 +180,7 @@ export interface DesktopLyricsSettings {
   isAlwaysOnTop: boolean;
   alwaysShowShadowBackground: boolean;
   autoHideWhenFullscreen: boolean;
+  showDoubleLine: boolean;
   isLocked: boolean;
   persistLock: boolean;
   colorScheme: LyricsColorScheme;

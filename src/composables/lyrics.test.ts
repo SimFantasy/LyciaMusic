@@ -724,12 +724,26 @@ describe('lyrics settings normalization', async () => {
     expect(normalized.autoHideWhenFullscreen).toBe(true);
   });
 
+  it('defaults desktop double line display to disabled', () => {
+    const normalized = normalizeDesktopLyricsSettingsPatch({});
+
+    expect(normalized.showDoubleLine).toBe(false);
+  });
+
   it('restores desktop auto-hide on fullscreen from migrated values', () => {
     const normalized = normalizeDesktopLyricsSettingsPatch({
       autoHideWhenFullscreen: false,
     });
 
     expect(normalized.autoHideWhenFullscreen).toBe(false);
+  });
+
+  it('restores desktop double line display from migrated values', () => {
+    const normalized = normalizeDesktopLyricsSettingsPatch({
+      showDoubleLine: true,
+    });
+
+    expect(normalized.showDoubleLine).toBe(true);
   });
 });
 

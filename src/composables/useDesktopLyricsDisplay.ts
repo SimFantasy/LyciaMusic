@@ -1,5 +1,5 @@
 import { emitTo } from '@tauri-apps/api/event';
-import { computed, ref, type CSSProperties, type Ref } from 'vue';
+import { computed, ref, watch, type CSSProperties, type Ref } from 'vue';
 
 import {
   DEFAULT_DESKTOP_PLAYER_ALIGNMENT,
@@ -26,6 +26,7 @@ import {
   systemLyricsFontOptions,
   type LyricsStatus,
   type LyricLine,
+  type LyricWord,
 } from './lyrics';
 import {
   DESKTOP_LYRICS_ACTION_EVENT,
@@ -54,6 +55,16 @@ export const DESKTOP_LYRICS_ALIGNMENT_OPTIONS: Array<{
   { value: 'right', label: '右' },
 ];
 
+type DesktopLyricSecondaryLine = { kind: 'romaji' | 'translation'; text: string };
+
+interface DesktopLyricDisplayLine {
+  line: LyricLine;
+  lineIndex: number;
+  active: boolean;
+  words: LyricWord[];
+  secondaryLines: DesktopLyricSecondaryLine[];
+}
+
 export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
   const playbackTime = ref(0);
   const isPlaying = ref(false);
@@ -62,12 +73,14 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
   const lyricsStatus = ref<LyricsStatus>('idle');
   const fallbackText = ref('Instrumental / No lyrics');
   const themeColors = ref<string[]>([]);
+  const doubleLinePageStartIndex = ref(-1);
   const settings = ref<DesktopLyricsWindowSettings>({
     showTranslation: true,
     showRomaji: false,
     isAlwaysOnTop: false,
     alwaysShowShadowBackground: false,
     autoHideWhenFullscreen: true,
+    showDoubleLine: false,
     isLocked: false,
     persistLock: false,
     colorScheme: 'auto',
@@ -182,6 +195,41 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     return answer;
   }
 
+  function getSecondaryLines(line: LyricLine): DesktopLyricSecondaryLine[] {
+    const secondary: DesktopLyricSecondaryLine[] = [];
+    if (settings.value.showRomaji && line.romaji) {
+      secondary.push({ kind: 'romaji', text: line.romaji });
+    }
+    if (settings.value.showTranslation && line.translation) {
+      secondary.push({ kind: 'translation', text: line.translation });
+    }
+    return secondary;
+  }
+
+  function getMainDisplayWords(line: LyricLine): LyricWord[] {
+    const timedWords = (line.words ?? []).filter((word) => (
+      word.text.length > 0
+      && Number.isFinite(word.start)
+      && Number.isFinite(word.end)
+      && word.end > word.start
+    ));
+    if (timedWords.length > 0) return timedWords;
+
+    const text = line.text || '';
+    if (!text) return [];
+
+    const start = Number.isFinite(line.time) ? line.time : 0;
+    const parsedEnd = Number.isFinite(line.endTime) ? line.endTime : start + 3;
+    const end = Math.max(start + 0.8, parsedEnd);
+
+    return [{
+      text,
+      start,
+      end,
+      romaji: '',
+    }];
+  }
+
   function formatOffset(value: number) {
     return `${value > 0 ? '+' : ''}${Math.round(value)}%`;
   }
@@ -269,23 +317,72 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
 
     return parsedLyrics.value[0] ?? null;
   });
-  const blockTransitionKey = computed(() => {
-    const line = activeLyricLine.value;
-    if (!line) return `${lyricsStatus.value}:${fallbackText.value}`;
-    return `${line.time}:${line.text}:${line.translation}:${line.romaji}`;
-  });
-  const visibleSecondaryLines = computed(() => {
-    const line = activeLyricLine.value;
-    if (!line) return [];
+  watch(
+    [activeLyricIndex, parsedLyrics, () => settings.value.showDoubleLine],
+    () => {
+      if (parsedLyrics.value.length === 0) {
+        doubleLinePageStartIndex.value = -1;
+        return;
+      }
 
-    const secondary: Array<{ kind: 'romaji' | 'translation'; text: string }> = [];
-    if (settings.value.showRomaji && line.romaji) {
-      secondary.push({ kind: 'romaji', text: line.romaji });
+      const currentIndex = activeLyricIndex.value >= 0 ? activeLyricIndex.value : 0;
+      if (!settings.value.showDoubleLine) {
+        doubleLinePageStartIndex.value = currentIndex;
+        return;
+      }
+
+      const pageStartIndex = doubleLinePageStartIndex.value;
+      const pageEndIndex = pageStartIndex + 1;
+      if (pageStartIndex < 0 || currentIndex < pageStartIndex || currentIndex > pageEndIndex) {
+        doubleLinePageStartIndex.value = currentIndex;
+      }
+    },
+    { immediate: true },
+  );
+  const visiblePairStartIndex = computed(() => {
+    if (parsedLyrics.value.length === 0) return -1;
+    if (!settings.value.showDoubleLine) {
+      return activeLyricIndex.value >= 0 ? activeLyricIndex.value : 0;
     }
-    if (settings.value.showTranslation && line.translation) {
-      secondary.push({ kind: 'translation', text: line.translation });
+
+    return doubleLinePageStartIndex.value >= 0 ? doubleLinePageStartIndex.value : 0;
+  });
+  const blockTransitionKey = computed(() => {
+    if (!activeLyricLine.value) return `${lyricsStatus.value}:${fallbackText.value}`;
+
+    if (!settings.value.showDoubleLine) {
+      const line = activeLyricLine.value;
+      return `${line.time}:${line.text}:${line.translation}:${line.romaji}`;
     }
-    return secondary;
+
+    const firstLine = parsedLyrics.value[visiblePairStartIndex.value];
+    const secondLine = parsedLyrics.value[visiblePairStartIndex.value + 1];
+    return [
+      firstLine ? `${firstLine.time}:${firstLine.text}:${firstLine.translation}:${firstLine.romaji}` : '',
+      secondLine ? `${secondLine.time}:${secondLine.text}:${secondLine.translation}:${secondLine.romaji}` : '',
+    ].join('|');
+  });
+  const visibleLyricLines = computed<DesktopLyricDisplayLine[]>(() => {
+    if (parsedLyrics.value.length === 0 || visiblePairStartIndex.value < 0) return [];
+
+    const lineCount = settings.value.showDoubleLine ? 2 : 1;
+    const lines: DesktopLyricDisplayLine[] = [];
+
+    for (let offset = 0; offset < lineCount; offset += 1) {
+      const lineIndex = visiblePairStartIndex.value + offset;
+      const line = parsedLyrics.value[lineIndex];
+      if (!line) continue;
+
+      lines.push({
+        line,
+        lineIndex,
+        active: activeLyricIndex.value >= 0 ? lineIndex === activeLyricIndex.value : lineIndex === 0,
+        words: getMainDisplayWords(line),
+        secondaryLines: getSecondaryLines(line),
+      });
+    }
+
+    return lines;
   });
   const blockStyle = computed(() => ({
     '--desktop-line-gap': settings.value.playerLineGap.toString(),
@@ -333,7 +430,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     widgetStyle,
     activeLyricLine,
     blockTransitionKey,
-    visibleSecondaryLines,
+    visibleLyricLines,
     blockStyle,
     handlePayload,
     handlePlaybackPayload,

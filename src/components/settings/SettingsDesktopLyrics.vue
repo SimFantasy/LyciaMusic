@@ -386,6 +386,19 @@ onUnmounted(() => {
         <button
           type="button"
           class="desktop-setting-row"
+          @click="desktopLyricsSettings.showDoubleLine = !desktopLyricsSettings.showDoubleLine"
+        >
+          <div>
+            <div class="text-sm font-medium text-gray-800 dark:text-gray-200">双行显示</div>
+          </div>
+          <span class="desktop-switch" :class="desktopLyricsSettings.showDoubleLine ? 'desktop-switch--on' : ''">
+            <span class="desktop-switch-thumb" :class="desktopLyricsSettings.showDoubleLine ? 'translate-x-5' : ''" />
+          </span>
+        </button>
+
+        <button
+          type="button"
+          class="desktop-setting-row"
           @click="desktopLyricsSettings.isLocked = !desktopLyricsSettings.isLocked"
         >
           <div>
