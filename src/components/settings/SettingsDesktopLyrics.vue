@@ -837,15 +837,15 @@ onUnmounted(() => {
 
             <div class="desktop-custom-preview">
               <div class="desktop-custom-preview-line">
-                <span :style="customPreviewPlayedStyle">让旋律穿过夜色</span>
-                <span :style="customPreviewCurrentStyle"> 抵达你的耳边</span>
-                <span :style="customPreviewUnplayedStyle"> 再继续向前</span>
+                <span :style="customPreviewPlayedStyle">初めての</span>
+                <span :style="customPreviewCurrentStyle">ルーブル</span>
+                <span :style="customPreviewUnplayedStyle">は</span>
               </div>
               <div class="desktop-custom-preview-sub" :style="customPreviewRomajiStyle">
-                let the melody cross the night
+                ha ji me te no ru u bu ru wa
               </div>
               <div class="desktop-custom-preview-sub desktop-custom-preview-translation" :style="customPreviewTranslationStyle">
-                让旋律穿过夜色
+                第一次参观卢浮宫
               </div>
             </div>
 
