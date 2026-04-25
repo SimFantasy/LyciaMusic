@@ -4,12 +4,14 @@ import { emitTo, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
-import { useCoverCache } from '../../composables/useCoverCache';
 import {
   MINI_PLAYER_ACTION_EVENT,
   MINI_PLAYER_BOUNDS_EVENT,
+  MINI_PLAYER_READY_EVENT,
   MINI_PLAYER_REQUEST_STATE_EVENT,
+  MINI_PLAYER_STATE_APPLIED_EVENT,
   MINI_PLAYER_STATE_EVENT,
+  MINI_PLAYER_VISIBILITY_EVENT,
   MINI_PLAYER_WINDOW_BASE_HEIGHT,
   MINI_PLAYER_WINDOW_EXPANDED_HEIGHT,
   MINI_PLAYER_WINDOW_VOLUME_HEIGHT,
@@ -26,6 +28,7 @@ const volume = ref(100);
 const queue = ref<Song[]>([]);
 const lyricText = ref('');
 const localCoverUrl = ref('');
+const isWindowVisible = ref(false);
 const showMiniPlaylist = ref(false);
 const showVolumePopover = ref(false);
 const isHovering = ref(false);
@@ -39,12 +42,11 @@ const volumePopoverStyle = ref<Record<string, string>>({
   left: '0px',
   top: '0px',
 });
-const { loadCover } = useCoverCache();
-let coverRequestId = 0;
 let idleTimer: number | null = null;
 let unlistenWindowMoved: (() => void) | null = null;
 let unlistenCloseRequested: (() => void) | null = null;
 let unlistenState: (() => void) | null = null;
+let unlistenVisibility: (() => void) | null = null;
 
 const VOLUME_POPOVER_WIDTH = 160;
 const VOLUME_POPOVER_GAP = 8;
@@ -64,11 +66,18 @@ const sendAction = (action: MiniPlayerAction) => {
   void emitTo('main', MINI_PLAYER_ACTION_EVENT, action);
 };
 
+const stopIdleTimer = () => {
+  if (idleTimer) {
+    window.clearTimeout(idleTimer);
+    idleTimer = null;
+  }
+};
+
 const resetIdleTimer = () => {
-  if (idleTimer) window.clearTimeout(idleTimer);
+  stopIdleTimer();
   showLyrics.value = false;
 
-  if (isPlaying.value) {
+  if (isWindowVisible.value && isPlaying.value) {
     idleTimer = window.setTimeout(() => {
       if (!isHovering.value) showLyrics.value = true;
     }, 5000);
@@ -150,7 +159,7 @@ const onMouseLeave = () => {
 };
 
 const onGlobalMouseMove = (event: MouseEvent) => {
-  if (isDraggingVolume.value) {
+  if (isWindowVisible.value && isDraggingVolume.value) {
     event.preventDefault();
     updateVolume(event.clientX);
   }
@@ -161,7 +170,7 @@ const onGlobalMouseUp = () => {
 };
 
 const onGlobalMouseDown = (event: MouseEvent) => {
-  if (!showVolumePopover.value) return;
+  if (!isWindowVisible.value || !showVolumePopover.value) return;
   const target = event.target as Node | null;
   if (!target) return;
 
@@ -173,7 +182,7 @@ const onGlobalMouseDown = (event: MouseEvent) => {
 };
 
 const onGlobalResize = () => {
-  if (showVolumePopover.value) {
+  if (isWindowVisible.value && showVolumePopover.value) {
     updateVolumePopoverPosition();
   }
 };
@@ -184,19 +193,6 @@ const onGlobalKeydown = (event: KeyboardEvent) => {
     showMiniPlaylist.value = false;
   }
 };
-
-watch(currentSong, async (song) => {
-  const requestId = ++coverRequestId;
-  if (song?.path) {
-    const coverUrl = await loadCover(song.path).catch(() => '');
-    if (requestId === coverRequestId) {
-      localCoverUrl.value = coverUrl || '';
-    }
-    return;
-  }
-
-  localCoverUrl.value = '';
-}, { immediate: true });
 
 watch(isPlaying, () => {
   resetIdleTimer();
@@ -222,10 +218,28 @@ onMounted(async () => {
 
   unlistenState = await listen<MiniPlayerStatePayload>(MINI_PLAYER_STATE_EVENT, (event) => {
     currentSong.value = event.payload.currentSong;
+    localCoverUrl.value = event.payload.coverUrl;
     isPlaying.value = event.payload.isPlaying;
     volume.value = event.payload.volume;
     queue.value = event.payload.queue;
     lyricText.value = event.payload.lyricText;
+    void nextTick(() => emitTo('main', MINI_PLAYER_STATE_APPLIED_EVENT));
+  });
+
+  unlistenVisibility = await listen<{ visible: boolean }>(MINI_PLAYER_VISIBILITY_EVENT, (event) => {
+    isWindowVisible.value = event.payload.visible;
+    if (isWindowVisible.value) {
+      resetIdleTimer();
+      if (showVolumePopover.value) {
+        void nextTick(() => updateVolumePopoverPosition());
+      }
+      return;
+    }
+
+    stopIdleTimer();
+    showLyrics.value = false;
+    showVolumePopover.value = false;
+    isDraggingVolume.value = false;
   });
 
   unlistenWindowMoved = await appWindow.onMoved(async () => {
@@ -246,11 +260,12 @@ onMounted(async () => {
     sendAction({ type: 'close' });
   });
 
+  await emitTo('main', MINI_PLAYER_READY_EVENT);
   await emitTo('main', MINI_PLAYER_REQUEST_STATE_EVENT);
 });
 
 onUnmounted(() => {
-  if (idleTimer) window.clearTimeout(idleTimer);
+  stopIdleTimer();
   window.removeEventListener('mousemove', onGlobalMouseMove);
   window.removeEventListener('mouseup', onGlobalMouseUp);
   window.removeEventListener('mousedown', onGlobalMouseDown);
@@ -259,6 +274,7 @@ onUnmounted(() => {
   unlistenWindowMoved?.();
   unlistenCloseRequested?.();
   unlistenState?.();
+  unlistenVisibility?.();
 });
 </script>
 

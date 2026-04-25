@@ -1,18 +1,23 @@
 import { LogicalPosition } from '@tauri-apps/api/dpi';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { availableMonitors, getCurrentWindow } from '@tauri-apps/api/window';
 import { onMounted, onUnmounted, watch } from 'vue';
 
+import { useCoverCache } from './useCoverCache';
 import { useLyrics } from './lyrics';
 import { usePlayer } from './player';
 import {
   MINI_PLAYER_ACTION_EVENT,
   MINI_PLAYER_BOUNDS_EVENT,
   MINI_PLAYER_BOUNDS_KEY,
+  MINI_PLAYER_READY_EVENT,
   MINI_PLAYER_REQUEST_STATE_EVENT,
+  MINI_PLAYER_STATE_APPLIED_EVENT,
   MINI_PLAYER_STATE_EVENT,
+  MINI_PLAYER_VISIBILITY_EVENT,
   MINI_PLAYER_WINDOW_BASE_HEIGHT,
+  MINI_PLAYER_WINDOW_EXPANDED_HEIGHT,
   MINI_PLAYER_WINDOW_LABEL,
   MINI_PLAYER_WINDOW_WIDTH,
   type MiniPlayerAction,
@@ -21,6 +26,10 @@ import {
 } from '../features/miniPlayer/shared';
 
 let miniPlayerWindowPromise: Promise<WebviewWindow> | null = null;
+let isMiniPlayerReady = false;
+let miniPlayerReadyPromise: Promise<void> | null = null;
+let resolveMiniPlayerReady: (() => void) | null = null;
+let resolveMiniPlayerStateApplied: (() => void) | null = null;
 
 function readMiniPlayerBounds(): MiniPlayerWindowBounds | null {
   if (typeof localStorage === 'undefined') return null;
@@ -52,16 +61,70 @@ function writeMiniPlayerBounds(bounds: MiniPlayerWindowBounds) {
   }));
 }
 
+async function normalizeMiniPlayerBounds(bounds: MiniPlayerWindowBounds | null) {
+  if (!bounds) return null;
+
+  try {
+    const workAreas = (await availableMonitors()).map((monitor) => {
+      const scaleFactor = monitor.scaleFactor || 1;
+      const position = monitor.workArea.position.toLogical(scaleFactor);
+      const size = monitor.workArea.size.toLogical(scaleFactor);
+
+      return {
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+      };
+    });
+
+    if (workAreas.length === 0) return bounds;
+
+    const width = MINI_PLAYER_WINDOW_WIDTH;
+    const height = MINI_PLAYER_WINDOW_EXPANDED_HEIGHT;
+    const boundsCenterX = bounds.x + width / 2;
+    const boundsCenterY = bounds.y + MINI_PLAYER_WINDOW_BASE_HEIGHT / 2;
+    const workArea = workAreas.reduce((best, candidate) => {
+      const bestCenterX = best.x + best.width / 2;
+      const bestCenterY = best.y + best.height / 2;
+      const candidateCenterX = candidate.x + candidate.width / 2;
+      const candidateCenterY = candidate.y + candidate.height / 2;
+      const bestDistance = (bestCenterX - boundsCenterX) ** 2 + (bestCenterY - boundsCenterY) ** 2;
+      const candidateDistance = (candidateCenterX - boundsCenterX) ** 2 + (candidateCenterY - boundsCenterY) ** 2;
+      return candidateDistance < bestDistance ? candidate : best;
+    }, workAreas[0]);
+
+    const maxX = workArea.x + Math.max(0, workArea.width - width);
+    const maxY = workArea.y + Math.max(0, workArea.height - height);
+
+    return {
+      x: Math.round(Math.min(maxX, Math.max(workArea.x, bounds.x))),
+      y: Math.round(Math.min(maxY, Math.max(workArea.y, bounds.y))),
+    };
+  } catch {
+    return bounds;
+  }
+}
+
 async function getMiniPlayerWindow() {
   return WebviewWindow.getByLabel(MINI_PLAYER_WINDOW_LABEL);
 }
 
 async function ensureMiniPlayerWindow() {
   const existing = await getMiniPlayerWindow();
-  if (existing) return existing;
+  if (existing) {
+    const bounds = await normalizeMiniPlayerBounds(readMiniPlayerBounds());
+    if (bounds) {
+      await existing.setPosition(new LogicalPosition(bounds.x, bounds.y));
+    }
+    return existing;
+  }
 
   if (!miniPlayerWindowPromise) {
-    const bounds = readMiniPlayerBounds();
+    isMiniPlayerReady = false;
+    miniPlayerReadyPromise = null;
+    resolveMiniPlayerReady = null;
+    const bounds = await normalizeMiniPlayerBounds(readMiniPlayerBounds());
     const windowInstance = new WebviewWindow(MINI_PLAYER_WINDOW_LABEL, {
       url: '/',
       title: 'Lycia Mini Player',
@@ -115,6 +178,35 @@ async function ensureMiniPlayerWindow() {
   return miniPlayerWindowPromise;
 }
 
+function markMiniPlayerReady() {
+  isMiniPlayerReady = true;
+  resolveMiniPlayerReady?.();
+  resolveMiniPlayerReady = null;
+  miniPlayerReadyPromise = null;
+}
+
+function waitForMiniPlayerReady(timeoutMs = 1000) {
+  if (isMiniPlayerReady) {
+    return Promise.resolve();
+  }
+
+  if (!miniPlayerReadyPromise) {
+    miniPlayerReadyPromise = new Promise<void>((resolve) => {
+      resolveMiniPlayerReady = resolve;
+      window.setTimeout(resolve, timeoutMs);
+    });
+  }
+
+  return miniPlayerReadyPromise;
+}
+
+function waitForMiniPlayerStateApplied(timeoutMs = 500) {
+  return new Promise<void>((resolve) => {
+    resolveMiniPlayerStateApplied = resolve;
+    window.setTimeout(resolve, timeoutMs);
+  });
+}
+
 export function useMiniPlayerWindowBridge() {
   const mainWindow = getCurrentWindow();
   const {
@@ -132,35 +224,69 @@ export function useMiniPlayerWindowBridge() {
     isMiniMode,
   } = usePlayer();
   const { currentLyricLine } = useLyrics();
+  const { loadCover } = useCoverCache();
 
   let isMainWindowClosing = false;
   const unlisteners: Array<() => void> = [];
 
-  const createStatePayload = (): MiniPlayerStatePayload => ({
-    currentSong: currentSong.value,
-    isPlaying: isPlaying.value,
-    volume: volume.value,
-    queue: playQueue.value.length > 0 ? playQueue.value : songList.value,
-    lyricText: currentLyricLine.value?.text ?? '',
-  });
+  const createStatePayload = async (): Promise<MiniPlayerStatePayload> => {
+    const song = currentSong.value;
+    const coverUrl = song?.path ? await loadCover(song.path).catch(() => '') : '';
+
+    return {
+      currentSong: song,
+      coverUrl: coverUrl || '',
+      isPlaying: isPlaying.value,
+      volume: volume.value,
+      queue: playQueue.value.length > 0 ? playQueue.value : songList.value,
+      lyricText: currentLyricLine.value?.text ?? '',
+    };
+  };
 
   const emitStateToMiniPlayer = async () => {
     const targetWindow = await getMiniPlayerWindow();
     if (!targetWindow) return;
 
+    const appliedPromise = waitForMiniPlayerStateApplied();
     await emitTo<MiniPlayerStatePayload>(
       MINI_PLAYER_WINDOW_LABEL,
       MINI_PLAYER_STATE_EVENT,
-      createStatePayload(),
+      await createStatePayload(),
     );
+    await appliedPromise;
+  };
+
+  const emitMiniPlayerVisibility = async (visible: boolean) => {
+    const targetWindow = await getMiniPlayerWindow();
+    if (!targetWindow) return;
+
+    await emitTo(MINI_PLAYER_WINDOW_LABEL, MINI_PLAYER_VISIBILITY_EVENT, { visible });
   };
 
   const openMiniPlayerWindow = async () => {
     const targetWindow = await ensureMiniPlayerWindow();
+    await waitForMiniPlayerReady();
     await targetWindow.setAlwaysOnTop(true);
     await emitStateToMiniPlayer();
+    await emitMiniPlayerVisibility(true);
     await targetWindow.show();
     await mainWindow.hide();
+  };
+
+  const prewarmMiniPlayerWindow = async () => {
+    const targetWindow = await ensureMiniPlayerWindow();
+    await waitForMiniPlayerReady();
+    await emitStateToMiniPlayer();
+    await emitMiniPlayerVisibility(false);
+    await targetWindow.hide();
+  };
+
+  const hideMiniPlayerWindow = async () => {
+    const targetWindow = await getMiniPlayerWindow();
+    if (!targetWindow) return;
+
+    await emitMiniPlayerVisibility(false);
+    await targetWindow.hide();
   };
 
   const destroyMiniPlayerWindow = async () => {
@@ -198,12 +324,14 @@ export function useMiniPlayerWindowBridge() {
         break;
       case 'restore-main':
         isMiniMode.value = false;
+        await hideMiniPlayerWindow();
         await mainWindow.unminimize();
         await mainWindow.show();
         await mainWindow.setFocus();
         break;
       case 'close':
         isMiniMode.value = false;
+        await hideMiniPlayerWindow();
         break;
       default:
         break;
@@ -224,6 +352,15 @@ export function useMiniPlayerWindowBridge() {
       void emitStateToMiniPlayer();
     }));
 
+    unlisteners.push(await listen(MINI_PLAYER_READY_EVENT, () => {
+      markMiniPlayerReady();
+    }));
+
+    unlisteners.push(await listen(MINI_PLAYER_STATE_APPLIED_EVENT, () => {
+      resolveMiniPlayerStateApplied?.();
+      resolveMiniPlayerStateApplied = null;
+    }));
+
     unlisteners.push(await listen<MiniPlayerAction>(MINI_PLAYER_ACTION_EVENT, (event) => {
       void handleAction(event.payload);
     }));
@@ -231,6 +368,8 @@ export function useMiniPlayerWindowBridge() {
     unlisteners.push(await listen<MiniPlayerWindowBounds>(MINI_PLAYER_BOUNDS_EVENT, (event) => {
       writeMiniPlayerBounds(event.payload);
     }));
+
+    void prewarmMiniPlayerWindow();
   });
 
   onUnmounted(() => {
@@ -243,7 +382,7 @@ export function useMiniPlayerWindowBridge() {
       return;
     }
 
-    await destroyMiniPlayerWindow();
+    await hideMiniPlayerWindow();
   });
 
   watch(
