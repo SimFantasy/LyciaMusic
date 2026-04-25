@@ -10,6 +10,8 @@ import type {
 export const playbackApi = {
   setVolume: (volume: number): Promise<void> => tauriInvoke('set_volume', { volume }),
   getPlaybackProgress: (): Promise<number> => tauriInvoke('get_playback_progress'),
+  getAudioVisualizerSamples: (): Promise<number[]> =>
+    tauriInvoke('get_audio_visualizer_samples'),
   recordPlay: (payload: {
     songPath: string;
     listenedMs: number;

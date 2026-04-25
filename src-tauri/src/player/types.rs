@@ -7,9 +7,67 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+pub const VISUALIZER_BAND_COUNT: usize = 48;
+const VISUALIZER_SAMPLES_PER_BAND: u32 = 1024;
+
+pub struct SharedVisualizer {
+    pub levels: Vec<AtomicU32>,
+    pub cursor: AtomicU64,
+    bucket_samples: AtomicU32,
+    bucket_peak: AtomicU32,
+}
+
+impl SharedVisualizer {
+    pub fn new() -> Self {
+        Self {
+            levels: (0..VISUALIZER_BAND_COUNT)
+                .map(|_| AtomicU32::new(0))
+                .collect(),
+            cursor: AtomicU64::new(0),
+            bucket_samples: AtomicU32::new(0),
+            bucket_peak: AtomicU32::new(0),
+        }
+    }
+
+    pub fn reset(&self) {
+        for level in &self.levels {
+            level.store(0, Ordering::Relaxed);
+        }
+        self.cursor.store(0, Ordering::Relaxed);
+        self.bucket_samples.store(0, Ordering::Relaxed);
+        self.bucket_peak.store(0, Ordering::Relaxed);
+    }
+
+    pub fn push_sample(&self, sample: f32) {
+        let scaled = (sample.abs().min(1.0) * 1000.0).round() as u32;
+        let mut current_peak = self.bucket_peak.load(Ordering::Relaxed);
+
+        while scaled > current_peak {
+            match self.bucket_peak.compare_exchange_weak(
+                current_peak,
+                scaled,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(next_peak) => current_peak = next_peak,
+            }
+        }
+
+        let count = self.bucket_samples.fetch_add(1, Ordering::Relaxed) + 1;
+        if count >= VISUALIZER_SAMPLES_PER_BAND {
+            let peak = self.bucket_peak.swap(0, Ordering::Relaxed);
+            self.bucket_samples.store(0, Ordering::Relaxed);
+            let cursor = self.cursor.fetch_add(1, Ordering::Relaxed) as usize;
+            self.levels[cursor % VISUALIZER_BAND_COUNT].store(peak, Ordering::Relaxed);
+        }
+    }
+}
+
 pub struct TimedSource<S> {
     pub inner: S,
     pub samples_played: Arc<AtomicU64>,
+    pub visualizer: Arc<SharedVisualizer>,
 }
 
 impl<S> Iterator for TimedSource<S>
@@ -20,8 +78,9 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         let sample = self.inner.next();
-        if sample.is_some() {
+        if let Some(value) = sample {
             self.samples_played.fetch_add(1, Ordering::Relaxed);
+            self.visualizer.push_sample(value);
         }
         sample
     }
@@ -56,6 +115,7 @@ pub struct SharedProgress {
     pub samples_played: Arc<AtomicU64>,
     pub sample_rate: Arc<AtomicU32>,
     pub channels: Arc<AtomicU32>,
+    pub visualizer: Arc<SharedVisualizer>,
 }
 
 pub enum AudioCommand {

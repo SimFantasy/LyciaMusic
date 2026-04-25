@@ -28,8 +28,9 @@ use music::{
     scan_music_folder, show_in_folder,
 };
 use player::{
-    get_current_output_device, get_output_devices, get_playback_progress, pause_audio, play_audio,
-    resume_audio, seek_audio, set_output_device, set_volume, update_playback_metadata,
+    get_audio_visualizer_samples, get_current_output_device, get_output_devices,
+    get_playback_progress, pause_audio, play_audio, resume_audio, seek_audio, set_output_device,
+    set_volume, update_playback_metadata,
 };
 use statistics::{
     add_to_history, clear_recent_history, export_statistics_file, get_behavior_stats,
@@ -78,6 +79,7 @@ pub fn run() {
             seek_audio,
             set_volume,
             get_playback_progress,
+            get_audio_visualizer_samples,
             preview_rename,
             apply_rename,
             get_output_devices,

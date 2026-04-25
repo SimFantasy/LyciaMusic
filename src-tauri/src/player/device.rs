@@ -123,6 +123,7 @@ pub(crate) fn restore_current_playback(
                 let timed_source = TimedSource {
                     inner: source.convert_samples::<f32>().skip_duration(jump_target),
                     samples_played: progress.samples_played.clone(),
+                    visualizer: progress.visualizer.clone(),
                 };
                 if let Some(sink) = current_sink.as_ref() {
                     sink.set_volume(current_volume);

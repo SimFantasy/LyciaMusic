@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { AudioLines } from 'lucide-vue-next';
 import { useLibraryCollections } from '../../features/collections/useLibraryCollections';
 import { useLyrics } from '../../composables/lyrics';
 import { usePlaybackController } from '../../features/playback/usePlaybackController';
+import AudioVisualizer from '../player/AudioVisualizer.vue';
 import FooterContextMenu from "../overlays/FooterContextMenu.vue";
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 
@@ -35,6 +37,12 @@ const handleContextMenu = (e: MouseEvent) => {
 const toggleLyrics = () => { showDesktopLyrics.value = !showDesktopLyrics.value; };
 const toggleLyricsPlayerSettings = () => {
   showLyricsPlayerSettingsPanel.value = !showLyricsPlayerSettingsPanel.value;
+};
+const isVisualizerEnabled = ref(localStorage.getItem('footer_visualizer_enabled') !== 'false');
+
+const toggleVisualizer = () => {
+  isVisualizerEnabled.value = !isVisualizerEnabled.value;
+  localStorage.setItem('footer_visualizer_enabled', isVisualizerEnabled.value.toString());
 };
 
 // 不再使用单独的模糊样式 -> 全透明
@@ -199,6 +207,18 @@ onUnmounted(() => {
     @mouseleave="handleFooterMouseLeave"
   >
     
+    <div
+      v-if="showPlayerDetail && currentSong && isVisualizerEnabled"
+      class="pointer-events-none absolute left-5 right-5 top-[-76px] h-16 z-40 transition-opacity duration-500 [mask-image:linear-gradient(90deg,transparent,black_1.5%,black_98.5%,transparent)]"
+      :class="isIdle ? 'opacity-25' : 'opacity-100'"
+    >
+      <AudioVisualizer
+        :active="showPlayerDetail && isVisualizerEnabled"
+        :is-playing="isPlaying"
+        :song-path="currentSong.path"
+      />
+    </div>
+
     <div 
       ref="progressBarRef"
       class="absolute top-[-10px] left-0 w-full h-[22px] cursor-pointer group/progress z-50"
@@ -383,6 +403,15 @@ onUnmounted(() => {
           <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
         </button>
       </div>
+
+      <button
+        v-if="showPlayerDetail"
+        @click="toggleVisualizer"
+        :class="['transition-colors w-8 h-8 flex items-center justify-center rounded-full', isVisualizerEnabled ? 'text-[#EC4141] bg-[#EC4141]/10' : 'text-white/60 hover:text-white hover:bg-white/10']"
+        :title="isVisualizerEnabled ? '关闭可视化' : '开启可视化'"
+      >
+        <AudioLines class="h-4 w-4" :stroke-width="2.2" />
+      </button>
       
       <button 
         @click="toggleLyrics"
