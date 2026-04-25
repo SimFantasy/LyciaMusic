@@ -4,7 +4,7 @@ import { usePlayer } from './player';
 import { useAppThemeSync } from './useAppThemeSync';
 import { useExternalPathBridge } from './useExternalPathBridge';
 import { useAppShellTheme } from './useAppShellTheme';
-import { useMiniModeWindow } from './useMiniModeWindow';
+import { useMiniPlayerWindowBridge } from './useMiniPlayerWindowBridge';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
 import { useAddToPlaylistDialog } from '../features/collections/addToPlaylistDialog';
 import { useHomeRouteSync } from './useHomeRouteSync';
@@ -18,10 +18,6 @@ export function useAppShell() {
     playQueue,
     isMiniMode,
     showPlayerDetail,
-    showMiniPlaylist,
-    showPlaylist,
-    closeMiniPlaylist,
-    showVolumePopover,
     handleExternalPaths,
     libraryScanProgress,
   } = usePlayer();
@@ -32,7 +28,7 @@ export function useAppShell() {
     addSelectedSongsToPlaylist,
   } = useAddToPlaylistDialog();
 
-  const { hasWindowMaterial, isMicaWindowMaterial, syncWindowMaterial } = useAppThemeSync();
+  const { hasWindowMaterial, isMicaWindowMaterial } = useAppThemeSync();
   const { mainBlurStyle, mainContainerClass } = useAppShellTheme({
     showPlayerDetail,
     hasWindowMaterial,
@@ -56,14 +52,7 @@ export function useAppShell() {
     searchQuery,
   });
 
-  useMiniModeWindow({
-    isMiniMode,
-    showMiniPlaylist,
-    showVolumePopover,
-    showPlaylist,
-    closeMiniPlaylist,
-    syncWindowMaterial,
-  });
+  useMiniPlayerWindowBridge();
   useKeyboardShortcuts();
 
   init();
