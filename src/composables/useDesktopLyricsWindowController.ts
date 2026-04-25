@@ -18,6 +18,7 @@ import {
 import { windowApi } from '../services/tauri/windowApi';
 
 const FULLSCREEN_POLL_INTERVAL_MS = 300;
+const RESIZE_VISIBILITY_HOLD_MS = 1200;
 
 export function useDesktopLyricsWindowController(options: {
   showDragShadow: Ref<boolean>;
@@ -40,10 +41,12 @@ export function useDesktopLyricsWindowController(options: {
   const isSystemHidden = ref(false);
   const isHoverDimmed = ref(false);
   const isToolbarVisible = ref(false);
+  const isResizeInteractionActive = ref(false);
 
   let hoverDimTimer: ReturnType<typeof setTimeout> | null = null;
   let toolbarHideTimer: ReturnType<typeof setTimeout> | null = null;
   let autoHideTimer: ReturnType<typeof setInterval> | null = null;
+  let resizeVisibilityTimer: ReturnType<typeof setTimeout> | null = null;
   let frameId = 0;
   let dragShadowTimer: ReturnType<typeof setTimeout> | null = null;
   let unlistenState: (() => void) | null = null;
@@ -80,6 +83,11 @@ export function useDesktopLyricsWindowController(options: {
     stopAutoHideLoop();
 
     const pollForegroundFullscreen = async () => {
+      if (isResizeInteractionActive.value) {
+        isSystemHidden.value = false;
+        return;
+      }
+
       if (!settings.value.autoHideWhenFullscreen) {
         isSystemHidden.value = false;
         return;
@@ -139,6 +147,30 @@ export function useDesktopLyricsWindowController(options: {
     }
   }
 
+  function clearResizeVisibilityTimer() {
+    if (resizeVisibilityTimer) {
+      clearTimeout(resizeVisibilityTimer);
+      resizeVisibilityTimer = null;
+    }
+  }
+
+  function holdVisibleForResize() {
+    clearResizeVisibilityTimer();
+    clearHoverDimTimer();
+    clearToolbarHideTimer();
+
+    isResizeInteractionActive.value = true;
+    isSystemHidden.value = false;
+    isHoverDimmed.value = false;
+    revealToolbar();
+    revealDragShadow();
+
+    resizeVisibilityTimer = setTimeout(() => {
+      isResizeInteractionActive.value = false;
+      resizeVisibilityTimer = null;
+    }, RESIZE_VISIBILITY_HOLD_MS);
+  }
+
   function revealToolbar() {
     clearToolbarHideTimer();
 
@@ -175,7 +207,7 @@ export function useDesktopLyricsWindowController(options: {
   function queueHoverDim() {
     clearHoverDimTimer();
 
-    if (settings.value.isLocked || isSystemHidden.value) {
+    if (settings.value.isLocked || isSystemHidden.value || isResizeInteractionActive.value) {
       return;
     }
 
@@ -203,6 +235,11 @@ export function useDesktopLyricsWindowController(options: {
   function handlePointerLeave() {
     clearHoverDimTimer();
     isHoverDimmed.value = false;
+
+    if (isResizeInteractionActive.value) {
+      return;
+    }
+
     hideToolbar();
   }
 
@@ -219,9 +256,9 @@ export function useDesktopLyricsWindowController(options: {
   }
 
   const widgetShellStyle = computed<CSSProperties>(() => ({
-    opacity: isSystemHidden.value ? '0' : (isHoverDimmed.value ? '0.34' : '1'),
-    transform: isSystemHidden.value ? 'scale(0.96)' : 'scale(1)',
-    pointerEvents: isSystemHidden.value ? 'none' : 'auto',
+    opacity: !isResizeInteractionActive.value && isSystemHidden.value ? '0' : (isHoverDimmed.value ? '0.34' : '1'),
+    transform: !isResizeInteractionActive.value && isSystemHidden.value ? 'scale(0.96)' : 'scale(1)',
+    pointerEvents: !isResizeInteractionActive.value && isSystemHidden.value ? 'none' : 'auto',
   }));
 
   onMounted(async () => {
@@ -268,6 +305,8 @@ export function useDesktopLyricsWindowController(options: {
     });
 
     unlistenResized = await appWindow.onResized(async ({ payload }) => {
+      holdVisibleForResize();
+
       const position = await appWindow.outerPosition();
       await emitWindowBounds({
         x: position.x,
@@ -285,6 +324,7 @@ export function useDesktopLyricsWindowController(options: {
     stopAutoHideLoop();
     clearHoverDimTimer();
     clearToolbarHideTimer();
+    clearResizeVisibilityTimer();
     unlistenState?.();
     unlistenPlayback?.();
     unlistenRevealSurface?.();
