@@ -46,7 +46,16 @@ export const createPlayerPlayback = ({
 }: CreatePlayerPlaybackDeps) => {
   const playbackStore = usePlaybackStore();
   const uiStore = useUiStore();
-  const { loadCover, loadCoverPath, loadFullCover, peekCoverUrl, peekCoverPath, getFullCoverUrl } = useCoverCache();
+  const {
+    loadCover,
+    loadCoverPath,
+    loadFullCover,
+    peekCoverUrl,
+    peekCoverPath,
+    getFullCoverUrl,
+    preloadFullCovers,
+    retainFullCoverPaths,
+  } = useCoverCache();
   const {
     currentCover,
     currentCoverFull,
@@ -55,6 +64,7 @@ export const createPlayerPlayback = ({
     isPlaying,
     isSongLoaded,
     playQueue,
+    tempQueue,
   } = storeToRefs(playbackStore);
   const { showPlayerDetail } = storeToRefs(uiStore);
 
@@ -81,6 +91,38 @@ export const createPlayerPlayback = ({
       song,
       ...baseQueue.slice(currentIndex + 1),
     ];
+  };
+
+  const getLikelyFullCoverPaths = (song: Song) => {
+    const retainedPaths: string[] = [song.path];
+    const pushUniquePath = (path: string | undefined) => {
+      if (!path || retainedPaths.includes(path)) {
+        return;
+      }
+
+      retainedPaths.push(path);
+    };
+
+    pushUniquePath(tempQueue.value[0]?.path);
+
+    const queue = playQueue.value;
+    const currentIndex = queue.findIndex(item => item.path === song.path);
+    if (currentIndex >= 0 && queue.length > 1) {
+      pushUniquePath(queue[(currentIndex - 1 + queue.length) % queue.length]?.path);
+      pushUniquePath(queue[(currentIndex + 1) % queue.length]?.path);
+    }
+
+    return retainedPaths.slice(0, 4);
+  };
+
+  const prepareDetailFullCovers = (song: Song) => {
+    if (!showPlayerDetail.value) {
+      return;
+    }
+
+    const retainedPaths = getLikelyFullCoverPaths(song);
+    retainFullCoverPaths(retainedPaths);
+    preloadFullCovers(retainedPaths.filter(path => path !== song.path));
   };
 
   const stopPlaybackRuntime = () => {
@@ -185,6 +227,8 @@ export const createPlayerPlayback = ({
         }
       }
     }
+
+    prepareDetailFullCovers(song);
 
     isPlaying.value = true;
     isSongLoaded.value = false;

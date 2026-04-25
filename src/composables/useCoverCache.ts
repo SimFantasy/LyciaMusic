@@ -38,6 +38,7 @@ const cacheEpochs: Record<CoverKind, number> = {
   thumbnail: 0,
   full: 0,
 };
+const invalidatedRequestKeys = new Set<string>();
 
 const getCacheForKind = (kind: CoverKind) =>
   kind === 'full' ? fullCoverCache : thumbnailCache;
@@ -283,7 +284,7 @@ const loadCoverInternal = (path: string, kind: CoverKind): Promise<string> => {
     try {
       const command = kind === 'full' ? 'get_song_cover' : 'get_song_cover_thumbnail';
       const coverPath = await invoke<string>(command, { path });
-      if (requestEpoch !== getCacheEpoch(kind)) {
+      if (requestEpoch !== getCacheEpoch(kind) || invalidatedRequestKeys.has(requestKey)) {
         return '';
       }
       const finalUrl = coverPath ? convertFileSrc(coverPath) : '';
@@ -293,7 +294,7 @@ const loadCoverInternal = (path: string, kind: CoverKind): Promise<string> => {
       }
       return finalUrl;
     } catch {
-      if (requestEpoch !== getCacheEpoch(kind)) {
+      if (requestEpoch !== getCacheEpoch(kind) || invalidatedRequestKeys.has(requestKey)) {
         return '';
       }
       recentFailureCache.set(requestKey, true);
@@ -301,6 +302,7 @@ const loadCoverInternal = (path: string, kind: CoverKind): Promise<string> => {
     } finally {
       loadingSet.delete(requestKey);
       inFlightRequests.delete(requestKey);
+      invalidatedRequestKeys.delete(requestKey);
     }
   })();
 
@@ -583,8 +585,6 @@ export function useCoverCache() {
   };
 
   const retainFullCoverPaths = (fullPaths: string[]) => {
-    bumpCacheEpoch('full');
-
     const retainedFullPaths = new Set(fullPaths.filter(Boolean));
     retainCacheEntries(
       fullCoverCache,
@@ -603,6 +603,7 @@ export function useCoverCache() {
         continue;
       }
 
+      invalidatedRequestKeys.add(requestKey);
       inFlightRequests.delete(requestKey);
       loadingSet.delete(requestKey);
     }
@@ -634,6 +635,7 @@ export function useCoverCache() {
     loadingSet.clear();
     inFlightRequests.clear();
     recentFailureCache.clear();
+    invalidatedRequestKeys.clear();
     priorityPreloadQueue.length = 0;
     backgroundPreloadQueue.length = 0;
     queuedPathPriority.clear();
