@@ -21,6 +21,7 @@ export const usePlaybackStore = defineStore('playback', () => {
   const tempQueueFallbackSongs = new Map<string, Song>();
   const currentSongFallback = ref<Song | null>(null);
   const currentCover = ref('');
+  const currentCoverPath = ref('');
   const currentCoverFull = ref('');
 
   const pruneFallbackSongs = () => {
@@ -118,6 +119,7 @@ export const usePlaybackStore = defineStore('playback', () => {
     queueFallbackSongs.clear();
     tempQueueFallbackSongs.clear();
     currentCover.value = '';
+    currentCoverPath.value = '';
     currentCoverFull.value = '';
   };
 
@@ -134,6 +136,7 @@ export const usePlaybackStore = defineStore('playback', () => {
     currentSong,
     currentSongPath,
     currentCover,
+    currentCoverPath,
     currentCoverFull,
     resetPlaybackState,
   };

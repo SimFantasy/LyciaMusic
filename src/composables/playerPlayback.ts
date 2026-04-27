@@ -60,6 +60,7 @@ export const createPlayerPlayback = ({
   } = useCoverCache();
   const {
     currentCover,
+    currentCoverPath,
     currentCoverFull,
     currentSong,
     currentTime,
@@ -271,8 +272,9 @@ export const createPlayerPlayback = ({
     const immediateCover = cachedCover || persistedCover;
     if (immediateCover) {
       currentCover.value = immediateCover;
+      currentCoverPath.value = song.path;
     }
-    currentCoverFull.value = cachedFullCover || immediateCover || currentCoverFull.value;
+    currentCoverFull.value = cachedFullCover || immediateCover || '';
     preloadPriorityCovers(getLikelyThumbnailPaths(song));
     const currentThumbnailLoad = Promise.all([loadCover(song.path), loadCoverPath(song.path)]);
     void currentThumbnailLoad
@@ -284,11 +286,12 @@ export const createPlayerPlayback = ({
         const normalizedCover = cover || '';
         if (normalizedCover) {
           currentCover.value = normalizedCover;
+          currentCoverPath.value = song.path;
         } else if (!immediateCover) {
-          currentCover.value = '';
+          currentCoverPath.value = '';
         }
         if (!currentCoverFull.value) {
-          currentCoverFull.value = normalizedCover || currentCover.value;
+          currentCoverFull.value = normalizedCover || '';
         }
       })
       .catch(() => {});

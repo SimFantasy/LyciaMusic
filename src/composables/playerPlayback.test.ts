@@ -256,6 +256,39 @@ describe('player playback domain', () => {
     playerPlayback.dispose();
   });
 
+  it('does not carry the previous full cover into the next song detail view', async () => {
+    const playbackStore = usePlaybackStore();
+    const uiStore = useUiStore();
+    const oldCover = 'asset://C:\\covers\\old-thumb.jpg';
+    const oldFullCover = 'asset://C:\\covers\\old-full.png';
+    const song = makeSong({ path: '/music/new-song.flac', title: 'New Song' });
+    let resolvePlayAudio!: () => void;
+    uiStore.showPlayerDetail = true;
+    playbackStore.currentCover = oldCover;
+    playbackStore.currentCoverPath = '/music/old-song.flac';
+    playbackStore.currentCoverFull = oldFullCover;
+    vi.mocked(playbackApi.playAudio).mockReturnValueOnce(new Promise<void>((resolve) => {
+      resolvePlayAudio = resolve;
+    }));
+
+    const playerPlayback = createPlayerPlayback({
+      getDisplaySongList: () => [song],
+      addToHistory: vi.fn(),
+      loadLyrics: vi.fn(),
+      handleAutoNext: vi.fn(),
+    });
+
+    const playPromise = playerPlayback.playSong(song);
+
+    expect(playbackStore.currentCover).toBe(oldCover);
+    expect(playbackStore.currentCoverPath).toBe('/music/old-song.flac');
+    expect(playbackStore.currentCoverFull).toBe('');
+
+    resolvePlayAudio();
+    await playPromise;
+    playerPlayback.dispose();
+  });
+
   it('prepares likely full-size covers before switching songs in the player detail view', async () => {
     const playbackStore = usePlaybackStore();
     const uiStore = useUiStore();
