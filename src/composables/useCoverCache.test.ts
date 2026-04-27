@@ -58,4 +58,37 @@ describe('cover cache', () => {
     await expect(request).resolves.toBe('');
     expect(coverCache.getFullCoverUrl(oldPath)).toBe('');
   });
+
+  it('runs background full cover preloads one at a time', async () => {
+    const firstCover = createDeferred<string>();
+    const secondCover = createDeferred<string>();
+    coreMocks.invoke
+      .mockReturnValueOnce(firstCover.promise)
+      .mockReturnValueOnce(secondCover.promise);
+
+    const { useCoverCache } = await import('./useCoverCache');
+    const coverCache = useCoverCache();
+
+    coverCache.preloadFullCovers([
+      '/music/first.flac',
+      '/music/second.flac',
+    ]);
+
+    expect(coreMocks.invoke).toHaveBeenCalledTimes(1);
+    expect(coreMocks.invoke).toHaveBeenLastCalledWith('get_song_cover', {
+      path: '/music/first.flac',
+    });
+
+    firstCover.resolve('C:\\covers\\first.png');
+    await firstCover.promise;
+    await Promise.resolve();
+
+    expect(coreMocks.invoke).toHaveBeenCalledTimes(2);
+    expect(coreMocks.invoke).toHaveBeenLastCalledWith('get_song_cover', {
+      path: '/music/second.flac',
+    });
+
+    secondCover.resolve('C:\\covers\\second.png');
+    await secondCover.promise;
+  });
 });

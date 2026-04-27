@@ -117,12 +117,12 @@ export const createPlayerPlayback = ({
 
   const prepareDetailFullCovers = (song: Song) => {
     if (!showPlayerDetail.value) {
-      return;
+      return [];
     }
 
     const retainedPaths = getLikelyFullCoverPaths(song);
     retainFullCoverPaths(retainedPaths);
-    preloadFullCovers(retainedPaths.filter(path => path !== song.path));
+    return retainedPaths;
   };
 
   const stopPlaybackRuntime = () => {
@@ -228,7 +228,7 @@ export const createPlayerPlayback = ({
       }
     }
 
-    prepareDetailFullCovers(song);
+    const retainedFullCoverPaths = prepareDetailFullCovers(song);
 
     isPlaying.value = true;
     isSongLoaded.value = false;
@@ -237,6 +237,20 @@ export const createPlayerPlayback = ({
     const cachedFullCover = getFullCoverUrl(song.path);
     currentCover.value = cachedCover;
     currentCoverFull.value = cachedFullCover || '';
+    const currentThumbnailLoad = Promise.all([loadCover(song.path), loadCoverPath(song.path)]);
+    void currentThumbnailLoad
+      .then(([cover]) => {
+        if (requestId !== playRequestId || currentSong.value?.path !== song.path) {
+          return;
+        }
+
+        const normalizedCover = cover || '';
+        currentCover.value = normalizedCover;
+        if (!currentCoverFull.value) {
+          currentCoverFull.value = normalizedCover;
+        }
+      })
+      .catch(() => {});
     if (showPlayerDetail.value && !cachedFullCover) {
       void loadFullCover(song.path)
         .then((fullCoverUrl) => {
@@ -247,6 +261,9 @@ export const createPlayerPlayback = ({
           currentCoverFull.value = fullCoverUrl;
         })
         .catch(() => {});
+    }
+    if (retainedFullCoverPaths.length > 1) {
+      preloadFullCovers(retainedFullCoverPaths.filter(path => path !== song.path));
     }
     stopPlaybackRuntime();
     reanchorPlaybackClock(0);
@@ -271,7 +288,7 @@ export const createPlayerPlayback = ({
       loadLyrics();
       startPlaybackRuntime();
 
-      void Promise.all([loadCover(song.path), loadCoverPath(song.path)])
+      void currentThumbnailLoad
         .then(async ([cover, coverPath]) => {
           if (requestId !== playRequestId || currentSong.value?.path !== song.path) {
             return;

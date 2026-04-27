@@ -177,6 +177,29 @@ describe('player playback domain', () => {
     playerPlayback.dispose();
   });
 
+  it('starts loading the current thumbnail before the audio backend finishes switching songs', async () => {
+    const song = makeSong({ path: '/music/current-thumbnail.flac', title: 'Current Thumbnail' });
+    let resolvePlayAudio!: () => void;
+    vi.mocked(playbackApi.playAudio).mockReturnValueOnce(new Promise<void>((resolve) => {
+      resolvePlayAudio = resolve;
+    }));
+
+    const playerPlayback = createPlayerPlayback({
+      getDisplaySongList: () => [song],
+      addToHistory: vi.fn(),
+      loadLyrics: vi.fn(),
+      handleAutoNext: vi.fn(),
+    });
+
+    const playPromise = playerPlayback.playSong(song);
+
+    expect(loadCoverMock).toHaveBeenCalledWith(song.path);
+
+    resolvePlayAudio();
+    await playPromise;
+    playerPlayback.dispose();
+  });
+
   it('prepares likely full-size covers before switching songs in the player detail view', async () => {
     const playbackStore = usePlaybackStore();
     const uiStore = useUiStore();

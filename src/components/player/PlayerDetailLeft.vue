@@ -83,17 +83,19 @@ watch([currentSongPath, () => props.isExpanded], async ([path, isExpanded]) => {
 
   const retainedPaths = getRetainedFullCoverPaths(path);
   retainFullCoverPaths(retainedPaths);
-  preloadFullCovers(retainedPaths.filter(candidatePath => candidatePath !== path));
 
   if (cachedFullCoverUrl) {
     currentCoverFull.value = cachedFullCoverUrl;
+    preloadFullCovers(retainedPaths.filter(candidatePath => candidatePath !== path));
     return;
   }
 
   const requestId = ++fullCoverRequestId;
+  const fullCoverLoad = loadFullCover(path);
+  preloadFullCovers(retainedPaths.filter(candidatePath => candidatePath !== path));
 
   try {
-    const fullCoverUrl = await loadFullCover(path);
+    const fullCoverUrl = await fullCoverLoad;
     if (requestId !== fullCoverRequestId || path !== currentSongPath.value || !props.isExpanded) return;
     currentCoverFull.value = fullCoverUrl || currentCover.value;
   } catch {
