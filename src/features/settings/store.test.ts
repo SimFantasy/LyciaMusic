@@ -120,6 +120,12 @@ describe('settings store', () => {
     expect('minimizeToTray' in merged).toBe(false);
   });
 
+  it('enables the scroll to top button by default', () => {
+    const settingsStore = useSettingsStore();
+
+    expect(settingsStore.settings.enableScrollToTopButton).toBe(true);
+  });
+
   it('merges lyrics settings without dropping untouched display preferences', () => {
     const settingsStore = useSettingsStore();
 
