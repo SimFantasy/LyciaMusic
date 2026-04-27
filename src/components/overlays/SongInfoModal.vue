@@ -254,6 +254,8 @@ const formatTime = (timestampSeconds?: number) => {
         @click="handleClose"
       ></div>
 
+      <div class="song-info-window-drag-strip" data-tauri-drag-region></div>
+
       <div
         class="song-info-stage"
         :class="[
@@ -476,6 +478,7 @@ const formatTime = (timestampSeconds?: number) => {
   --lyrics-panel-width: clamp(340px, 32vw, 460px);
   --song-info-main-width: min(680px, calc(100% - var(--lyrics-panel-width) - var(--song-info-page-gap)));
   position: relative;
+  z-index: 2;
   display: flex;
   gap: var(--song-info-page-gap);
   width: min(1360px, calc(100vw - var(--song-info-viewport-x)));
@@ -486,6 +489,16 @@ const formatTime = (timestampSeconds?: number) => {
     gap 360ms cubic-bezier(0.4, 0, 0.2, 1),
     opacity 300ms ease,
     transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.song-info-window-drag-strip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 1;
+  height: clamp(56px, 9vh, 92px);
+  cursor: default;
 }
 
 .song-info-content {
