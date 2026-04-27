@@ -129,6 +129,7 @@ fn apply_insert_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                 is_various_artists_album,
                 collapse_artist_credits,
                 duration,
+                cover_thumb_path,
                 bitrate,
                 sample_rate,
                 bit_depth,
@@ -141,7 +142,7 @@ fn apply_insert_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                 added_at,
                 file_modified_at
              )
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)
              ON CONFLICT(path) DO UPDATE SET
                 title = excluded.title,
                 artist = excluded.artist,
@@ -153,6 +154,7 @@ fn apply_insert_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                 is_various_artists_album = excluded.is_various_artists_album,
                 collapse_artist_credits = excluded.collapse_artist_credits,
                 duration = excluded.duration,
+                cover_thumb_path = excluded.cover_thumb_path,
                 bitrate = excluded.bitrate,
                 sample_rate = excluded.sample_rate,
                 bit_depth = excluded.bit_depth,
@@ -186,6 +188,7 @@ fn apply_insert_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                     if song.is_various_artists_album { 1 } else { 0 },
                     if song.collapse_artist_credits { 1 } else { 0 },
                     song.duration as i64,
+                    &song.cover_thumb_path,
                     song.bitrate as i64,
                     song.sample_rate as i64,
                     song.bit_depth.map(|value| value as i64),
@@ -227,21 +230,22 @@ fn apply_update_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                  album = ?5,
                  album_artist = ?6,
                  album_key = ?7,
-                 is_various_artists_album = ?8,
-                 collapse_artist_credits = ?9,
-                 duration = ?10,
-                 bitrate = ?11,
-                 sample_rate = ?12,
-                 bit_depth = ?13,
-                 format = ?14,
-                 container = ?15,
-                 codec = ?16,
-                 file_size = ?17,
-                 track_number = ?18,
-                 disc_number = ?19,
-                 added_at = ?20,
-                 file_modified_at = ?21
-             WHERE path = ?22",
+                  is_various_artists_album = ?8,
+                  collapse_artist_credits = ?9,
+                  duration = ?10,
+                  cover_thumb_path = ?11,
+                  bitrate = ?12,
+                  sample_rate = ?13,
+                  bit_depth = ?14,
+                  format = ?15,
+                  container = ?16,
+                  codec = ?17,
+                  file_size = ?18,
+                  track_number = ?19,
+                  disc_number = ?20,
+                  added_at = ?21,
+                  file_modified_at = ?22
+              WHERE path = ?23",
             )
             .map_err(|error| error.to_string())?;
 
@@ -263,6 +267,7 @@ fn apply_update_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                     if song.is_various_artists_album { 1 } else { 0 },
                     if song.collapse_artist_credits { 1 } else { 0 },
                     song.duration as i64,
+                    &song.cover_thumb_path,
                     song.bitrate as i64,
                     song.sample_rate as i64,
                     song.bit_depth.map(|value| value as i64),

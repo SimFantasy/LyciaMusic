@@ -1,7 +1,5 @@
 use super::super::types::{FolderNode, GeneratedFolder, Song};
-use super::super::utils::{
-    descendant_like_patterns, normalize_path,
-};
+use super::super::utils::{descendant_like_patterns, normalize_path};
 use super::diff::{collect_scan_diff, load_db_snapshot_for_folder};
 use super::parser::parse_audio_files_internal;
 use super::progress::ScanProgressReporter;
@@ -34,8 +32,8 @@ pub fn scan_single_directory_internal(
     let original_db_count = db_snapshot.len();
     let scan_diff = collect_scan_diff(&normalized_folder, db_snapshot, reporter.as_ref())?;
 
-    let folder_is_accessible = Path::new(&normalized_folder).is_dir()
-        && fs::read_dir(&normalized_folder).is_ok();
+    let folder_is_accessible =
+        Path::new(&normalized_folder).is_dir() && fs::read_dir(&normalized_folder).is_ok();
 
     if !scan_diff.has_disk_songs && original_db_count > 0 && !folder_is_accessible {
         let error = "文件夹可能已断开连接或路径错误，未执行删除操作".to_string();
@@ -78,13 +76,13 @@ pub fn scan_single_directory_internal(
 #[tauri::command]
 pub async fn scan_music_folder(
     folder_path: String,
-    _app: AppHandle,
+    app: AppHandle,
     db_state: State<'_, DbState>,
 ) -> Result<Vec<Song>, String> {
     let db_conn = db_state.conn.clone();
 
     tauri::async_runtime::spawn_blocking(move || {
-        scan_single_directory_internal(folder_path, db_conn, None, 1, 1)
+        scan_single_directory_internal(folder_path, db_conn, Some(app), 1, 1)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -237,7 +235,9 @@ pub fn scan_folder_recursive(
     let children = if should_preload_children {
         subdirs
             .iter()
-            .filter_map(|subdir| scan_folder_recursive(subdir.clone(), current_depth + 1, max_depth, conn))
+            .filter_map(|subdir| {
+                scan_folder_recursive(subdir.clone(), current_depth + 1, max_depth, conn)
+            })
             .collect()
     } else {
         Vec::new()

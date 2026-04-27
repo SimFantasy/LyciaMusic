@@ -49,10 +49,12 @@ export const createPlayerPlayback = ({
   const {
     loadCover,
     loadCoverPath,
+    primeCoverPath,
     loadFullCover,
     peekCoverUrl,
     peekCoverPath,
     getFullCoverUrl,
+    preloadPriorityCovers,
     preloadFullCovers,
     retainFullCoverPaths,
   } = useCoverCache();
@@ -64,6 +66,7 @@ export const createPlayerPlayback = ({
     isPlaying,
     isSongLoaded,
     playQueue,
+    playMode,
     tempQueue,
   } = storeToRefs(playbackStore);
   const { showPlayerDetail } = storeToRefs(uiStore);
@@ -123,6 +126,35 @@ export const createPlayerPlayback = ({
     const retainedPaths = getLikelyFullCoverPaths(song);
     retainFullCoverPaths(retainedPaths);
     return retainedPaths;
+  };
+
+  const getLikelyThumbnailPaths = (song: Song) => {
+    const paths: string[] = [];
+    const pushUniquePath = (path: string | undefined) => {
+      if (!path || paths.includes(path)) {
+        return;
+      }
+      paths.push(path);
+    };
+
+    pushUniquePath(song.path);
+    pushUniquePath(tempQueue.value[0]?.path);
+
+    const queue = playQueue.value;
+    const currentIndex = queue.findIndex(item => item.path === song.path);
+    if (currentIndex >= 0 && queue.length > 1) {
+      pushUniquePath(queue[(currentIndex - 1 + queue.length) % queue.length]?.path);
+      pushUniquePath(queue[(currentIndex + 1) % queue.length]?.path);
+    }
+
+    if (playMode.value === 2) {
+      const randomCandidates = (queue.length ? queue : getDisplaySongList())
+        .filter(item => item.path !== song.path)
+        .slice(0, 5);
+      randomCandidates.forEach(item => pushUniquePath(item.path));
+    }
+
+    return paths;
   };
 
   const stopPlaybackRuntime = () => {
@@ -233,10 +265,15 @@ export const createPlayerPlayback = ({
     isPlaying.value = true;
     isSongLoaded.value = false;
     const cachedCover = peekCoverUrl(song.path);
-    const cachedCoverPath = peekCoverPath(song.path);
+    const cachedCoverPath = peekCoverPath(song.path) || song.cover_thumb_path || '';
+    const persistedCover = primeCoverPath(song.path, song.cover_thumb_path);
     const cachedFullCover = getFullCoverUrl(song.path);
-    currentCover.value = cachedCover;
-    currentCoverFull.value = cachedFullCover || '';
+    const immediateCover = cachedCover || persistedCover;
+    if (immediateCover) {
+      currentCover.value = immediateCover;
+    }
+    currentCoverFull.value = cachedFullCover || immediateCover || currentCoverFull.value;
+    preloadPriorityCovers(getLikelyThumbnailPaths(song));
     const currentThumbnailLoad = Promise.all([loadCover(song.path), loadCoverPath(song.path)]);
     void currentThumbnailLoad
       .then(([cover]) => {
@@ -245,9 +282,13 @@ export const createPlayerPlayback = ({
         }
 
         const normalizedCover = cover || '';
-        currentCover.value = normalizedCover;
+        if (normalizedCover) {
+          currentCover.value = normalizedCover;
+        } else if (!immediateCover) {
+          currentCover.value = '';
+        }
         if (!currentCoverFull.value) {
-          currentCoverFull.value = normalizedCover;
+          currentCoverFull.value = normalizedCover || currentCover.value;
         }
       })
       .catch(() => {});

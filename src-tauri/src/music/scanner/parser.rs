@@ -190,6 +190,7 @@ pub(super) fn parse_song_from_file(path: &Path, path_str: &str, format: &str) ->
         is_various_artists_album: false,
         collapse_artist_credits: false,
         duration,
+        cover_thumb_path: None,
         bitrate,
         sample_rate,
         bit_depth,

@@ -600,6 +600,21 @@ export function useCoverCache() {
     return getCachedCoverPath(path, 'thumbnail');
   };
 
+  const primeCoverPath = (path: string | undefined, rawPath: string | undefined | null) => {
+    if (!path || !rawPath) {
+      return '';
+    }
+
+    const cachedValue = getCachedCover(path, 'thumbnail');
+    if (cachedValue !== undefined) {
+      return cachedValue;
+    }
+
+    const finalUrl = convertFileSrc(rawPath);
+    setCachedCover(path, 'thumbnail', finalUrl, rawPath);
+    return finalUrl;
+  };
+
   const preloadCovers = (paths: string[], priority: PreloadPriority = 'background') => {
     for (const path of paths) {
       enqueuePreload(path, priority);
@@ -710,6 +725,7 @@ export function useCoverCache() {
     isCoverLoading,
     loadCover,
     loadCoverPath,
+    primeCoverPath,
     loadFullCover,
     preloadCovers,
     preloadPriorityCovers: (paths: string[]) => preloadCovers(paths, 'priority'),

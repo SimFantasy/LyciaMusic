@@ -28,6 +28,7 @@ pub(crate) fn ensure_base_schema(conn: &Connection) -> Result<(), String> {
             collapse_artist_credits INTEGER DEFAULT 0,
             duration INTEGER,
             cover_path TEXT,
+            cover_thumb_path TEXT,
             bitrate INTEGER,
             sample_rate INTEGER,
             bit_depth INTEGER,

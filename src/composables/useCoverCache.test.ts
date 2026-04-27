@@ -91,4 +91,16 @@ describe('cover cache', () => {
     secondCover.resolve('C:\\covers\\second.png');
     await secondCover.promise;
   });
+
+  it('uses a primed thumbnail path without invoking the backend', async () => {
+    const path = '/music/current.flac';
+    const coverPath = 'C:\\covers\\current-thumb.jpg';
+
+    const { useCoverCache } = await import('./useCoverCache');
+    const coverCache = useCoverCache();
+
+    expect(coverCache.primeCoverPath(path, coverPath)).toBe(`asset://${coverPath}`);
+    await expect(coverCache.loadCover(path)).resolves.toBe(`asset://${coverPath}`);
+    expect(coreMocks.invoke).not.toHaveBeenCalled();
+  });
 });

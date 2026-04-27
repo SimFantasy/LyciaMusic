@@ -12,6 +12,7 @@ export interface SongCore {
   is_various_artists_album: boolean;
   collapse_artist_credits: boolean;
   duration: number;
+  cover_thumb_path?: string;
   genre?: string;
   year?: string;
   // Audio quality fields (v1.1.1)
