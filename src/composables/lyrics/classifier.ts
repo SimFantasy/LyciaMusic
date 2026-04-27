@@ -8,7 +8,6 @@ import type {
 } from './types';
 
 const MAX_GROUP_TOLERANCE_MS = 50;
-const MAX_GROUP_SIZE = 3;
 const ROMAN_ALIGNMENT_TOLERANCE_MS = 80;
 
 function resolveDominantScript(profile: Omit<LineScriptProfile, 'dominantScript'>): DominantScript {
@@ -87,6 +86,13 @@ function isPureHan(profile: LineScriptProfile): boolean {
     && profile.hangulCount === 0;
 }
 
+function isChineseDominantLine(profile: LineScriptProfile): boolean {
+  return profile.hanCount > 0
+    && profile.hanCount > profile.latinCount
+    && profile.kanaCount === 0
+    && profile.hangulCount === 0;
+}
+
 function isJapaneseLike(profile: LineScriptProfile): boolean {
   return profile.kanaCount > 0
     && profile.hangulCount === 0;
@@ -146,21 +152,6 @@ function getGroupTolerance(lines: ParsedLine[], groupStartIndex: number): number
   );
 }
 
-function shouldKeepSeparateForScriptSimilarity(group: ParsedLine[], candidate: ParsedLine): boolean {
-  if (candidate.startMs === group[0]?.startMs) {
-    return false;
-  }
-
-  if ([...group, candidate].some((line) => hasExplicitSecondary(line) || hasParserNativeSecondary(line))) {
-    return false;
-  }
-
-  const candidateScript = getContentProfile(candidate).dominantScript;
-  if (candidateScript === 'mixed' || candidateScript === 'other') return false;
-
-  return group.some((line) => getContentProfile(line).dominantScript === candidateScript);
-}
-
 function groupParsedLines(lines: ParsedLine[]): ParsedLine[][] {
   if (lines.length === 0) return [];
 
@@ -177,19 +168,10 @@ function groupParsedLines(lines: ParsedLine[]): ParsedLine[][] {
       continue;
     }
 
-    if (currentGroup.length >= MAX_GROUP_SIZE) {
-      groups.push([line]);
-      groupStartIndex = index;
-      continue;
-    }
-
     const tolerance = getGroupTolerance(lines, groupStartIndex);
     const withinTolerance = Math.abs(line.startMs - currentGroup[0].startMs) <= tolerance;
 
-    if (
-      withinTolerance
-      && !shouldKeepSeparateForScriptSimilarity(currentGroup, line)
-    ) {
+    if (withinTolerance) {
       currentGroup.push(line);
       continue;
     }
@@ -228,7 +210,7 @@ function classifyHeuristicRole(
     case 'han':
       return isPureLatin(candidateProfile) ? 'romaji' : 'secondary';
     case 'latin':
-      return isPureHan(candidateProfile) ? 'translation' : 'secondary';
+      return isChineseDominantLine(candidateProfile) ? 'translation' : 'secondary';
     default:
       return 'secondary';
   }

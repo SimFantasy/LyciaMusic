@@ -362,6 +362,47 @@ describe('mergePreparedLines', async () => {
     expect(merged[0].romaji).toBe('');
   });
 
+  it('classifies chinese-dominant mixed lines as translations for latin main lines', () => {
+    const merged = mergePreparedLines([
+      {
+        startMs: 74530,
+        endMs: 78000,
+        text: 'A-Z Looser-KrankheitWas IS das?',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: 'A-Z Looser-KrankheitWas IS das?',
+          start: 74.53,
+          end: 78,
+          romaji: '',
+        }],
+        sourceIndex: 0,
+      },
+      {
+        startMs: 74530,
+        endMs: 78000,
+        text: 'A-Z \u5931\u8d25\u8005-\u75be\u75c5-\u662f\u4ec0\u4e48\uff1f',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: 'A-Z \u5931\u8d25\u8005-\u75be\u75c5-\u662f\u4ec0\u4e48\uff1f',
+          start: 74.53,
+          end: 78,
+          romaji: '',
+        }],
+        sourceIndex: 1,
+      },
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      text: 'A-Z Looser-KrankheitWas IS das?',
+      translation: 'A-Z \u5931\u8d25\u8005-\u75be\u75c5-\u662f\u4ec0\u4e48\uff1f',
+      romaji: '',
+    });
+    expect(merged[0]?.secondary).toBeUndefined();
+  });
+
   it('classifies korean lyric groups as main plus chinese translation', () => {
     const merged = mergePreparedLines([
       {
@@ -574,7 +615,7 @@ describe('mergePreparedLines', async () => {
     ]);
   });
 
-  it('does not merge rapid same-script lines in dense sequences', () => {
+  it('groups rapid same-script lines by timestamp boundaries only', () => {
     const merged = mergePreparedLines([
       {
         startMs: 0,
@@ -605,7 +646,9 @@ describe('mergePreparedLines', async () => {
       },
     ]);
 
-    expect(merged.map((line) => line.text)).toEqual(['one', 'two', 'three']);
+    expect(merged.map((line) => line.text)).toEqual(['one', 'two']);
+    expect(merged[0]?.secondary).toBeUndefined();
+    expect(merged[1]?.secondary).toEqual(['three']);
   });
 
   it('falls back to secondary lines when same-script groups are ambiguous', () => {
@@ -644,6 +687,142 @@ describe('mergePreparedLines', async () => {
     expect(merged[0].translation).toBe('');
     expect(merged[0].romaji).toBe('');
     expect(merged[0].secondary).toEqual(['\u540c\u6b65\u7684\u53e6\u4e00\u884c']);
+  });
+
+  it('keeps every near-identical timestamp line in one group and stores overflow as secondary', () => {
+    const merged = mergePreparedLines([
+      {
+        startMs: 10000,
+        endMs: 13000,
+        text: 'kimi no na wa',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: 'kimi no na wa',
+          start: 10,
+          end: 13,
+          romaji: '',
+        }],
+        sourceIndex: 0,
+      },
+      {
+        startMs: 10020,
+        endMs: 13000,
+        text: '\u541b\u306e\u540d\u306f',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: '\u541b\u306e\u540d\u306f',
+          start: 10.02,
+          end: 13,
+          romaji: '',
+        }],
+        sourceIndex: 1,
+      },
+      {
+        startMs: 10040,
+        endMs: 13000,
+        text: '\u4f60\u7684\u540d\u5b57',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: '\u4f60\u7684\u540d\u5b57',
+          start: 10.04,
+          end: 13,
+          romaji: '',
+        }],
+        sourceIndex: 2,
+      },
+      {
+        startMs: 10050,
+        endMs: 13000,
+        text: '\u540c\u6b65\u5907\u7528\u884c',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: '\u540c\u6b65\u5907\u7528\u884c',
+          start: 10.05,
+          end: 13,
+          romaji: '',
+        }],
+        sourceIndex: 3,
+      },
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      text: '\u541b\u306e\u540d\u306f',
+      translation: '\u4f60\u7684\u540d\u5b57',
+      romaji: 'kimi no na wa',
+      secondary: ['\u540c\u6b65\u5907\u7528\u884c'],
+    });
+  });
+
+  it('keeps a single chinese line as the main lyric', () => {
+    const merged = mergePreparedLines([
+      {
+        startMs: 10000,
+        endMs: 13000,
+        text: '\u6211\u66fe\u7ecf\u8de8\u8fc7\u5c71\u548c\u5927\u6d77',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: '\u6211\u66fe\u7ecf\u8de8\u8fc7\u5c71\u548c\u5927\u6d77',
+          start: 10,
+          end: 13,
+          romaji: '',
+        }],
+        sourceIndex: 0,
+      },
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      text: '\u6211\u66fe\u7ecf\u8de8\u8fc7\u5c71\u548c\u5927\u6d77',
+      translation: '',
+      romaji: '',
+    });
+  });
+
+  it('keeps all-latin groups as first line plus secondary lines', () => {
+    const merged = mergePreparedLines([
+      {
+        startMs: 10000,
+        endMs: 13000,
+        text: 'kimi no na wa',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: 'kimi no na wa',
+          start: 10,
+          end: 13,
+          romaji: '',
+        }],
+        sourceIndex: 0,
+      },
+      {
+        startMs: 10000,
+        endMs: 13000,
+        text: 'boku wa mada',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: 'boku wa mada',
+          start: 10,
+          end: 13,
+          romaji: '',
+        }],
+        sourceIndex: 1,
+      },
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      text: 'kimi no na wa',
+      translation: '',
+      romaji: '',
+      secondary: ['boku wa mada'],
+    });
   });
 
   it('detects hangul characters when building the script profile', () => {
