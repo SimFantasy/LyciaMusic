@@ -19,6 +19,7 @@ import {
 const ROW_HEIGHT = 72;
 const INDEX_PROXIMITY_PX = 72;
 const INDEX_AUTO_HIDE_MS = 500;
+const SCROLL_TO_TOP_VIEW_MODES = new Set(['all', 'playlist', 'artist', 'album']);
 
 type StringRef = Ref<string> | ComputedRef<string>;
 
@@ -183,7 +184,7 @@ export function useSongTableAlphabetIndex({
 
   const showScrollToTopButton = computed(() =>
     routePath.value === '/' &&
-    currentViewMode.value === 'all' &&
+    SCROLL_TO_TOP_VIEW_MODES.has(currentViewMode.value) &&
     songs.value.length > 0 &&
     scrollTop.value > ROW_HEIGHT,
   );
