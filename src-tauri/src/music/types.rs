@@ -3,8 +3,30 @@
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 
-/// 并发控制状态
-pub struct ImageConcurrencyLimit(pub Semaphore);
+pub const THUMBNAIL_IMAGE_CONCURRENCY_LIMIT: usize = 2;
+pub const FULL_COVER_IMAGE_CONCURRENCY_LIMIT: usize = 2;
+
+/// 缩略图并发控制状态
+pub struct ThumbnailImageConcurrencyLimit(pub Semaphore);
+
+/// 高清封面并发控制状态
+pub struct FullCoverImageConcurrencyLimit(pub Semaphore);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cover_image_concurrency_is_split_between_thumbnail_and_full_cover() {
+        assert_eq!(THUMBNAIL_IMAGE_CONCURRENCY_LIMIT, 2);
+        assert_eq!(FULL_COVER_IMAGE_CONCURRENCY_LIMIT, 2);
+
+        let _thumbnail_limit =
+            ThumbnailImageConcurrencyLimit(Semaphore::new(THUMBNAIL_IMAGE_CONCURRENCY_LIMIT));
+        let _full_cover_limit =
+            FullCoverImageConcurrencyLimit(Semaphore::new(FULL_COVER_IMAGE_CONCURRENCY_LIMIT));
+    }
+}
 
 #[derive(Serialize, Clone, Debug)]
 pub struct Song {

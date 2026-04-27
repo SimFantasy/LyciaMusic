@@ -1,5 +1,8 @@
 use crate::database::DbState;
-use crate::music::{run_cache_cleanup, ImageConcurrencyLimit};
+use crate::music::{
+    run_cache_cleanup, FullCoverImageConcurrencyLimit, ThumbnailImageConcurrencyLimit,
+    FULL_COVER_IMAGE_CONCURRENCY_LIMIT, THUMBNAIL_IMAGE_CONCURRENCY_LIMIT,
+};
 use crate::player::init_player;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -146,7 +149,12 @@ pub(crate) fn setup_app(
     let player_state = init_player(app.handle());
     app.manage(player_state);
 
-    app.manage(ImageConcurrencyLimit(Semaphore::new(4)));
+    app.manage(ThumbnailImageConcurrencyLimit(Semaphore::new(
+        THUMBNAIL_IMAGE_CONCURRENCY_LIMIT,
+    )));
+    app.manage(FullCoverImageConcurrencyLimit(Semaphore::new(
+        FULL_COVER_IMAGE_CONCURRENCY_LIMIT,
+    )));
     run_cache_cleanup(app.handle());
 
     let current_exe = std::env::current_exe().ok();

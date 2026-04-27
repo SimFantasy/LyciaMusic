@@ -1,7 +1,7 @@
 // music/covers.rs - 封面缓存与缩略图生成
 
 use super::tags::{find_embedded_picture, read_tagged_file_from_path};
-use super::types::ImageConcurrencyLimit;
+use super::types::{FullCoverImageConcurrencyLimit, ThumbnailImageConcurrencyLimit};
 use super::utils::normalize_path;
 use image::{DynamicImage, ImageFormat};
 use lofty::picture::MimeType;
@@ -390,7 +390,7 @@ pub fn get_or_create_full_cover(path: &Path, app: &AppHandle) -> Option<String> 
 pub async fn get_song_cover_thumbnail(
     path: String,
     app: AppHandle,
-    semaphore: State<'_, ImageConcurrencyLimit>,
+    semaphore: State<'_, ThumbnailImageConcurrencyLimit>,
 ) -> Result<String, String> {
     let _permit = semaphore.0.acquire().await.map_err(|e| e.to_string())?;
 
@@ -413,7 +413,7 @@ pub async fn get_song_cover_thumbnail(
 pub async fn get_song_cover(
     path: String,
     app: AppHandle,
-    semaphore: State<'_, ImageConcurrencyLimit>,
+    semaphore: State<'_, FullCoverImageConcurrencyLimit>,
 ) -> Result<String, String> {
     let _permit = semaphore.0.acquire().await.map_err(|e| e.to_string())?;
 
