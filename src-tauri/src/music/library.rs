@@ -1,10 +1,8 @@
 // music/library.rs - 音乐库管理命令
 
 use super::scanner::{scan_folder_recursive, scan_single_directory_internal};
-use super::types::{
-    AlbumCatalogItem, ArtistCatalogItem, FolderNode, LibraryFolder, LibrarySong,
-};
-use super::utils::normalize_path;
+use super::types::{AlbumCatalogItem, ArtistCatalogItem, FolderNode, LibraryFolder, LibrarySong};
+use super::utils::{descendant_like_patterns, normalize_path};
 use crate::database::DbState;
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -84,6 +82,79 @@ fn is_descendant_path(song_path: &str, folder_path: &str) -> bool {
         || song_path.starts_with(&format!("{folder_path}/"))
 }
 
+fn remove_library_folder_from_conn(
+    conn: &mut rusqlite::Connection,
+    folder_path: &str,
+) -> Result<Vec<String>, String> {
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM library_folders WHERE path = ?1", [folder_path])
+        .map_err(|e| e.to_string())?;
+
+    let remaining_roots = {
+        let mut stmt = tx
+            .prepare("SELECT path FROM library_folders")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+        rows
+    };
+
+    let (forward_like, backward_like) = descendant_like_patterns(folder_path);
+    let candidate_paths = {
+        let mut stmt = tx
+            .prepare(
+                "SELECT path
+                 FROM songs
+                 WHERE path = ?1
+                    OR path LIKE ?2 ESCAPE '^'
+                    OR path LIKE ?3 ESCAPE '^'",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(
+                rusqlite::params![folder_path, forward_like, backward_like],
+                |row| row.get::<_, String>(0),
+            )
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+        rows
+    };
+
+    let deleted_paths = candidate_paths
+        .into_iter()
+        .filter(|path| {
+            !remaining_roots
+                .iter()
+                .any(|root| is_descendant_path(path, root))
+        })
+        .collect::<Vec<_>>();
+
+    {
+        let mut delete_stmt = tx
+            .prepare("DELETE FROM songs WHERE path = ?1")
+            .map_err(|e| e.to_string())?;
+        for path in &deleted_paths {
+            delete_stmt
+                .execute([path])
+                .map_err(|e| format!("delete failed for '{}': {}", path, e))?;
+        }
+    }
+
+    tx.execute(
+        "DELETE FROM artists
+         WHERE id NOT IN (SELECT DISTINCT artist_id FROM song_artists)",
+        [],
+    )
+    .ok();
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(deleted_paths)
+}
+
 fn normalize_for_compare(path: &str) -> String {
     path.replace('\\', "/").trim_end_matches('/').to_string()
 }
@@ -131,7 +202,9 @@ fn folder_song_matches_query(row: &FolderViewSongRow, query: &str) -> bool {
         return true;
     }
 
-    file_name_from_path(&row.path).to_lowercase().contains(&lowered_query)
+    file_name_from_path(&row.path)
+        .to_lowercase()
+        .contains(&lowered_query)
         || row.title.to_lowercase().contains(&lowered_query)
         || row.artist.to_lowercase().contains(&lowered_query)
         || row.album.to_lowercase().contains(&lowered_query)
@@ -282,9 +355,8 @@ pub async fn remove_library_folder(
     let normalized = normalize_path(&path);
 
     tauri::async_runtime::spawn_blocking(move || {
-        let conn = db_conn.lock().map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM library_folders WHERE path = ?1", [&normalized])
-            .map_err(|e| e.to_string())?;
+        let mut conn = db_conn.lock().map_err(|e| e.to_string())?;
+        remove_library_folder_from_conn(&mut conn, &normalized)?;
         Ok::<(), String>(())
     })
     .await
@@ -834,4 +906,74 @@ pub async fn get_folder_children(
     .map_err(|e| e.to_string())??;
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    fn create_minimal_schema(conn: &Connection) {
+        conn.execute(
+            "CREATE TABLE library_folders (
+                path TEXT PRIMARY KEY,
+                added_at INTEGER
+            )",
+            [],
+        )
+        .expect("create library_folders");
+        conn.execute(
+            "CREATE TABLE songs (
+                id INTEGER PRIMARY KEY,
+                path TEXT NOT NULL UNIQUE,
+                title TEXT,
+                artist TEXT,
+                album TEXT
+            )",
+            [],
+        )
+        .expect("create songs");
+    }
+
+    fn insert_song(conn: &Connection, path: &str) {
+        conn.execute(
+            "INSERT INTO songs (path, title, artist, album) VALUES (?1, 'Title', 'Artist', 'Album')",
+            [path],
+        )
+        .expect("insert song");
+    }
+
+    #[test]
+    fn removing_library_folder_deletes_only_descendant_songs() {
+        let mut conn = Connection::open_in_memory().expect("open in-memory db");
+        create_minimal_schema(&conn);
+        conn.execute(
+            "INSERT INTO library_folders (path, added_at) VALUES (?1, 1), (?2, 2)",
+            ["/library/a", "/library/ab"],
+        )
+        .expect("insert library folders");
+        insert_song(&conn, "/library/a/root.flac");
+        insert_song(&conn, "/library/a/sub/nested.flac");
+        insert_song(&conn, "/library/ab/kept.flac");
+
+        remove_library_folder_from_conn(&mut conn, "/library/a").expect("remove folder");
+
+        let remaining: Vec<String> = conn
+            .prepare("SELECT path FROM songs ORDER BY path")
+            .expect("prepare remaining songs")
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query remaining songs")
+            .filter_map(Result::ok)
+            .collect();
+        let folders: Vec<String> = conn
+            .prepare("SELECT path FROM library_folders ORDER BY path")
+            .expect("prepare remaining folders")
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query remaining folders")
+            .filter_map(Result::ok)
+            .collect();
+
+        assert_eq!(remaining, vec!["/library/ab/kept.flac"]);
+        assert_eq!(folders, vec!["/library/ab"]);
+    }
 }

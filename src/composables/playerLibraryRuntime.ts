@@ -154,6 +154,14 @@ export const createPlayerLibraryRuntime = ({
     cancelScheduledLibraryRefresh();
 
     if (libraryStore.libraryFolders.length === 0) {
+      flushBufferedLibraryScanBatch();
+      libraryStore.setLibrarySongs([]);
+      libraryStore.setSourceSongs([]);
+      libraryStore.setLibraryHierarchy([]);
+      libraryStore.setArtistCatalog([]);
+      libraryStore.setAlbumCatalog([]);
+      clearLibraryPathCaches();
+      refreshStateSongReferences([]);
       libraryStore.setLibraryScanSession(null);
       libraryStore.setLibraryScanProgress(null);
       libraryStore.setLastLibraryScanError(null);

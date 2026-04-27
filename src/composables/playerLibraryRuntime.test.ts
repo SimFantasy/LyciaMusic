@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
+import type { Song } from '../types';
 
 const invokeMock = vi.fn();
 
@@ -30,6 +31,22 @@ vi.mock('./useLibraryFolderSongPathCache', () => ({
     clearLibraryFolderSongPathCache: vi.fn(),
   }),
 }));
+
+const makeSong = (overrides: Partial<Song> = {}): Song => ({
+  path: 'C:\\Music\\stale.flac',
+  name: 'stale.flac',
+  title: 'Stale',
+  artist: 'Artist',
+  artist_names: ['Artist'],
+  effective_artist_names: ['Artist'],
+  album: 'Album',
+  album_artist: 'Artist',
+  album_key: 'album::artist',
+  is_various_artists_album: false,
+  collapse_artist_credits: false,
+  duration: 180,
+  ...overrides,
+});
 
 describe('playerLibraryRuntime.scanLibrary', () => {
   beforeEach(() => {
@@ -123,5 +140,50 @@ describe('playerLibraryRuntime.scanLibrary', () => {
 
     expect(invokeMock.mock.calls.filter(([name]) => name === 'scan_library')).toHaveLength(2);
     expect(libraryStore.librarySongs.map(song => song.path)).toEqual(['C:\\Music\\fresh.flac']);
+  });
+
+  it('clears in-memory library songs when the last library folder has been removed', async () => {
+    const { useLibraryStore } = await import('../features/library/store');
+    const { createPlayerLibraryRuntime } = await import('./playerLibraryRuntime');
+
+    const libraryStore = useLibraryStore();
+    const staleSong = makeSong();
+    libraryStore.setLibrarySongs([staleSong]);
+    libraryStore.setSourceSongs([staleSong]);
+    libraryStore.setLibraryFolders([]);
+    libraryStore.setLibraryHierarchy([
+      {
+        path: 'C:\\Music',
+        name: 'Music',
+        children: [],
+        child_count: 0,
+        children_loaded: true,
+        song_count: 1,
+        cover_song_path: staleSong.path,
+        is_expanded: false,
+      },
+    ]);
+    libraryStore.setArtistCatalog([{ name: 'Artist', count: 1, firstSongPath: staleSong.path }]);
+    libraryStore.setAlbumCatalog([{ key: 'album::artist', name: 'Album', artist: 'Artist', count: 1, firstSongPath: staleSong.path }]);
+
+    const refreshStateSongReferences = vi.fn();
+    const runtime = createPlayerLibraryRuntime({
+      fetchLibraryFolders: vi.fn(async () => {}),
+      fetchFolderTree: vi.fn(async () => {}),
+      flushBufferedLibraryScanBatch: vi.fn(),
+      refreshStateSongReferences,
+      finalizeLibraryScanProgress: vi.fn(),
+      onSilentScanError: vi.fn(),
+    });
+
+    await runtime.scanLibrary({ trigger: 'manual-rescan', visibility: 'inline' });
+
+    expect(libraryStore.librarySongs).toEqual([]);
+    expect(libraryStore.songList).toEqual([]);
+    expect(libraryStore.folderTree).toEqual([]);
+    expect(libraryStore.artistCatalog).toEqual([]);
+    expect(libraryStore.albumCatalog).toEqual([]);
+    expect(refreshStateSongReferences).toHaveBeenCalledWith([]);
+    expect(invokeMock).not.toHaveBeenCalledWith('scan_library');
   });
 });
