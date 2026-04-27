@@ -137,6 +137,24 @@ describe('enhanced lrc parser', async () => {
     ]);
   });
 
+  it('tolerates tiny backward enhanced timestamps when the skipped segment is empty', () => {
+    const parsed = parseEnhancedLrcLine('[01:20.847]<01:20.847>「<01:21.063>sha shi <01:21.255>n <01:21.439>wa <01:21.615>ni ga <01:21.964>te <01:22.143>na <01:22.239>n <01:22.335><01:22.336>da <01:22.783><01:22.782>」<01:22.783>');
+
+    expect(parsed).not.toBeNull();
+    expect(parsed?.words.map((word) => word.word)).toEqual([
+      '「',
+      'sha shi ',
+      'n ',
+      'wa ',
+      'ni ga ',
+      'te ',
+      'na ',
+      'n ',
+      'da ',
+      '」',
+    ]);
+  });
+
   it('falls back on malformed enhanced lines while preserving valid enhanced lines', () => {
     const parsed = parseEnhancedLrc([
       '[00:36.111]<00:36.111>A<00:36.551>B<00:36.991>',
@@ -441,7 +459,7 @@ describe('mergePreparedLines', async () => {
     expect(merged[0].romaji).toBe('');
   });
 
-  it('treats chinese plus pinyin as main and romaji', () => {
+  it('treats chinese plus latin as latin main and chinese translation', () => {
     const merged = mergePreparedLines([
       {
         startMs: 5000,
@@ -474,9 +492,9 @@ describe('mergePreparedLines', async () => {
     ]);
 
     expect(merged).toHaveLength(1);
-    expect(merged[0].text).toBe('\u5fc3\u91cc\u6709\u4e00\u4e2a\u68a6');
-    expect(merged[0].translation).toBe('');
-    expect(merged[0].romaji).toBe('xin li you yi ge meng');
+    expect(merged[0].text).toBe('xin li you yi ge meng');
+    expect(merged[0].translation).toBe('\u5fc3\u91cc\u6709\u4e00\u4e2a\u68a6');
+    expect(merged[0].romaji).toBe('');
   });
 
   it('keeps enhanced main-word timing while attaching a translated line', () => {
@@ -1024,6 +1042,20 @@ describe('raw lyrics samples from the common formats checklist', async () => {
     expect(lines[1]).toMatchObject({
       text: 'Just shout whenever and I\'ll be there',
       translation: '你只要呼唤我 我就会马上出现',
+      romaji: '',
+    });
+  });
+
+  it('classifies chinese plus latin bilingual lyrics as latin main plus chinese translation across raw lrc input', async () => {
+    const lines = await parseRawToLyricLines([
+      '[00:21.680]你是我的爱',
+      '[00:21.680]You are my love',
+    ].join('\n'));
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({
+      text: 'You are my love',
+      translation: '你是我的爱',
       romaji: '',
     });
   });

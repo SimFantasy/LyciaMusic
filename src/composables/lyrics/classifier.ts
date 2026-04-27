@@ -190,6 +190,12 @@ function selectHeuristicMainLine(lines: ParsedLine[]): ParsedLine {
   const koreanLine = lines.find((line) => isKoreanLike(getContentProfile(line)));
   if (koreanLine) return koreanLine;
 
+  if (lines.length === 2) {
+    const latinLine = lines.find((line) => isPureLatin(getContentProfile(line)));
+    const chineseLine = lines.find((line) => isChineseDominantLine(getContentProfile(line)));
+    if (latinLine && chineseLine) return latinLine;
+  }
+
   return lines[0];
 }
 

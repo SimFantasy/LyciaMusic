@@ -16,6 +16,7 @@ const ESLRC_GAP_PLACEHOLDER = '\u2063';
 const ENHANCED_TIMESTAMP_PATTERN = /<(\d{1,}:\d{2}(?:\.\d+)?)>/g;
 const ENHANCED_TIMESTAMP_TEXT_PATTERN = /<\d{1,}:\d{2}(?:\.\d+)?>/;
 const LRC_LINE_TIMESTAMP_PATTERN = /^\[(\d{1,}:\d{2}(?:\.\d+)?)\](.*)$/;
+const ENHANCED_EMPTY_BACKWARD_TOLERANCE_MS = 5;
 
 type ParserSource = ParsedLineSourceFormat;
 
@@ -135,7 +136,13 @@ export function parseEnhancedLrcLine(line: string): AmlLyricLine | null {
     }
 
     const nextStart = parseTimestampToMs(nextMarker[1]);
-    if (nextStart === null || nextStart < currentStart) return null;
+    if (nextStart === null) return null;
+    if (nextStart < currentStart) {
+      if (text.length === 0 && currentStart - nextStart <= ENHANCED_EMPTY_BACKWARD_TOLERANCE_MS) {
+        continue;
+      }
+      return null;
+    }
     if (text.length === 0) continue;
 
     words.push({
