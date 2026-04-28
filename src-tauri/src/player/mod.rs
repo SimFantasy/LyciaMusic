@@ -1,6 +1,7 @@
 mod commands;
 mod device;
 mod runtime;
+mod spectrum;
 mod types;
 
 pub use commands::{

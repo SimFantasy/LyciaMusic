@@ -120,11 +120,11 @@ pub(crate) fn restore_current_playback(
         if let Ok(file) = File::open(current_path) {
             let reader = BufReader::with_capacity(512 * 1024, file);
             if let Ok(source) = Decoder::new(reader) {
-                let timed_source = TimedSource {
-                    inner: source.convert_samples::<f32>().skip_duration(jump_target),
-                    samples_played: progress.samples_played.clone(),
-                    visualizer: progress.visualizer.clone(),
-                };
+                let timed_source = TimedSource::new(
+                    source.convert_samples::<f32>().skip_duration(jump_target),
+                    progress.samples_played.clone(),
+                    progress.visualizer.clone(),
+                );
                 if let Some(sink) = current_sink.as_ref() {
                     sink.set_volume(current_volume);
                     sink.append(timed_source);

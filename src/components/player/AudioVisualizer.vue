@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { playbackApi } from '../../services/tauri/playbackApi';
+import { smoothVisualizerLevel } from './audioVisualizerMath';
 
 const props = defineProps<{
   active: boolean;
@@ -10,19 +11,16 @@ const props = defineProps<{
 
 const BAR_COUNT = 48;
 const DISPLAY_BAR_COUNT = 112;
-const FETCH_INTERVAL_MS = 50;
+const FETCH_INTERVAL_MS = 33;
 const MIN_BAR_HEIGHT = 3;
-const PEAK_DECAY = 0.86;
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const levels = ref<number[]>(Array(BAR_COUNT).fill(0));
-const peakLevels = ref<number[]>(Array(DISPLAY_BAR_COUNT).fill(0));
 const renderedLevels = ref<number[]>(Array(DISPLAY_BAR_COUNT).fill(0));
 
 let animationFrameId: number | null = null;
 let fetchTimerId: ReturnType<typeof setInterval> | null = null;
 let resizeObserver: ResizeObserver | null = null;
-let sampleTick = 0;
 
 const stopFetchTimer = () => {
   if (fetchTimerId !== null) {
@@ -57,15 +55,9 @@ const getDisplayLevel = (index: number) => {
   return left + (right - left) * mix;
 };
 
-const stableNoise = (seed: number) => {
-  const value = Math.sin(seed * 12.9898) * 43758.5453;
-  return value - Math.floor(value);
-};
-
 const shouldAnimate = () =>
   props.active && (
     props.isPlaying
-    || peakLevels.value.some(level => level > 0.012)
     || renderedLevels.value.some(level => level > 0.012)
   );
 
@@ -91,30 +83,16 @@ const draw = () => {
   context.shadowBlur = 7 * pixelRatio;
   context.shadowColor = 'rgba(151, 191, 211, 0.36)';
 
-  const inactiveScale = props.isPlaying ? 1 : 0.45;
-
   for (let index = 0; index < DISPLAY_BAR_COUNT; index += 1) {
     const rawValue = Math.max(0, getDisplayLevel(index));
     const bandPosition = index / Math.max(1, DISPLAY_BAR_COUNT - 1);
-    const baseValue = Math.pow(rawValue, 0.46) * inactiveScale;
-    const lowFrequencyWeight = 1.38 - bandPosition * 0.78;
-    const spikeChance = bandPosition < 0.32 ? 0.24 : bandPosition < 0.62 ? 0.12 : 0.055;
-    const noise = stableNoise(index * 9.7 + sampleTick * 1.37);
-    const pulse = 0.72 + Math.sin(sampleTick * 0.52 + index * 0.83) * 0.28;
-    const spikeScale = noise > 1 - spikeChance
-      ? 1.75 + pulse * 0.75
-      : 0.18 + noise * 0.46;
-    const targetValue = Math.min(1, baseValue * lowFrequencyWeight * spikeScale);
-    const previousPeak = peakLevels.value[index] ?? 0;
-    const peakValue = targetValue > previousPeak
-      ? targetValue
-      : Math.max(targetValue, previousPeak * PEAK_DECAY);
     const previousRendered = renderedLevels.value[index] ?? 0;
-    const value = peakValue > previousRendered
-      ? previousRendered + (peakValue - previousRendered) * 0.78
-      : previousRendered * 0.82 + peakValue * 0.18;
+    const lowFrequencyWeight = 1.12 - bandPosition * 0.28;
+    const targetValue = props.isPlaying
+      ? Math.min(1, Math.pow(rawValue, 0.72) * lowFrequencyWeight)
+      : 0;
+    const value = smoothVisualizerLevel(previousRendered, targetValue);
 
-    peakLevels.value[index] = peakValue;
     renderedLevels.value[index] = value;
 
     const edgeDistance = Math.abs(index - (DISPLAY_BAR_COUNT - 1) / 2) / (DISPLAY_BAR_COUNT / 2);
@@ -162,7 +140,6 @@ const fetchSamples = async () => {
     const nextLevels = await playbackApi.getAudioVisualizerSamples();
     if (nextLevels.length > 0) {
       levels.value = nextLevels.slice(0, BAR_COUNT);
-      sampleTick += 1;
       scheduleDraw();
     }
   } catch {}
@@ -185,9 +162,7 @@ watch(() => [props.active, props.isPlaying] as const, syncFetchTimer);
 
 watch(() => props.songPath, () => {
   levels.value = Array(BAR_COUNT).fill(0);
-  peakLevels.value = Array(DISPLAY_BAR_COUNT).fill(0);
   renderedLevels.value = Array(DISPLAY_BAR_COUNT).fill(0);
-  sampleTick = 0;
   scheduleDraw();
   syncFetchTimer();
 });

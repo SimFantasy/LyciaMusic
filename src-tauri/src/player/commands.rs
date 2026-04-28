@@ -1,3 +1,4 @@
+use crate::player::spectrum::build_frequency_bands;
 use crate::player::types::{AudioCommand, PlayerState, VISUALIZER_BAND_COUNT};
 use souvlaki::{MediaMetadata, MediaPlayback, MediaPosition};
 use std::sync::atomic::Ordering;
@@ -177,26 +178,6 @@ pub fn get_playback_progress(state: tauri::State<PlayerState>) -> f64 {
 #[tauri::command]
 pub fn get_audio_visualizer_samples(state: tauri::State<PlayerState>) -> Vec<f32> {
     let visualizer = &state.progress.visualizer;
-    let cursor = visualizer.cursor.load(Ordering::Relaxed);
-    let written = (cursor as usize).min(VISUALIZER_BAND_COUNT);
-    let empty = VISUALIZER_BAND_COUNT - written;
-    let mut samples = Vec::with_capacity(VISUALIZER_BAND_COUNT);
-
-    for position in 0..VISUALIZER_BAND_COUNT {
-        if position < empty {
-            samples.push(0.0);
-            continue;
-        }
-
-        let logical_position = position - empty;
-        let index = if cursor < VISUALIZER_BAND_COUNT as u64 {
-            logical_position
-        } else {
-            ((cursor as usize) + logical_position) % VISUALIZER_BAND_COUNT
-        };
-        let level = visualizer.levels[index].load(Ordering::Relaxed) as f32 / 1000.0;
-        samples.push(level.sqrt().min(1.0));
-    }
-
-    samples
+    let sample_rate = state.progress.sample_rate.load(Ordering::Relaxed);
+    build_frequency_bands(&visualizer.snapshot(), sample_rate, VISUALIZER_BAND_COUNT)
 }

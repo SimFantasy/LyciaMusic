@@ -93,11 +93,11 @@ fn handle_play(
                 progress.samples_played.store(0, Ordering::Relaxed);
                 progress.visualizer.reset();
 
-                let timed_source = TimedSource {
-                    inner: source.convert_samples::<f32>(),
-                    samples_played: progress.samples_played.clone(),
-                    visualizer: progress.visualizer.clone(),
-                };
+                let timed_source = TimedSource::new(
+                    source.convert_samples::<f32>(),
+                    progress.samples_played.clone(),
+                    progress.visualizer.clone(),
+                );
 
                 if let Some(sink) = current_sink {
                     sink.append(timed_source);
@@ -160,13 +160,11 @@ fn handle_seek(
                                     .samples_played
                                     .store(samples_to_skip, Ordering::Relaxed);
 
-                                let timed_source = TimedSource {
-                                    inner: source
-                                        .convert_samples::<f32>()
-                                        .skip_duration(jump_target),
-                                    samples_played: progress.samples_played.clone(),
-                                    visualizer: progress.visualizer.clone(),
-                                };
+                                let timed_source = TimedSource::new(
+                                    source.convert_samples::<f32>().skip_duration(jump_target),
+                                    progress.samples_played.clone(),
+                                    progress.visualizer.clone(),
+                                );
 
                                 if let Some(new_sink) = current_sink {
                                     new_sink.set_volume(current_volume);
