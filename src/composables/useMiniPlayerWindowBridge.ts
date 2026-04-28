@@ -2,7 +2,7 @@ import { LogicalPosition } from '@tauri-apps/api/dpi';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { availableMonitors, getCurrentWindow } from '@tauri-apps/api/window';
-import { onMounted, onUnmounted, watch } from 'vue';
+import { onMounted, onUnmounted, watch, type Ref } from 'vue';
 
 import { useCoverCache } from './useCoverCache';
 import { useLyrics } from './lyrics';
@@ -20,6 +20,7 @@ import {
   MINI_PLAYER_WINDOW_EXPANDED_HEIGHT,
   MINI_PLAYER_WINDOW_LABEL,
   MINI_PLAYER_WINDOW_WIDTH,
+  APP_SHOW_MAIN_EVENT,
   type MiniPlayerAction,
   type MiniPlayerStatePayload,
   type MiniPlayerWindowBounds,
@@ -207,6 +208,22 @@ function waitForMiniPlayerStateApplied(timeoutMs = 500) {
   });
 }
 
+export async function restoreMainWindowFromMiniMode(options: {
+  isMiniMode: Ref<boolean>;
+  hideMiniPlayerWindow: () => Promise<void>;
+  mainWindow: {
+    unminimize: () => Promise<void>;
+    show: () => Promise<void>;
+    setFocus: () => Promise<void>;
+  };
+}) {
+  options.isMiniMode.value = false;
+  await options.hideMiniPlayerWindow();
+  await options.mainWindow.unminimize();
+  await options.mainWindow.show();
+  await options.mainWindow.setFocus();
+}
+
 export function useMiniPlayerWindowBridge() {
   const mainWindow = getCurrentWindow();
   const {
@@ -323,11 +340,11 @@ export function useMiniPlayerWindowBridge() {
         await playSong(action.song);
         break;
       case 'restore-main':
-        isMiniMode.value = false;
-        await hideMiniPlayerWindow();
-        await mainWindow.unminimize();
-        await mainWindow.show();
-        await mainWindow.setFocus();
+        await restoreMainWindowFromMiniMode({
+          isMiniMode,
+          hideMiniPlayerWindow,
+          mainWindow,
+        });
         break;
       case 'close':
         isMiniMode.value = false;
@@ -350,6 +367,14 @@ export function useMiniPlayerWindowBridge() {
 
     unlisteners.push(await listen(MINI_PLAYER_REQUEST_STATE_EVENT, () => {
       void emitStateToMiniPlayer();
+    }));
+
+    unlisteners.push(await listen(APP_SHOW_MAIN_EVENT, () => {
+      void restoreMainWindowFromMiniMode({
+        isMiniMode,
+        hideMiniPlayerWindow,
+        mainWindow,
+      });
     }));
 
     unlisteners.push(await listen(MINI_PLAYER_READY_EVENT, () => {
