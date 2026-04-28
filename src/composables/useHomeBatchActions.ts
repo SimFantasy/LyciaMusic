@@ -1,6 +1,9 @@
 import { ref, type Ref } from 'vue';
+import { storeToRefs } from 'pinia';
 import { fileApi } from '../services/tauri/fileApi';
+import { usePlaybackStore } from '../features/playback/store';
 import type { Playlist, Song } from '../types';
+import { removeSongPathsFromPlaybackState } from './playbackCleanup';
 
 interface ConfirmOptions {
   title: string;
@@ -44,6 +47,8 @@ export function useHomeBatchActions({
   const confirmButtonText = ref('移除');
   const confirmMessage = ref('');
   const confirmAction = ref<() => void | Promise<void>>(() => {});
+  const playbackStore = usePlaybackStore();
+  const { playQueue, tempQueue, currentSong } = storeToRefs(playbackStore);
 
   const resetSelection = () => {
     selectedPaths.value.clear();
@@ -93,6 +98,7 @@ export function useHomeBatchActions({
       canonicalSongs.value = canonicalSongs.value.filter((song) => !deletedPaths.has(song.path));
       sourceSongs.value = sourceSongs.value.filter((song) => !deletedPaths.has(song.path));
       favoritePaths.value = favoritePaths.value.filter((path) => !deletedPaths.has(path));
+      removeSongPathsFromPlaybackState({ playQueue, tempQueue, currentSong }, deletedPaths);
       await removeFromHistory(Array.from(deletedPaths));
       playlists.value.forEach((playlist) => {
         playlist.songPaths = playlist.songPaths.filter((path) => !deletedPaths.has(path));

@@ -11,6 +11,7 @@ import { useLibraryAllSongPathCache } from './useLibraryAllSongPathCache';
 import { useLibraryCollectionSongPathCache } from './useLibraryCollectionSongPathCache';
 import { useLibraryDetailSongPathCache } from './useLibraryDetailSongPathCache';
 import { useLibraryFolderSongPathCache } from './useLibraryFolderSongPathCache';
+import { removeSongPathsFromPlaybackState } from './playbackCleanup';
 
 interface CreatePlayerFileManagerDeps {
   removeLibraryFolderLinked: (
@@ -383,6 +384,7 @@ export const createPlayerFileManager = ({
       canonicalSongs.value = canonicalSongs.value.filter(item => item.path !== song.path);
       sourceSongs.value = sourceSongs.value.filter(item => item.path !== song.path);
       favoritePaths.value = favoritePaths.value.filter(path => path !== song.path);
+      removeSongPathsFromPlaybackState({ playQueue, tempQueue, currentSong }, [song.path]);
       await removeFromHistory([song.path]);
       playlists.value.forEach(playlist => {
         playlist.songPaths = playlist.songPaths.filter(path => path !== song.path);
