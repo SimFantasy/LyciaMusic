@@ -1003,6 +1003,12 @@ describe('lyrics settings normalization', async () => {
     expect(normalized.showDoubleLine).toBe(false);
   });
 
+  it('defaults desktop word effect to enabled', () => {
+    const normalized = normalizeDesktopLyricsSettingsPatch({});
+
+    expect(normalized.enableWordEffect).toBe(true);
+  });
+
   it('restores desktop auto-hide on fullscreen from migrated values', () => {
     const normalized = normalizeDesktopLyricsSettingsPatch({
       autoHideWhenFullscreen: false,
@@ -1017,6 +1023,14 @@ describe('lyrics settings normalization', async () => {
     });
 
     expect(normalized.showDoubleLine).toBe(true);
+  });
+
+  it('restores desktop word effect from migrated values', () => {
+    const normalized = normalizeDesktopLyricsSettingsPatch({
+      enableWordEffect: false,
+    });
+
+    expect(normalized.enableWordEffect).toBe(false);
   });
 });
 

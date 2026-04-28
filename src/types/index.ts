@@ -182,6 +182,7 @@ export interface DesktopLyricsSettings {
   alwaysShowShadowBackground: boolean;
   autoHideWhenFullscreen: boolean;
   showDoubleLine: boolean;
+  enableWordEffect: boolean;
   isLocked: boolean;
   persistLock: boolean;
   colorScheme: LyricsColorScheme;

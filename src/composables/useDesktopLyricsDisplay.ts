@@ -81,6 +81,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     alwaysShowShadowBackground: false,
     autoHideWhenFullscreen: true,
     showDoubleLine: false,
+    enableWordEffect: true,
     isLocked: false,
     persistLock: false,
     colorScheme: 'auto',
@@ -154,7 +155,10 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     fallbackText.value = payload.fallbackText;
     audioDelay.value = payload.audioDelay;
     themeColors.value = [...payload.themeColors];
-    settings.value = { ...payload.settings };
+    settings.value = {
+      ...settings.value,
+      ...payload.settings,
+    };
     syncPlaybackClock(payload.playbackTime, payload.isPlaying, payload.syncedAt);
   }
 
@@ -207,6 +211,10 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
   }
 
   function getMainDisplayWords(line: LyricLine): LyricWord[] {
+    if (!settings.value.enableWordEffect) {
+      return [];
+    }
+
     const timedWords = (line.words ?? []).filter((word) => (
       word.text.length > 0
       && Number.isFinite(word.start)

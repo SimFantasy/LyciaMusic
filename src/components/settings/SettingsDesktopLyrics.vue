@@ -386,6 +386,19 @@ onUnmounted(() => {
         <button
           type="button"
           class="desktop-setting-row"
+          @click="desktopLyricsSettings.enableWordEffect = !desktopLyricsSettings.enableWordEffect"
+        >
+          <div>
+            <div class="text-sm font-medium text-gray-800 dark:text-gray-200">逐字效果</div>
+          </div>
+          <span class="desktop-switch" :class="desktopLyricsSettings.enableWordEffect ? 'desktop-switch--on' : ''">
+            <span class="desktop-switch-thumb" :class="desktopLyricsSettings.enableWordEffect ? 'translate-x-5' : ''" />
+          </span>
+        </button>
+
+        <button
+          type="button"
+          class="desktop-setting-row"
           @click="desktopLyricsSettings.showDoubleLine = !desktopLyricsSettings.showDoubleLine"
         >
           <div>

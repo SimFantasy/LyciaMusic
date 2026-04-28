@@ -100,6 +100,7 @@ export const defaultDesktopLyricsSettings: DesktopLyricsSettings = {
   alwaysShowShadowBackground: false,
   autoHideWhenFullscreen: true,
   showDoubleLine: false,
+  enableWordEffect: true,
   isLocked: false,
   persistLock: false,
   colorScheme: 'auto',
@@ -230,6 +231,9 @@ export function normalizeDesktopLyricsSettingsPatch(
     showDoubleLine: typeof patch.showDoubleLine === 'boolean'
       ? patch.showDoubleLine
       : defaultDesktopLyricsSettings.showDoubleLine,
+    enableWordEffect: typeof patch.enableWordEffect === 'boolean'
+      ? patch.enableWordEffect
+      : defaultDesktopLyricsSettings.enableWordEffect,
     isLocked: typeof patch.isLocked === 'boolean'
       ? patch.isLocked
       : defaultDesktopLyricsSettings.isLocked,
