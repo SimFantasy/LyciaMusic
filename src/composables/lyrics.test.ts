@@ -497,6 +497,82 @@ describe('mergePreparedLines', async () => {
     expect(merged[0].romaji).toBe('');
   });
 
+  it('treats chinese plus non-latin foreign text as foreign main and chinese translation', () => {
+    const merged = mergePreparedLines([
+      {
+        startMs: 9000,
+        endMs: 12000,
+        text: '\u4f60\u662f\u6211\u7684\u7231',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: '\u4f60\u662f\u6211\u7684\u7231',
+          start: 9,
+          end: 12,
+          romaji: '',
+        }],
+        sourceIndex: 0,
+      },
+      {
+        startMs: 9000,
+        endMs: 12000,
+        text: '\u042f \u043b\u044e\u0431\u043b\u044e \u0442\u0435\u0431\u044f',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: '\u042f \u043b\u044e\u0431\u043b\u044e \u0442\u0435\u0431\u044f',
+          start: 9,
+          end: 12,
+          romaji: '',
+        }],
+        sourceIndex: 1,
+      },
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].text).toBe('\u042f \u043b\u044e\u0431\u043b\u044e \u0442\u0435\u0431\u044f');
+    expect(merged[0].translation).toBe('\u4f60\u662f\u6211\u7684\u7231');
+    expect(merged[0].romaji).toBe('');
+  });
+
+  it('keeps non-latin foreign text as main when it appears before chinese', () => {
+    const merged = mergePreparedLines([
+      {
+        startMs: 13000,
+        endMs: 16000,
+        text: '\u042f \u043b\u044e\u0431\u043b\u044e \u0442\u0435\u0431\u044f',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: '\u042f \u043b\u044e\u0431\u043b\u044e \u0442\u0435\u0431\u044f',
+          start: 13,
+          end: 16,
+          romaji: '',
+        }],
+        sourceIndex: 0,
+      },
+      {
+        startMs: 13000,
+        endMs: 16000,
+        text: '\u4f60\u662f\u6211\u7684\u7231',
+        translation: '',
+        romaji: '',
+        words: [{
+          text: '\u4f60\u662f\u6211\u7684\u7231',
+          start: 13,
+          end: 16,
+          romaji: '',
+        }],
+        sourceIndex: 1,
+      },
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].text).toBe('\u042f \u043b\u044e\u0431\u043b\u044e \u0442\u0435\u0431\u044f');
+    expect(merged[0].translation).toBe('\u4f60\u662f\u6211\u7684\u7231');
+    expect(merged[0].romaji).toBe('');
+  });
+
   it('keeps enhanced main-word timing while attaching a translated line', () => {
     const merged = mergePreparedLines([
       {

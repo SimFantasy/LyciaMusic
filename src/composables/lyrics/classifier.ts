@@ -93,6 +93,17 @@ function isChineseDominantLine(profile: LineScriptProfile): boolean {
     && profile.hangulCount === 0;
 }
 
+function getContentText(line: ParsedLine): string {
+  return line.text || line.translatedText || line.romanText || '';
+}
+
+function isForeignLanguageLine(line: ParsedLine): boolean {
+  const profile = getContentProfile(line);
+  return !isChineseDominantLine(profile)
+    && !isPureHan(profile)
+    && /\p{Letter}/u.test(getContentText(line));
+}
+
 function isJapaneseLike(profile: LineScriptProfile): boolean {
   return profile.kanaCount > 0
     && profile.hangulCount === 0;
@@ -104,8 +115,7 @@ function isKoreanLike(profile: LineScriptProfile): boolean {
 }
 
 function getContentProfile(line: ParsedLine): LineScriptProfile {
-  const content = line.text || line.translatedText || line.romanText || '';
-  return getLineScriptProfile(content);
+  return getLineScriptProfile(getContentText(line));
 }
 
 function getEffectiveTolerance(
@@ -191,9 +201,9 @@ function selectHeuristicMainLine(lines: ParsedLine[]): ParsedLine {
   if (koreanLine) return koreanLine;
 
   if (lines.length === 2) {
-    const latinLine = lines.find((line) => isPureLatin(getContentProfile(line)));
     const chineseLine = lines.find((line) => isChineseDominantLine(getContentProfile(line)));
-    if (latinLine && chineseLine) return latinLine;
+    const foreignLine = lines.find((line) => isForeignLanguageLine(line));
+    if (foreignLine && chineseLine) return foreignLine;
   }
 
   return lines[0];
@@ -208,7 +218,7 @@ function classifyHeuristicRole(
 
   if (isJapaneseLike(mainProfile) || isKoreanLike(mainProfile)) {
     if (isPureLatin(candidateProfile)) return 'romaji';
-    if (isPureHan(candidateProfile)) return 'translation';
+    if (isChineseDominantLine(candidateProfile)) return 'translation';
     return 'secondary';
   }
 
@@ -218,7 +228,7 @@ function classifyHeuristicRole(
     case 'latin':
       return isChineseDominantLine(candidateProfile) ? 'translation' : 'secondary';
     default:
-      return 'secondary';
+      return isChineseDominantLine(candidateProfile) ? 'translation' : 'secondary';
   }
 }
 
