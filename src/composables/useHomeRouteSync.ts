@@ -110,18 +110,15 @@ export function useHomeRouteSync({
   currentFolderFilter,
   activeRootPath,
   folderTree,
-  searchQuery,
 }: UseHomeRouteSyncOptions) {
   const resetToDefaultHomeState = () => {
     currentViewMode.value = 'all';
     filterCondition.value = '';
-    searchQuery.value = '';
   };
 
   const applyCollectionRouteState = (viewMode: 'favorites' | 'recent') => {
     currentViewMode.value = viewMode;
     filterCondition.value = '';
-    searchQuery.value = '';
   };
 
   watch(
@@ -149,7 +146,6 @@ export function useHomeRouteSync({
       const nextState = parseHomeRouteState(route.query);
       currentViewMode.value = nextState.viewMode;
       filterCondition.value = nextState.filter;
-      searchQuery.value = '';
 
       if (nextState.viewMode === 'folder') {
         const resolvedFolder =
