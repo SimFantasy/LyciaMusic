@@ -11,12 +11,24 @@ use lofty::config::WriteOptions;
 use lofty::file::{AudioFile, TaggedFileExt};
 use lofty::tag::{ItemKey, ItemValue, Tag, TagItem};
 use rusqlite::{params, OptionalExtension};
+use serde::Serialize;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use tauri::State;
 
 use super::utils::normalize_path;
+
+#[derive(Serialize)]
+pub struct MovedMusicFilePath {
+    old_path: String,
+    new_path: String,
+}
+
+#[derive(Serialize)]
+pub struct BatchMoveMusicFilesResult {
+    moved_paths: Vec<MovedMusicFilePath>,
+}
 
 fn read_sidecar_lrc(path_obj: &Path) -> Option<String> {
     read_sidecar_lrc_with_path(path_obj).map(|(content, _)| content)
@@ -314,8 +326,7 @@ pub fn batch_move_music_files(
     paths: Vec<String>,
     target_folder: String,
     db_state: State<'_, DbState>,
-) -> Result<u32, CommandError> {
-    let mut success_count = 0;
+) -> Result<BatchMoveMusicFilesResult, CommandError> {
     let target = Path::new(&target_folder);
     let mut moved_paths: Vec<(String, String)> = Vec::new();
     if !target.exists() || !target.is_dir() {
@@ -326,7 +337,6 @@ pub fn batch_move_music_files(
         if let Some(file_name) = src.file_name() {
             let dest = target.join(file_name);
             if fs::rename(src, &dest).is_ok() {
-                success_count += 1;
                 moved_paths.push((
                     normalize_path(&path_str),
                     normalize_path(&dest.to_string_lossy()),
@@ -343,7 +353,12 @@ pub fn batch_move_music_files(
             .map_err(|e| CommandError::new("DB_SYNC_FAILED", &e))?;
     }
 
-    Ok(success_count)
+    Ok(BatchMoveMusicFilesResult {
+        moved_paths: moved_paths
+            .into_iter()
+            .map(|(old_path, new_path)| MovedMusicFilePath { old_path, new_path })
+            .collect(),
+    })
 }
 
 #[tauri::command]

@@ -8,14 +8,16 @@ import { usePlaybackStore } from '../features/playback/store';
 import { createPlayerFileManager } from './playerFileManager';
 
 const scanMusicFolderMock = vi.fn();
+const batchMoveMusicFilesMock = vi.fn();
+const getFolderFirstSongMock = vi.fn();
 
 vi.mock('../services/tauri/fileApi', () => ({
   fileApi: {
     scanMusicFolder: (...args: unknown[]) => scanMusicFolderMock(...args),
     deleteFolder: vi.fn(),
     moveFileToFolder: vi.fn(),
-    batchMoveMusicFiles: vi.fn(),
-    getFolderFirstSong: vi.fn(),
+    batchMoveMusicFiles: (...args: unknown[]) => batchMoveMusicFilesMock(...args),
+    getFolderFirstSong: (...args: unknown[]) => getFolderFirstSongMock(...args),
     moveMusicFile: vi.fn(),
     showInFolder: vi.fn(),
     deleteMusicFile: vi.fn(),
@@ -42,6 +44,8 @@ describe('playerFileManager.refreshFolder', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     scanMusicFolderMock.mockReset();
+    batchMoveMusicFilesMock.mockReset();
+    getFolderFirstSongMock.mockReset();
   });
 
   it('removes deleted songs from library state and related collections when refreshing a folder', async () => {
@@ -120,5 +124,90 @@ describe('playerFileManager.refreshFolder', () => {
     expect(playbackStore.tempQueue).toEqual([]);
     expect(playbackStore.currentSong).toBeNull();
     expect(removeFromHistory).toHaveBeenCalledWith([removedSong.path]);
+  });
+});
+
+describe('playerFileManager.moveFilesToFolder', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    scanMusicFolderMock.mockReset();
+    batchMoveMusicFilesMock.mockReset();
+    getFolderFirstSongMock.mockReset();
+  });
+
+  it('keeps files that failed to move in the source list and counts only moved files', async () => {
+    const libraryStore = useLibraryStore();
+    const removeFromHistory = vi.fn().mockResolvedValue(undefined);
+    const showToast = vi.fn();
+
+    const movedSongA = makeSong({
+      path: 'C:\\Music\\A\\a.flac',
+      name: 'a.flac',
+      title: 'A',
+    });
+    const movedSongB = makeSong({
+      path: 'C:\\Music\\A\\b.flac',
+      name: 'b.flac',
+      title: 'B',
+    });
+    const failedSong = makeSong({
+      path: 'C:\\Music\\A\\c.flac',
+      name: 'c.flac',
+      title: 'C',
+    });
+
+    libraryStore.songList = [movedSongA, movedSongB, failedSong];
+    libraryStore.libraryHierarchy = [
+      {
+        name: 'A',
+        path: 'C:\\Music\\A',
+        children: [],
+        child_count: 0,
+        children_loaded: true,
+        song_count: 3,
+        cover_song_path: movedSongA.path,
+        is_expanded: false,
+      },
+      {
+        name: 'B',
+        path: 'C:\\Music\\B',
+        children: [],
+        child_count: 0,
+        children_loaded: true,
+        song_count: 0,
+        cover_song_path: null,
+        is_expanded: false,
+      },
+    ];
+
+    batchMoveMusicFilesMock.mockResolvedValue({
+      moved_paths: [
+        { old_path: movedSongA.path, new_path: 'C:\\Music\\B\\a.flac' },
+        { old_path: movedSongB.path, new_path: 'C:\\Music\\B\\b.flac' },
+      ],
+    });
+    getFolderFirstSongMock.mockImplementation((folderPath: string) => {
+      if (folderPath === 'C:\\Music\\A') return Promise.resolve(failedSong.path);
+      if (folderPath === 'C:\\Music\\B') return Promise.resolve('C:\\Music\\B\\a.flac');
+      return Promise.resolve(null);
+    });
+
+    const fileManager = createPlayerFileManager({
+      removeLibraryFolderLinked: vi.fn(),
+      removeFromHistory,
+      showToast,
+    });
+
+    const movedCount = await fileManager.moveFilesToFolder(
+      [movedSongA.path, movedSongB.path, failedSong.path],
+      'C:\\Music\\B',
+    );
+
+    expect(movedCount).toBe(2);
+    expect(libraryStore.songList.map(song => song.path)).toEqual([failedSong.path]);
+    expect(libraryStore.libraryHierarchy[0]?.song_count).toBe(1);
+    expect(libraryStore.libraryHierarchy[0]?.cover_song_path).toBe(failedSong.path);
+    expect(libraryStore.libraryHierarchy[1]?.song_count).toBe(2);
+    expect(libraryStore.libraryHierarchy[1]?.cover_song_path).toBe('C:\\Music\\B\\a.flac');
   });
 });

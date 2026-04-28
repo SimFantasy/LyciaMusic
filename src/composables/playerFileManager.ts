@@ -209,9 +209,11 @@ export const createPlayerFileManager = ({
   };
 
   const moveFilesToFolder = async (paths: string[], targetFolder: string) => {
+    const moveResult = await fileApi.batchMoveMusicFiles(paths, targetFolder);
+    const movedOldPaths = new Set(moveResult.moved_paths.map(entry => entry.old_path));
     const sourceFolderMap = new Map<string, { count: number; coverPaths: string[] }>();
 
-    paths.forEach(oldPath => {
+    moveResult.moved_paths.forEach(({ old_path: oldPath }) => {
       const sourceFolder = getParentFolder(oldPath);
       if (!sourceFolderMap.has(sourceFolder)) {
         const node = findNode(libraryHierarchy.value, sourceFolder);
@@ -230,10 +232,8 @@ export const createPlayerFileManager = ({
       }
     });
 
-    const movedCount = await fileApi.batchMoveMusicFiles(paths, targetFolder);
-
-    const movedPaths = new Set(paths);
-    sourceSongs.value = sourceSongs.value.filter(song => !movedPaths.has(song.path));
+    const movedCount = moveResult.moved_paths.length;
+    sourceSongs.value = sourceSongs.value.filter(song => !movedOldPaths.has(song.path));
 
     for (const [sourceFolder, entry] of sourceFolderMap) {
       for (let index = 0; index < entry.count; index += 1) {

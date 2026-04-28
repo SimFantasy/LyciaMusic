@@ -21,6 +21,15 @@ export interface AudioOutputStatus {
   follows_system_default: boolean;
 }
 
+export interface MovedMusicFilePath {
+  old_path: string;
+  new_path: string;
+}
+
+export interface BatchMoveMusicFilesResult {
+  moved_paths: MovedMusicFilePath[];
+}
+
 export type LyricsStorageSource = 'embedded' | 'sidecar' | 'empty';
 
 export interface SongLyricsForEdit {
@@ -146,7 +155,7 @@ export interface TauriCommandMap {
   };
   batch_move_music_files: {
     payload: { paths: string[]; targetFolder: string };
-    response: number;
+    response: BatchMoveMusicFilesResult;
   };
   get_folder_first_song: {
     payload: { folderPath: string };
