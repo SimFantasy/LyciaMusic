@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type CSSProperties } from 'vue';
 
+import {
+  canUseFolderManagementAction,
+  shouldShowFolderManagementActions,
+} from './folderContextMenuState';
+
 const props = defineProps<{
   visible: boolean;
   x: number;
@@ -91,8 +96,12 @@ const enabledItemClass =
 const disabledItemClass =
   'song-menu-item w-full px-4 py-2.5 text-left flex items-center transition-colors cursor-not-allowed opacity-45';
 
+const showManagementActions = computed(() =>
+  shouldShowFolderManagementActions(!!props.isManagementMode),
+);
+
 const canRemoveFromLibrary = computed(() =>
-  !!props.isManagementMode && !!props.isRootFolder,
+  canUseFolderManagementAction(!!props.isManagementMode),
 );
 
 const emitIfAllowed = (
@@ -103,7 +112,7 @@ const emitIfAllowed = (
     return;
   }
 
-  emit(eventName);
+  emit(eventName, props.folderPath);
 };
 
 const motionDelay = (index: number): CSSProperties => ({
@@ -189,54 +198,54 @@ const motionDelay = (index: number): CSSProperties => ({
           <span>刷新文件夹内容</span>
         </div>
 
-        <div class="song-menu-divider" :style="motionDelay(7)"></div>
-        <div :class="sectionTitleClass" :style="motionDelay(8)">仅管理模式可用</div>
+        <template v-if="showManagementActions">
+          <div class="song-menu-divider" :style="motionDelay(7)"></div>
+          <div :class="sectionTitleClass" :style="motionDelay(8)">仅管理模式可用</div>
 
-        <button
-          type="button"
-          :class="canRemoveFromLibrary ? enabledItemClass : disabledItemClass"
-          :style="motionDelay(9)"
-          :disabled="!canRemoveFromLibrary"
-          @click="emitIfAllowed('remove', canRemoveFromLibrary)"
-        >
-          <div class="mr-3 flex h-5 w-5 items-center justify-center" :class="canRemoveFromLibrary ? 'text-gray-500 group-hover:text-gray-800' : 'text-gray-400'">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M7 7V5a2 2 0 012-2h6a2 2 0 012 2v2M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12" />
-            </svg>
-          </div>
-          <div class="min-w-0">从音乐库移除</div>
-        </button>
+          <button
+            type="button"
+            :class="canRemoveFromLibrary ? enabledItemClass : disabledItemClass"
+            :style="motionDelay(9)"
+            :disabled="!canRemoveFromLibrary"
+            @click="emitIfAllowed('remove', canRemoveFromLibrary)"
+          >
+            <div class="mr-3 flex h-5 w-5 items-center justify-center" :class="canRemoveFromLibrary ? 'text-gray-500 group-hover:text-gray-800' : 'text-gray-400'">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M7 7V5a2 2 0 012-2h6a2 2 0 012 2v2M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12" />
+              </svg>
+            </div>
+            <div class="min-w-0">从音乐库移除</div>
+          </button>
 
-        <button
-          type="button"
-          :class="isManagementMode ? enabledItemClass : disabledItemClass"
-          :style="motionDelay(10)"
-          :disabled="!isManagementMode"
-          @click="emitIfAllowed('new-folder', !!isManagementMode)"
-        >
-          <div class="mr-3 flex h-5 w-5 items-center justify-center" :class="isManagementMode ? 'text-gray-500 group-hover:text-gray-800' : 'text-gray-400'">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-            </svg>
-          </div>
-          <div class="min-w-0">新建文件夹</div>
-        </button>
+          <button
+            type="button"
+            :class="enabledItemClass"
+            :style="motionDelay(10)"
+            @click="emitIfAllowed('new-folder', showManagementActions)"
+          >
+            <div class="mr-3 flex h-5 w-5 items-center justify-center text-gray-500 group-hover:text-gray-800">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+              </svg>
+            </div>
+            <div class="min-w-0">新建文件夹</div>
+          </button>
 
-        <button
-          type="button"
-          :class="isManagementMode ? enabledItemClass : disabledItemClass"
-          :style="motionDelay(11)"
-          :disabled="!isManagementMode"
-          @click="emitIfAllowed('delete-disk', !!isManagementMode)"
-        >
-          <div class="mr-3 flex h-5 w-5 items-center justify-center" :class="isManagementMode ? 'text-[#EC4141]' : 'text-[#EC4141]/60'">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 11v6m4-6v6" />
-            </svg>
-          </div>
-          <div class="min-w-0" :class="isManagementMode ? 'font-bold text-[#EC4141]' : 'font-bold text-[#EC4141]/70'">删除文件夹（本地）</div>
-        </button>
+          <button
+            type="button"
+            :class="enabledItemClass"
+            :style="motionDelay(11)"
+            @click="emitIfAllowed('delete-disk', showManagementActions)"
+          >
+            <div class="mr-3 flex h-5 w-5 items-center justify-center text-[#EC4141]">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 11v6m4-6v6" />
+              </svg>
+            </div>
+            <div class="min-w-0 font-bold text-[#EC4141]">删除文件夹（本地）</div>
+          </button>
+        </template>
       </template>
       </div>
     </Transition>
