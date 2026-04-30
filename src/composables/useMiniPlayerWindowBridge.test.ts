@@ -59,4 +59,27 @@ describe('mini player window bridge', () => {
     expect(mainWindow.show).toHaveBeenCalledTimes(1);
     expect(mainWindow.setFocus).toHaveBeenCalledTimes(1);
   });
+
+  it('can restore the main window while keeping the mini player visible', async () => {
+    const isMiniMode = ref(true);
+    const hideMiniPlayerWindow = vi.fn().mockResolvedValue(undefined);
+    const mainWindow = {
+      unminimize: vi.fn().mockResolvedValue(undefined),
+      show: vi.fn().mockResolvedValue(undefined),
+      setFocus: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await restoreMainWindowFromMiniMode({
+      isMiniMode,
+      hideMiniPlayerWindow,
+      mainWindow,
+      keepMiniPlayerVisible: true,
+    });
+
+    expect(isMiniMode.value).toBe(false);
+    expect(hideMiniPlayerWindow).not.toHaveBeenCalled();
+    expect(mainWindow.unminimize).toHaveBeenCalledTimes(1);
+    expect(mainWindow.show).toHaveBeenCalledTimes(1);
+    expect(mainWindow.setFocus).toHaveBeenCalledTimes(1);
+  });
 });

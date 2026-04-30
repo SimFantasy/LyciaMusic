@@ -2,7 +2,7 @@ import { LogicalPosition } from '@tauri-apps/api/dpi';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { availableMonitors, getCurrentWindow } from '@tauri-apps/api/window';
-import { onMounted, onUnmounted, watch, type Ref } from 'vue';
+import { onMounted, onUnmounted, ref, watch, type Ref } from 'vue';
 
 import { useCoverCache } from './useCoverCache';
 import { useLyrics } from './lyrics';
@@ -211,6 +211,7 @@ function waitForMiniPlayerStateApplied(timeoutMs = 500) {
 export async function restoreMainWindowFromMiniMode(options: {
   isMiniMode: Ref<boolean>;
   hideMiniPlayerWindow: () => Promise<void>;
+  keepMiniPlayerVisible?: boolean;
   mainWindow: {
     unminimize: () => Promise<void>;
     show: () => Promise<void>;
@@ -218,7 +219,9 @@ export async function restoreMainWindowFromMiniMode(options: {
   };
 }) {
   options.isMiniMode.value = false;
-  await options.hideMiniPlayerWindow();
+  if (!options.keepMiniPlayerVisible) {
+    await options.hideMiniPlayerWindow();
+  }
   await options.mainWindow.unminimize();
   await options.mainWindow.show();
   await options.mainWindow.setFocus();
@@ -244,6 +247,8 @@ export function useMiniPlayerWindowBridge() {
   const { loadCover } = useCoverCache();
 
   let isMainWindowClosing = false;
+  let keepMiniPlayerVisibleOnMiniModeExit = false;
+  const isMiniPlayerWindowVisible = ref(false);
   const unlisteners: Array<() => void> = [];
 
   const createStatePayload = async (): Promise<MiniPlayerStatePayload> => {
@@ -287,6 +292,7 @@ export function useMiniPlayerWindowBridge() {
     await emitStateToMiniPlayer();
     await emitMiniPlayerVisibility(true);
     await targetWindow.show();
+    isMiniPlayerWindowVisible.value = true;
     await mainWindow.hide();
   };
 
@@ -296,19 +302,27 @@ export function useMiniPlayerWindowBridge() {
     await emitStateToMiniPlayer();
     await emitMiniPlayerVisibility(false);
     await targetWindow.hide();
+    isMiniPlayerWindowVisible.value = false;
   };
 
   const hideMiniPlayerWindow = async () => {
     const targetWindow = await getMiniPlayerWindow();
-    if (!targetWindow) return;
+    if (!targetWindow) {
+      isMiniPlayerWindowVisible.value = false;
+      return;
+    }
 
     await emitMiniPlayerVisibility(false);
     await targetWindow.hide();
+    isMiniPlayerWindowVisible.value = false;
   };
 
   const destroyMiniPlayerWindow = async () => {
     const targetWindow = await getMiniPlayerWindow();
-    if (!targetWindow) return;
+    if (!targetWindow) {
+      isMiniPlayerWindowVisible.value = false;
+      return;
+    }
 
     try {
       await targetWindow.destroy();
@@ -316,7 +330,20 @@ export function useMiniPlayerWindowBridge() {
       console.warn('Failed to destroy mini player window:', error);
     } finally {
       miniPlayerWindowPromise = null;
+      isMiniPlayerWindowVisible.value = false;
     }
+  };
+
+  const revealMainWindowFromTray = async () => {
+    const keepMiniPlayerVisible = isMiniPlayerWindowVisible.value;
+    keepMiniPlayerVisibleOnMiniModeExit = keepMiniPlayerVisible && isMiniMode.value;
+
+    await restoreMainWindowFromMiniMode({
+      isMiniMode,
+      hideMiniPlayerWindow,
+      keepMiniPlayerVisible,
+      mainWindow,
+    });
   };
 
   const handleAction = async (action: MiniPlayerAction) => {
@@ -370,11 +397,7 @@ export function useMiniPlayerWindowBridge() {
     }));
 
     unlisteners.push(await listen(APP_SHOW_MAIN_EVENT, () => {
-      void restoreMainWindowFromMiniMode({
-        isMiniMode,
-        hideMiniPlayerWindow,
-        mainWindow,
-      });
+      void revealMainWindowFromTray();
     }));
 
     unlisteners.push(await listen(MINI_PLAYER_READY_EVENT, () => {
@@ -407,6 +430,11 @@ export function useMiniPlayerWindowBridge() {
       return;
     }
 
+    if (keepMiniPlayerVisibleOnMiniModeExit) {
+      keepMiniPlayerVisibleOnMiniModeExit = false;
+      return;
+    }
+
     await hideMiniPlayerWindow();
   });
 
@@ -420,7 +448,7 @@ export function useMiniPlayerWindowBridge() {
       () => currentLyricLine.value?.text,
     ],
     () => {
-      if (!isMiniMode.value) return;
+      if (!isMiniPlayerWindowVisible.value) return;
       void emitStateToMiniPlayer();
     },
     { deep: true },
