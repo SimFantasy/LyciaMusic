@@ -30,6 +30,7 @@ import {
 import { usePlayer } from '../../composables/player';
 import { useSettingsStore } from '../../features/settings/store';
 import AmlLyricPlayer from './AmlLyricPlayer.vue';
+import { getPlaybackSeekSecondsForAmlLine } from './amllSeekLayout';
 
 const {
   parsedLyrics,
@@ -52,6 +53,7 @@ const PLAYER_ALIGNMENT_OPTIONS: Array<{ value: LyricsPlayerAlignment; label: str
 const fontPanelRef = ref<HTMLElement | null>(null);
 const fontPresetTriggerRef = ref<HTMLElement | null>(null);
 const fontPresetMenuRef = ref<HTMLElement | null>(null);
+const amlPlayerRef = ref<InstanceType<typeof AmlLyricPlayer> | null>(null);
 const isFontPresetMenuOpen = ref(false);
 const fontPresetMenuStyle = ref<Record<string, string>>({});
 
@@ -286,7 +288,10 @@ function handleClickOutside(event: MouseEvent) {
 }
 
 async function handleLineClick(event: LyricLineMouseEvent) {
-  const targetSeconds = event.line.getLine().startTime / 1000;
+  const lineStartTimeMs = event.line.getLine().startTime;
+  amlPlayerRef.value?.syncSeekLayout(lineStartTimeMs, event.lineIndex);
+
+  const targetSeconds = getPlaybackSeekSecondsForAmlLine(lineStartTimeMs, audioDelay.value);
   await seekTo(targetSeconds);
 }
 
@@ -632,6 +637,7 @@ onUnmounted(() => {
     >
       <div class="lyrics-position-frame h-full min-h-0 w-full min-w-0">
         <AmlLyricPlayer
+          ref="amlPlayerRef"
           class="amll-host h-full min-h-0 w-full min-w-0"
           :lyric-lines="amllLines"
           :current-time="amllCurrentTime"
