@@ -142,7 +142,7 @@ onMounted(() => {
         <img
           src="/app.png"
           alt="Logo"
-          class="h-40 w-40 rounded-full border-4 border-white/10 object-cover"
+          class="h-40 w-40 object-contain"
         />
       </div>
 
