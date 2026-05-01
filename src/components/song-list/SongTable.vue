@@ -19,6 +19,7 @@ import { useListScrollMemory } from '../../composables/useListScrollMemory';
 import { useSongTableAlphabetIndex } from '../../composables/useSongTableAlphabetIndex';
 import { useSongTableLibraryState } from '../../features/library/useSongTableLibraryState';
 import { useLibraryStore } from '../../features/library/store';
+import { DEFAULT_SCROLLBAR_HOT_ZONE_PX, isPointerNearVerticalScrollbar } from '../../utils/scrollbarActivity';
 
 const { settings } = useSettings();
 const libraryStore = useLibraryStore();
@@ -70,8 +71,12 @@ const rootRef = ref<HTMLElement | null>(null);
 const containerRef = ref<HTMLElement | null>(null);
 const scrollTop = ref(0);
 const containerHeight = ref(600);
+const isScrollbarHot = ref(false);
+const isScrollbarScrolling = ref(false);
+const isScrollbarActive = computed(() => isScrollbarHot.value || isScrollbarScrolling.value);
 const displayedCoverUrls = reactive(new Map<string, string>());
 let visibleCoverPaths = new Set<string>();
+let scrollbarActiveTimer: ReturnType<typeof window.setTimeout> | null = null;
 const resolveListRoutePath = (path: string) =>
   ['/', '/favorites', '/recent'].includes(path) ? path : '/';
 const listRoutePath = ref(resolveListRoutePath(route.path));
@@ -253,8 +258,47 @@ const virtualPaddingTop = computed(() => `${virtualData.value?.paddingTop ?? 0}p
 const virtualPaddingBottom = computed(() => `${virtualData.value?.paddingBottom ?? 0}px`);
 const virtualItems = computed(() => virtualData.value?.items ?? []);
 
+const clearScrollbarActiveTimer = () => {
+  if (scrollbarActiveTimer !== null) {
+    window.clearTimeout(scrollbarActiveTimer);
+    scrollbarActiveTimer = null;
+  }
+};
+
+const showScrollbarDuringScroll = () => {
+  isScrollbarScrolling.value = true;
+  clearScrollbarActiveTimer();
+  scrollbarActiveTimer = window.setTimeout(() => {
+    isScrollbarScrolling.value = false;
+    scrollbarActiveTimer = null;
+  }, 900);
+};
+
+const syncScrollbarHotZone = (event: MouseEvent) => {
+  if (!containerRef.value) {
+    isScrollbarHot.value = false;
+    return;
+  }
+
+  const rect = containerRef.value.getBoundingClientRect();
+  isScrollbarHot.value = isPointerNearVerticalScrollbar(event.clientX, rect, DEFAULT_SCROLLBAR_HOT_ZONE_PX);
+};
+
+const handleSongTableMouseMove = (event: MouseEvent) => {
+  handleRootMouseMove(event);
+  syncScrollbarHotZone(event);
+};
+
+const handleSongTableMouseLeave = () => {
+  handleRootMouseLeave();
+  isScrollbarHot.value = false;
+  isScrollbarScrolling.value = false;
+  clearScrollbarActiveTimer();
+};
+
 const onScroll = (event: Event) => {
   scrollTop.value = (event.target as HTMLElement).scrollTop;
+  showScrollbarDuringScroll();
 };
 
 const {
@@ -440,6 +484,7 @@ onDeactivated(() => {
 onBeforeUnmount(() => {
   saveScrollPosition();
   saveViewportCoverSnapshot();
+  clearScrollbarActiveTimer();
   displayedCoverUrls.clear();
   visibleCoverPaths = new Set<string>();
 });
@@ -504,12 +549,13 @@ const getRowStyle = (songIndex: number, songPath: string) => {
   <div
     ref="rootRef"
     class="flex-1 min-h-0 min-w-0 relative overflow-x-hidden"
-    @mousemove="handleRootMouseMove"
-    @mouseleave="handleRootMouseLeave"
+    @mousemove="handleSongTableMouseMove"
+    @mouseleave="handleSongTableMouseLeave"
   >
     <div
       ref="containerRef"
       class="h-full overflow-y-auto overflow-x-hidden pl-2.5 pb-8 custom-scrollbar song-list-scroll-container"
+      :class="{ 'song-list-scrollbar-active': isScrollbarActive }"
       @scroll="onScroll"
     >
       <div class="w-full relative">
@@ -771,6 +817,56 @@ const getRowStyle = (songIndex: number, songPath: string) => {
 <style scoped>
 .song-list-scroll-container {
   overflow-anchor: none;
+  scrollbar-color: rgba(0, 0, 0, 0.16) transparent;
+}
+
+.song-list-scroll-container::-webkit-scrollbar {
+  width: 10px;
+}
+
+.song-list-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.song-list-scroll-container::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 9999px;
+  background-color: rgba(0, 0, 0, 0.14);
+  background-clip: content-box;
+}
+
+.song-list-scroll-container.song-list-scrollbar-active {
+  scrollbar-color: rgba(236, 65, 65, 0.55) transparent;
+}
+
+.song-list-scroll-container.song-list-scrollbar-active::-webkit-scrollbar-thumb {
+  border-width: 2px;
+  background-color: rgba(236, 65, 65, 0.55);
+}
+
+.song-list-scroll-container::-webkit-scrollbar-thumb:hover {
+  border-width: 2px;
+  background-color: rgba(236, 65, 65, 0.68);
+}
+
+:global(.dark) .song-list-scroll-container {
+  scrollbar-color: rgba(255, 255, 255, 0.24) transparent;
+}
+
+:global(.dark) .song-list-scroll-container::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+:global(.dark) .song-list-scroll-container.song-list-scrollbar-active {
+  scrollbar-color: rgba(236, 65, 65, 0.7) transparent;
+}
+
+:global(.dark) .song-list-scroll-container.song-list-scrollbar-active::-webkit-scrollbar-thumb {
+  background-color: rgba(236, 65, 65, 0.72);
+}
+
+:global(.dark) .song-list-scroll-container::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(236, 65, 65, 0.82);
 }
 
 .spectrum-bar {
