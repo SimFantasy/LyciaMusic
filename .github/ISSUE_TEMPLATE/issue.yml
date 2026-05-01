@@ -1,0 +1,137 @@
+name: Lycia Player 问题反馈
+description: 反馈 Lycia Player 的 bug、性能问题或功能建议。
+title: "[Issue]: "
+labels: ["needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请尽量填写关键信息，便于复现、定位或评估。
+
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: 问题类型
+      options:
+        - Bug
+        - 功能建议
+        - 性能或内存问题
+        - 界面或主题问题
+        - 播放或音频设备问题
+        - 音乐库扫描或导入问题
+        - 歌词或桌面歌词问题
+        - 文件工具箱或重命名问题
+        - 构建或开发环境问题
+    validations:
+      required: true
+
+  - type: input
+    id: app_version
+    attributes:
+      label: Lycia Player 版本
+      description: 可填写关于页版本、package 版本、Release tag 或 commit hash。
+      placeholder: "1.3.4"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os_version
+    attributes:
+      label: 操作系统
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: install_source
+    attributes:
+      label: 安装或运行方式
+      placeholder: "Release 安装包 / npm run tauri dev / 自行构建"
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 问题描述
+      placeholder: "请清楚描述遇到的问题或想要的功能。"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: Bug、性能问题、界面问题请尽量填写。
+      placeholder: |
+        1. 打开 ...
+        2. 点击 ...
+        3. 出现 ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望表现
+      placeholder: "你期望 Lycia Player 怎样表现？"
+    validations:
+      required: false
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际表现
+      placeholder: "Lycia Player 实际发生了什么？"
+    validations:
+      required: false
+
+  - type: textarea
+    id: music_context
+    attributes:
+      label: 音乐库相关信息
+      description: 涉及扫描、导入、播放、歌词、封面、统计、文件管理时填写。
+      placeholder: |
+        音频格式：mp3 / flac / wav / m4a / ogg
+        大约歌曲数量：
+        音乐库路径类型：本地磁盘 / 外置磁盘 / 网络路径
+        歌词来源：内嵌标签 / 同名 .lrc / Lyricify
+    validations:
+      required: false
+
+  - type: textarea
+    id: performance_context
+    attributes:
+      label: 性能或内存信息
+      description: 涉及启动速度、扫描速度、播放卡顿、CPU、内存、界面卡顿时填写。
+      placeholder: |
+        触发时机：
+        大约 CPU 占用：
+        大约内存占用：
+        音乐库规模：
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志、截图或录屏
+      description: 有截图、录屏、终端输出或错误日志时请附上。
+      placeholder: "可拖入文件，或粘贴日志。"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已经搜索过现有 Issues。
+          required: true
+        - label: 我已经从日志和截图中移除私人路径、账号名等敏感信息。
+          required: true
