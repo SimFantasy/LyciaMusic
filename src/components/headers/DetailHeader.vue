@@ -166,17 +166,16 @@ const handlePlayAll = () => {
             </button>
           </div>
           
-          <div v-if="subtitle" class="text-xs text-gray-400 dark:text-gray-500 font-medium">
+          <div v-if="subtitle" class="text-xs text-gray-600 dark:text-gray-300 font-medium">
              {{ subtitle }}
           </div>
         </div>
 
         <div class="flex items-center gap-3">
-           <button @click="handlePlayAll" class="bg-white/1 hover:bg-white/10 border border-white/1 text-gray-900 dark:text-gray-100 px-5 py-2 rounded-full text-sm font-medium transition flex items-center gap-2 active:scale-95 shadow-sm hover:border-gray-200 dark:hover:border-white/20">
+           <button @click="handlePlayAll" title="播放全部" class="bg-white/1 hover:bg-white/10 border border-white/1 text-gray-900 dark:text-gray-100 px-5 py-2 rounded-full text-sm font-medium transition flex items-center active:scale-95 shadow-sm hover:border-gray-200 dark:hover:border-white/20">
              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                <path d="M9 5.5v13l10-6.5-10-6.5Z" />
              </svg>
-             播放全部
            </button>
            
            <button @click="emit('update:isBatchMode', true)" title="批量操作" class="bg-white/1 hover:bg-white/10 border border-white/1 text-gray-900 dark:text-gray-100 px-5 py-2 rounded-full text-sm font-medium transition flex items-center gap-2 active:scale-95 shadow-sm hover:border-gray-200 dark:hover:border-white/20">
