@@ -56,7 +56,7 @@ describe('useHomeRouteSync', () => {
     const folderTree = ref([
       makeFolderNode('/music/library'),
     ]);
-    const searchQuery = ref('stale query');
+    const searchQuery = ref('persistent query');
     const isManagementMode = ref(false);
 
     const appShellScope = effectScope();
@@ -83,7 +83,7 @@ describe('useHomeRouteSync', () => {
       });
     });
 
-    expect(homeState.localViewMode.value).toBe('all');
+    expect(homeState.localViewMode.value).toBe('artist');
 
     homeScope.pause();
     Object.assign(route, {
@@ -100,8 +100,8 @@ describe('useHomeRouteSync', () => {
     expect(filterCondition.value).toBe('');
     expect(currentFolderFilter.value).toBe('/music/library/live');
     expect(activeRootPath.value).toBe('/music/library');
-    expect(searchQuery.value).toBe('');
-    expect(homeState.localViewMode.value).toBe('all');
+    expect(searchQuery.value).toBe('persistent query');
+    expect(homeState.localViewMode.value).toBe('artist');
     expect(router.replace).not.toHaveBeenCalled();
 
     homeScope.resume();
@@ -127,7 +127,7 @@ describe('useHomeRouteSync', () => {
       makeFolderNode('/music/root-a'),
       makeFolderNode('/music/root-b'),
     ]);
-    const searchQuery = ref('should clear');
+    const searchQuery = ref('persistent query');
 
     const scope = effectScope();
     scope.run(() => {
@@ -148,7 +148,7 @@ describe('useHomeRouteSync', () => {
     expect(currentViewMode.value).toBe('folder');
     expect(currentFolderFilter.value).toBe('/music/root-a');
     expect(activeRootPath.value).toBe('/music/root-a');
-    expect(searchQuery.value).toBe('');
+    expect(searchQuery.value).toBe('persistent query');
     expect(router.replace).toHaveBeenCalledWith({
       path: '/',
       query: {
@@ -160,7 +160,7 @@ describe('useHomeRouteSync', () => {
     scope.stop();
   });
 
-  it('resets stale home state when returning to plain home from a non-home route', async () => {
+  it('resets stale home state without clearing the active search when returning to plain home from a non-home route', async () => {
     const route = createRoute('/artists');
     const router = {
       replace: vi.fn().mockResolvedValue(undefined),
@@ -173,7 +173,7 @@ describe('useHomeRouteSync', () => {
     const folderTree = ref([
       makeFolderNode('/music/root-a'),
     ]);
-    const searchQuery = ref('should clear');
+    const searchQuery = ref('persistent query');
 
     const scope = effectScope();
     scope.run(() => {
@@ -200,7 +200,7 @@ describe('useHomeRouteSync', () => {
     expect(filterCondition.value).toBe('');
     expect(currentFolderFilter.value).toBe('/music/root-a/live');
     expect(activeRootPath.value).toBe('/music/root-a');
-    expect(searchQuery.value).toBe('');
+    expect(searchQuery.value).toBe('persistent query');
     expect(router.replace).not.toHaveBeenCalled();
 
     scope.stop();
@@ -219,7 +219,7 @@ describe('useHomeRouteSync', () => {
     const folderTree = ref([
       makeFolderNode('/music/root-a'),
     ]);
-    const searchQuery = ref('should clear');
+    const searchQuery = ref('persistent query');
 
     const scope = effectScope();
     scope.run(() => {
@@ -239,7 +239,7 @@ describe('useHomeRouteSync', () => {
 
     expect(currentViewMode.value).toBe('favorites');
     expect(filterCondition.value).toBe('');
-    expect(searchQuery.value).toBe('');
+    expect(searchQuery.value).toBe('persistent query');
     expect(router.replace).not.toHaveBeenCalled();
 
     Object.assign(route, {
@@ -251,7 +251,7 @@ describe('useHomeRouteSync', () => {
 
     expect(currentViewMode.value).toBe('recent');
     expect(filterCondition.value).toBe('');
-    expect(searchQuery.value).toBe('');
+    expect(searchQuery.value).toBe('persistent query');
     expect(router.replace).not.toHaveBeenCalled();
 
     scope.stop();

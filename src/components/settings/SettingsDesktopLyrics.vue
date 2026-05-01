@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { emit } from '@tauri-apps/api/event';
-import { Check, ChevronDown, RotateCcw, Type } from 'lucide-vue-next';
+import { Check, ChevronDown, RotateCcw } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 
 import {
+  DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR,
+  DEFAULT_DESKTOP_CUSTOM_ROMAJI_COLOR,
+  DEFAULT_DESKTOP_CUSTOM_TRANSLATION_COLOR,
+  DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR,
   DEFAULT_DESKTOP_PLAYER_ALIGNMENT,
   DEFAULT_PLAYER_FONT_PRESET,
   DEFAULT_PLAYER_FONT_SCALE,
@@ -21,6 +25,7 @@ import {
   MIN_PLAYER_OFFSET_Y,
   getLyricsFontFamily,
   loadSystemLyricsFonts,
+  normalizeHexColor,
   normalizeLyricsFontPreset,
   systemLyricsFontOptions,
   type LyricsColorScheme,
@@ -52,6 +57,7 @@ const COLOR_SCHEME_OPTIONS: Array<{
   { value: 'blue', label: '澄蓝', hint: '更冷静的蓝色高亮' },
   { value: 'green', label: '青绿', hint: '更清爽的绿色高亮' },
   { value: 'white', label: '白色', hint: '使用当前这种偏白的清透高亮风格' },
+  { value: 'custom', label: '自定义', hint: '手动选择已播放和未播放颜色' },
 ];
 
 const { settings } = useSettings();
@@ -63,6 +69,7 @@ const isFontPresetMenuOpen = ref(false);
 const fontPresetMenuStyle = ref<Record<string, string>>({});
 const showLyricsSyncOffsetPanel = ref(false);
 const isResettingWindowBounds = ref(false);
+const isCustomColorModalOpen = ref(false);
 
 const availableFontOptions = computed(() => [
   ...LYRICS_FONT_OPTIONS,
@@ -82,6 +89,29 @@ const fontScaleLabel = computed(() => `${Math.round(desktopLyricsSettings.player
 const lineGapLabel = computed(() => `${Math.round(desktopLyricsSettings.playerLineGap * 100)}%`);
 const offsetXLabel = computed(() => formatOffsetValue(desktopLyricsSettings.playerOffsetX));
 const offsetYLabel = computed(() => formatOffsetValue(desktopLyricsSettings.playerOffsetY));
+const customPreviewPlayedStyle = computed(() => ({
+  color: desktopLyricsSettings.customPlayedColor,
+  textShadow: `0 0 16px ${desktopLyricsSettings.customPlayedColor}66`,
+}));
+const customPreviewCurrentStyle = computed(() => ({
+  backgroundImage: `linear-gradient(90deg, ${desktopLyricsSettings.customPlayedColor} 0%, ${desktopLyricsSettings.customPlayedColor} 56%, ${desktopLyricsSettings.customUnplayedColor} 56%, ${desktopLyricsSettings.customUnplayedColor} 100%)`,
+  WebkitBackgroundClip: 'text',
+  backgroundClip: 'text',
+  color: 'transparent',
+  WebkitTextFillColor: 'transparent',
+  filter: `drop-shadow(0 0 12px ${desktopLyricsSettings.customPlayedColor}55)`,
+}));
+const customPreviewUnplayedStyle = computed(() => ({
+  color: desktopLyricsSettings.customUnplayedColor,
+}));
+const customPreviewRomajiStyle = computed(() => ({
+  color: desktopLyricsSettings.customRomajiColor,
+  textShadow: `0 0 12px ${desktopLyricsSettings.customRomajiColor}44`,
+}));
+const customPreviewTranslationStyle = computed(() => ({
+  color: desktopLyricsSettings.customTranslationColor,
+  textShadow: `0 0 12px ${desktopLyricsSettings.customTranslationColor}44`,
+}));
 
 const lyricsSyncOffsetMs = computed({
   get: () => Math.round(settings.value.lyricsSyncOffset * 1000),
@@ -148,6 +178,47 @@ function setDesktopFontPreset(value: LyricsFontPreset) {
 
 function setDesktopColorScheme(value: LyricsColorScheme) {
   desktopLyricsSettings.colorScheme = value;
+}
+
+function selectDesktopColorScheme(value: LyricsColorScheme) {
+  if (value === 'custom') {
+    openCustomColorModal();
+    return;
+  }
+
+  setDesktopColorScheme(value);
+}
+
+function setDesktopCustomColor(kind: 'played' | 'unplayed' | 'romaji' | 'translation', value: string) {
+  const fallbackMap = {
+    played: DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR,
+    unplayed: DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR,
+    romaji: DEFAULT_DESKTOP_CUSTOM_ROMAJI_COLOR,
+    translation: DEFAULT_DESKTOP_CUSTOM_TRANSLATION_COLOR,
+  };
+  const fallback = fallbackMap[kind];
+  const normalized = normalizeHexColor(value, fallback);
+
+  if (kind === 'played') {
+    desktopLyricsSettings.customPlayedColor = normalized;
+  } else if (kind === 'unplayed') {
+    desktopLyricsSettings.customUnplayedColor = normalized;
+  } else if (kind === 'romaji') {
+    desktopLyricsSettings.customRomajiColor = normalized;
+  } else {
+    desktopLyricsSettings.customTranslationColor = normalized;
+  }
+
+  desktopLyricsSettings.colorScheme = 'custom';
+}
+
+function openCustomColorModal() {
+  desktopLyricsSettings.colorScheme = 'custom';
+  isCustomColorModalOpen.value = true;
+}
+
+function closeCustomColorModal() {
+  isCustomColorModalOpen.value = false;
 }
 
 function resetLyricsSyncOffset() {
@@ -234,6 +305,7 @@ function handlePointerDownOutside(event: MouseEvent) {
 function handleWindowEscape(event: KeyboardEvent) {
   if (event.key === 'Escape') {
     closeFontPresetMenu();
+    closeCustomColorModal();
   }
 }
 
@@ -308,6 +380,32 @@ onUnmounted(() => {
           </div>
           <span class="desktop-switch" :class="desktopLyricsSettings.autoHideWhenFullscreen ? 'desktop-switch--on' : ''">
             <span class="desktop-switch-thumb" :class="desktopLyricsSettings.autoHideWhenFullscreen ? 'translate-x-5' : ''" />
+          </span>
+        </button>
+
+        <button
+          type="button"
+          class="desktop-setting-row"
+          @click="desktopLyricsSettings.enableWordEffect = !desktopLyricsSettings.enableWordEffect"
+        >
+          <div>
+            <div class="text-sm font-medium text-gray-800 dark:text-gray-200">逐字效果</div>
+          </div>
+          <span class="desktop-switch" :class="desktopLyricsSettings.enableWordEffect ? 'desktop-switch--on' : ''">
+            <span class="desktop-switch-thumb" :class="desktopLyricsSettings.enableWordEffect ? 'translate-x-5' : ''" />
+          </span>
+        </button>
+
+        <button
+          type="button"
+          class="desktop-setting-row"
+          @click="desktopLyricsSettings.showDoubleLine = !desktopLyricsSettings.showDoubleLine"
+        >
+          <div>
+            <div class="text-sm font-medium text-gray-800 dark:text-gray-200">双行显示</div>
+          </div>
+          <span class="desktop-switch" :class="desktopLyricsSettings.showDoubleLine ? 'desktop-switch--on' : ''">
+            <span class="desktop-switch-thumb" :class="desktopLyricsSettings.showDoubleLine ? 'translate-x-5' : ''" />
           </span>
         </button>
 
@@ -623,9 +721,6 @@ onUnmounted(() => {
               :class="isFontPresetMenuOpen ? 'desktop-font-trigger--open' : ''"
               @click="toggleFontPresetMenu"
             >
-              <div class="desktop-font-trigger-icon">
-                <Type :size="16" />
-              </div>
               <div class="min-w-0 flex-1 text-left">
                 <div class="truncate text-[15px] font-semibold text-gray-800 dark:text-gray-100" :style="{ fontFamily: selectedFontFamily }">
                   {{ selectedFontLabel }}
@@ -695,12 +790,85 @@ onUnmounted(() => {
           :class="desktopLyricsSettings.colorScheme === option.value
             ? 'border-[#EC4141] bg-[#EC4141]/8 shadow-sm'
             : 'border-white/30 hover:border-[#EC4141]/40 hover:bg-white/40 dark:border-white/8 dark:hover:bg-white/10'"
-          @click="setDesktopColorScheme(option.value)"
+          @click="selectDesktopColorScheme(option.value)"
         >
           <div class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ option.label }}</div>
         </button>
       </div>
     </section>
+
+    <Teleport to="body">
+      <transition name="desktop-custom-modal">
+        <div
+          v-if="isCustomColorModalOpen"
+          class="desktop-custom-modal-backdrop"
+          @click.self="closeCustomColorModal"
+        >
+          <div class="desktop-custom-modal" role="dialog" aria-modal="true" aria-label="自定义桌面歌词配色">
+            <div class="desktop-custom-color-row">
+              <label class="desktop-color-picker">
+                <input
+                  type="color"
+                  :value="desktopLyricsSettings.customPlayedColor"
+                  aria-label="已播放颜色"
+                  @input="setDesktopCustomColor('played', ($event.target as HTMLInputElement).value)"
+                >
+                <span class="desktop-color-swatch" :style="{ backgroundColor: desktopLyricsSettings.customPlayedColor }"></span>
+                <span>已播放</span>
+              </label>
+              <label class="desktop-color-picker">
+                <input
+                  type="color"
+                  :value="desktopLyricsSettings.customUnplayedColor"
+                  aria-label="未播放颜色"
+                  @input="setDesktopCustomColor('unplayed', ($event.target as HTMLInputElement).value)"
+                >
+                <span class="desktop-color-swatch" :style="{ backgroundColor: desktopLyricsSettings.customUnplayedColor }"></span>
+                <span>未播放</span>
+              </label>
+              <label class="desktop-color-picker">
+                <input
+                  type="color"
+                  :value="desktopLyricsSettings.customRomajiColor"
+                  aria-label="罗马音颜色"
+                  @input="setDesktopCustomColor('romaji', ($event.target as HTMLInputElement).value)"
+                >
+                <span class="desktop-color-swatch" :style="{ backgroundColor: desktopLyricsSettings.customRomajiColor }"></span>
+                <span>罗马音</span>
+              </label>
+              <label class="desktop-color-picker">
+                <input
+                  type="color"
+                  :value="desktopLyricsSettings.customTranslationColor"
+                  aria-label="翻译颜色"
+                  @input="setDesktopCustomColor('translation', ($event.target as HTMLInputElement).value)"
+                >
+                <span class="desktop-color-swatch" :style="{ backgroundColor: desktopLyricsSettings.customTranslationColor }"></span>
+                <span>翻译</span>
+              </label>
+            </div>
+
+            <div class="desktop-custom-preview">
+              <div class="desktop-custom-preview-line">
+                <span :style="customPreviewPlayedStyle">初めての</span>
+                <span :style="customPreviewCurrentStyle">ルーブル</span>
+                <span :style="customPreviewUnplayedStyle">は</span>
+              </div>
+              <div class="desktop-custom-preview-sub" :style="customPreviewRomajiStyle">
+                ha ji me te no ru u bu ru wa
+              </div>
+              <div class="desktop-custom-preview-sub desktop-custom-preview-translation" :style="customPreviewTranslationStyle">
+                第一次参观卢浮宫
+              </div>
+            </div>
+
+            <div class="desktop-custom-modal-actions">
+              <button type="button" class="desktop-action-button" @click="closeCustomColorModal">完成</button>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </Teleport>
   </div>
 </template>
 
@@ -894,11 +1062,6 @@ onUnmounted(() => {
     linear-gradient(180deg, rgba(236, 65, 65, 0.16), rgba(255, 255, 255, 0.05));
 }
 
-:global(.dark) .desktop-font-trigger-icon {
-  background: rgba(236, 65, 65, 0.14);
-  color: #ff9a9a;
-}
-
 :global(.dark) .desktop-font-menu {
   border-color: rgba(255, 255, 255, 0.08);
   background: rgba(17, 17, 19, 0.88);
@@ -949,7 +1112,7 @@ onUnmounted(() => {
 }
 
 .desktop-font-picker--inline {
-  width: min(340px, 100%);
+  width: min(185px, 100%);
   flex-shrink: 0;
 }
 
@@ -975,16 +1138,10 @@ onUnmounted(() => {
 }
 
 .desktop-font-trigger--compact {
-  min-height: 44px;
-  padding: 8px 12px;
-  border-radius: 12px;
-  gap: 10px;
-}
-
-.desktop-font-trigger--compact .desktop-font-trigger-icon {
-  width: 30px;
-  height: 30px;
+  min-height: 36px;
+  padding: 7px 10px;
   border-radius: 10px;
+  gap: 8px;
 }
 
 .desktop-font-trigger:hover,
@@ -998,18 +1155,6 @@ onUnmounted(() => {
 .desktop-font-trigger--open {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 244, 244, 0.78));
-}
-
-.desktop-font-trigger-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
-  background: rgba(236, 65, 65, 0.1);
-  color: #ec4141;
-  flex-shrink: 0;
 }
 
 .desktop-font-menu {
@@ -1195,6 +1340,153 @@ onUnmounted(() => {
   color: #ff8b8b;
 }
 
+.desktop-custom-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.desktop-custom-modal {
+  width: min(560px, 100%);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 18px;
+  box-shadow: 0 26px 70px rgba(15, 23, 42, 0.22);
+}
+
+:global(.dark) .desktop-custom-modal {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(18, 18, 20, 0.92);
+}
+
+.desktop-custom-color-row {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.desktop-color-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  color: rgb(31 41 55);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.desktop-color-picker span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:global(.dark) .desktop-color-picker {
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.desktop-color-picker:hover {
+  border-color: rgba(236, 65, 65, 0.38);
+  background: rgba(236, 65, 65, 0.06);
+}
+
+.desktop-color-picker input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.desktop-color-swatch {
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 10px;
+  box-shadow:
+    inset 0 0 0 1px rgba(15, 23, 42, 0.08),
+    0 4px 12px rgba(15, 23, 42, 0.14);
+}
+
+.desktop-custom-preview {
+  margin-top: 14px;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.12), transparent 42%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(3, 7, 18, 0.96));
+  padding: 24px;
+  text-align: center;
+}
+
+.desktop-custom-preview-line {
+  max-width: 100%;
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+}
+
+.desktop-custom-preview-sub {
+  font-size: 15px;
+  line-height: 1.4;
+  opacity: 0.86;
+}
+
+.desktop-custom-preview-translation {
+  margin-top: -8px;
+  font-size: 16px;
+}
+
+.desktop-custom-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.desktop-custom-modal-enter-active,
+.desktop-custom-modal-leave-active {
+  transition: opacity 180ms ease;
+}
+
+.desktop-custom-modal-enter-active .desktop-custom-modal,
+.desktop-custom-modal-leave-active .desktop-custom-modal {
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+
+.desktop-custom-modal-enter-from,
+.desktop-custom-modal-leave-to {
+  opacity: 0;
+}
+
+.desktop-custom-modal-enter-from .desktop-custom-modal,
+.desktop-custom-modal-leave-to .desktop-custom-modal {
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+}
+
 @media (max-width: 767px) {
   .desktop-typography-row--inline {
     flex-direction: column;
@@ -1207,6 +1499,14 @@ onUnmounted(() => {
 
   .desktop-font-picker--inline {
     width: 100%;
+  }
+
+  .desktop-custom-color-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .desktop-custom-preview-line {
+    font-size: 26px;
   }
 }
 

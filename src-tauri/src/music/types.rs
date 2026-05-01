@@ -1,10 +1,32 @@
 // music/types.rs - 数据结构定义
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 
-/// 并发控制状态
-pub struct ImageConcurrencyLimit(pub Semaphore);
+pub const THUMBNAIL_IMAGE_CONCURRENCY_LIMIT: usize = 2;
+pub const FULL_COVER_IMAGE_CONCURRENCY_LIMIT: usize = 2;
+
+/// 缩略图并发控制状态
+pub struct ThumbnailImageConcurrencyLimit(pub Semaphore);
+
+/// 高清封面并发控制状态
+pub struct FullCoverImageConcurrencyLimit(pub Semaphore);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cover_image_concurrency_is_split_between_thumbnail_and_full_cover() {
+        assert_eq!(THUMBNAIL_IMAGE_CONCURRENCY_LIMIT, 2);
+        assert_eq!(FULL_COVER_IMAGE_CONCURRENCY_LIMIT, 2);
+
+        let _thumbnail_limit =
+            ThumbnailImageConcurrencyLimit(Semaphore::new(THUMBNAIL_IMAGE_CONCURRENCY_LIMIT));
+        let _full_cover_limit =
+            FullCoverImageConcurrencyLimit(Semaphore::new(FULL_COVER_IMAGE_CONCURRENCY_LIMIT));
+    }
+}
 
 #[derive(Serialize, Clone, Debug)]
 pub struct Song {
@@ -21,6 +43,7 @@ pub struct Song {
     pub is_various_artists_album: bool,
     pub collapse_artist_credits: bool,
     pub duration: u32,
+    pub cover_thumb_path: Option<String>,
     pub bitrate: u32,
     pub sample_rate: u32,
     pub bit_depth: Option<u8>,
@@ -49,6 +72,7 @@ pub struct LibrarySong {
     pub is_various_artists_album: bool,
     pub collapse_artist_credits: bool,
     pub duration: u32,
+    pub cover_thumb_path: Option<String>,
     pub bitrate: u32,
     pub sample_rate: u32,
     pub bit_depth: Option<u8>,
@@ -70,6 +94,22 @@ pub struct SongDetail {
     pub container: Option<String>,
     pub codec: Option<String>,
     pub file_size: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum LyricsStorageSource {
+    Embedded,
+    Sidecar,
+    Empty,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SongLyricsForEdit {
+    pub lyrics: String,
+    pub source: LyricsStorageSource,
+    pub source_path: Option<String>,
 }
 
 #[derive(Serialize, Clone, Debug)]

@@ -358,6 +358,73 @@ describe('player library view', () => {
     ]);
   });
 
+  it('updates local music immediately after deletion even when the cached all-view paths stay stale', async () => {
+    const libraryStore = useLibraryStore();
+    const navigationStore = useNavigationStore();
+    const alpha = makeSong({ path: '/music/alpha.flac', title: 'Alpha' });
+    const beta = makeSong({ path: '/music/beta.flac', title: 'Beta' });
+    const staleAllViewPaths = [alpha.path, beta.path];
+
+    tauriInvokeMock.mockImplementation(async (command: string, payload?: Record<string, unknown>) => {
+      const songs = libraryStore.canonicalSongs;
+      const songLookup = new Map(songs.map(song => [song.path, song] as const));
+
+      if (command === 'get_library_song_paths_for_all_view') {
+        return staleAllViewPaths;
+      }
+
+      if (command === 'get_library_song_paths_by_artist') {
+        const artistName = String(payload?.artistName ?? '');
+        return songs
+          .filter(song => normalizeArtistNames(song).includes(artistName))
+          .sort((left, right) => (left.title || left.name).localeCompare(right.title || right.name, 'zh-CN'))
+          .map(song => song.path);
+      }
+
+      if (command === 'get_library_song_paths_by_album') {
+        const albumKey = String(payload?.albumKey ?? '');
+        return songs
+          .filter(song => resolveAlbumKey(song) === albumKey)
+          .sort((left, right) => (left.title || left.name).localeCompare(right.title || right.name, 'zh-CN'))
+          .map(song => song.path);
+      }
+
+      if (command === 'get_favorite_song_paths_view') {
+        const favoritePaths = new Set((payload?.favoritePaths as string[] | undefined) ?? []);
+        return songs.filter(song => favoritePaths.has(song.path)).map(song => song.path);
+      }
+
+      if (command === 'get_recent_song_paths_view') {
+        const recentEntries = (payload?.recentEntries as { songPath: string; playedAt: number }[] | undefined) ?? [];
+        return recentEntries
+          .map(item => songLookup.get(item.songPath))
+          .filter((song): song is Song => !!song)
+          .map(song => song.path);
+      }
+
+      return [];
+    });
+
+    libraryStore.librarySongs = [alpha, beta];
+    navigationStore.currentViewMode = 'all';
+    libraryStore.localSortMode = 'title';
+
+    const { displaySongList } = usePlayerLibraryView();
+    await flushPromises();
+
+    expect(displaySongList.value.map(song => song.path)).toEqual([
+      alpha.path,
+      beta.path,
+    ]);
+
+    libraryStore.librarySongs = [alpha];
+    await flushPromises();
+
+    expect(displaySongList.value.map(song => song.path)).toEqual([
+      alpha.path,
+    ]);
+  });
+
   it('applies album detail sorting rules including track order', async () => {
     const libraryStore = useLibraryStore();
     const navigationStore = useNavigationStore();

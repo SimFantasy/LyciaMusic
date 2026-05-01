@@ -1,4 +1,5 @@
-use crate::player::types::{AudioCommand, PlayerState};
+use crate::player::spectrum::build_frequency_bands;
+use crate::player::types::{AudioCommand, PlayerState, VISUALIZER_BAND_COUNT};
 use souvlaki::{MediaMetadata, MediaPlayback, MediaPosition};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -98,8 +99,7 @@ pub fn update_playback_metadata(
 #[tauri::command]
 pub fn pause_audio(state: tauri::State<PlayerState>) -> Result<(), String> {
     let tx = state.tx.lock().map_err(|e| e.to_string())?;
-    tx.send(AudioCommand::Pause)
-        .map_err(|e| e.to_string())?;
+    tx.send(AudioCommand::Pause).map_err(|e| e.to_string())?;
     if let Ok(mut controls) = state.controls.lock() {
         if let Some(mc) = controls.as_mut() {
             let _ = mc.set_playback(MediaPlayback::Paused { progress: None });
@@ -111,8 +111,7 @@ pub fn pause_audio(state: tauri::State<PlayerState>) -> Result<(), String> {
 #[tauri::command]
 pub fn resume_audio(state: tauri::State<PlayerState>) -> Result<(), String> {
     let tx = state.tx.lock().map_err(|e| e.to_string())?;
-    tx.send(AudioCommand::Resume)
-        .map_err(|e| e.to_string())?;
+    tx.send(AudioCommand::Resume).map_err(|e| e.to_string())?;
     if let Ok(mut controls) = state.controls.lock() {
         if let Some(mc) = controls.as_mut() {
             let _ = mc.set_playback(MediaPlayback::Playing { progress: None });
@@ -174,4 +173,11 @@ pub fn get_playback_progress(state: tauri::State<PlayerState>) -> f64 {
 
     let total_samples_per_sec = rate as u64 * channels as u64;
     samples as f64 / total_samples_per_sec as f64
+}
+
+#[tauri::command]
+pub fn get_audio_visualizer_samples(state: tauri::State<PlayerState>) -> Vec<f32> {
+    let visualizer = &state.progress.visualizer;
+    let sample_rate = state.progress.sample_rate.load(Ordering::Relaxed);
+    build_frequency_bands(&visualizer.snapshot(), sample_rate, VISUALIZER_BAND_COUNT)
 }

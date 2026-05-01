@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { usePlayerViewState } from '../../composables/usePlayerViewState';
+import SortModeIcon from '../common/SortModeIcon.vue';
 
 defineProps<{
   isBatchMode: boolean;
@@ -115,7 +116,9 @@ const handleEnterBatchMode = () => {
           class="bg-white/1 hover:bg-white/10 border border-white/1 text-gray-900 dark:text-gray-100 hover:text-black dark:hover:text-white w-7 h-7 flex items-center justify-center rounded-full transition active:scale-95 shadow-sm hover:border-gray-200 dark:hover:border-white/20"
           title="&#25773;&#25918;&#20840;&#37096;"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 5.5v13l10-6.5-10-6.5Z" />
+          </svg>
         </button>
 
         <button
@@ -131,10 +134,12 @@ const handleEnterBatchMode = () => {
           class="bg-white/1 hover:bg-white/10 border border-white/1 text-gray-900 dark:text-gray-100 hover:text-black dark:hover:text-white w-7 h-7 flex items-center justify-center rounded-full transition active:scale-95 shadow-sm hover:border-gray-200 dark:hover:border-white/20"
           title="&#20840;&#37096;&#28155;&#21152;&#21040;&#25773;&#25918;&#38431;&#21015;"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-            <path d="M6.3 2.84A1.5 1.5 0 004 4.11v11.78a1.5 1.5 0 002.3 1.27l9.344-5.891a1.5 1.5 0 000-2.538L6.3 2.84z" />
-            <circle cx="15" cy="15" r="4.5" fill="currentColor" stroke="white" stroke-width="1.5"/>
-            <path d="M15 13v4M13 15h4" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3.5 6H17" />
+            <path d="M3.5 12H14" />
+            <path d="M3.5 18H11" />
+            <path d="M18 14v6" />
+            <path d="M15 17h6" />
           </svg>
         </button>
 
@@ -151,9 +156,7 @@ const handleEnterBatchMode = () => {
           class="sort-menu-trigger bg-white/1 hover:bg-white/10 border border-white/1 text-gray-900 dark:text-gray-100 hover:text-black dark:hover:text-white w-7 h-7 flex items-center justify-center rounded-full transition active:scale-95 shadow-sm hover:border-gray-200 dark:hover:border-white/20"
           title="&#25490;&#24207;&#26041;&#24335;"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
-          </svg>
+          <SortModeIcon class="h-4 w-4" />
         </button>
 
         <Teleport to="body">

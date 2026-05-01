@@ -40,6 +40,10 @@ fn migrate_song_columns(conn: &Connection) -> Result<(), String> {
         conn.execute("ALTER TABLE songs ADD COLUMN bitrate INTEGER", [])
             .ok();
     }
+    if !columns.iter().any(|column| column == "cover_thumb_path") {
+        conn.execute("ALTER TABLE songs ADD COLUMN cover_thumb_path TEXT", [])
+            .ok();
+    }
     if !columns.iter().any(|column| column == "artist_names") {
         conn.execute("ALTER TABLE songs ADD COLUMN artist_names TEXT", [])
             .ok();

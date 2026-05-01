@@ -26,6 +26,14 @@ pub struct TagDetailMetadata {
     pub comment: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EmbeddedLyricsMatch {
+    pub tag_type: TagType,
+    pub item_key: ItemKey,
+    pub description: String,
+    pub text: String,
+}
+
 pub fn read_tagged_file_from_path(path: &Path) -> lofty::error::Result<TaggedFile> {
     read_tagged_file_from_path_with_cover_mode(path, true)
 }
@@ -111,29 +119,23 @@ where
         }
 
         if metadata.track_number.is_none() {
-            metadata.track_number = tag
-                .track()
-                .map(|value| value.to_string())
-                .or_else(|| {
-                    read_tag_text(
-                        tag,
-                        &[ItemKey::TrackNumber],
-                        &["TRACKNUMBER", "TRCK", "TRACK", "ITRK", "IPRT"],
-                    )
-                });
+            metadata.track_number = tag.track().map(|value| value.to_string()).or_else(|| {
+                read_tag_text(
+                    tag,
+                    &[ItemKey::TrackNumber],
+                    &["TRACKNUMBER", "TRCK", "TRACK", "ITRK", "IPRT"],
+                )
+            });
         }
 
         if metadata.disc_number.is_none() {
-            metadata.disc_number = tag
-                .disk()
-                .map(|value| value.to_string())
-                .or_else(|| {
-                    read_tag_text(
-                        tag,
-                        &[ItemKey::DiscNumber],
-                        &["DISCNUMBER", "DISC", "DISK", "TPOS"],
-                    )
-                });
+            metadata.disc_number = tag.disk().map(|value| value.to_string()).or_else(|| {
+                read_tag_text(
+                    tag,
+                    &[ItemKey::DiscNumber],
+                    &["DISCNUMBER", "DISC", "DISK", "TPOS"],
+                )
+            });
         }
 
         if metadata.comment.is_none() {
@@ -173,11 +175,23 @@ pub fn extract_embedded_lyrics<T>(tagged_file: &T) -> Option<String>
 where
     T: TaggedFileExt + ?Sized,
 {
+    extract_embedded_lyrics_match(tagged_file).map(|lyrics_match| lyrics_match.text)
+}
+
+pub fn extract_embedded_lyrics_match<T>(tagged_file: &T) -> Option<EmbeddedLyricsMatch>
+where
+    T: TaggedFileExt + ?Sized,
+{
     let tags = ordered_tags(tagged_file);
 
     for tag in &tags {
         if let Some(lyrics) = tag.get_string(&ItemKey::Lyrics).and_then(clean_text) {
-            return Some(lyrics);
+            return Some(EmbeddedLyricsMatch {
+                tag_type: tag.tag_type(),
+                item_key: ItemKey::Lyrics,
+                description: String::new(),
+                text: lyrics,
+            });
         }
     }
 
@@ -194,7 +208,12 @@ where
             } || looks_like_lyrics_description(item.description());
 
             if is_explicit_lyrics_field && seems_like_lyrics_text(&text) {
-                return Some(text);
+                return Some(EmbeddedLyricsMatch {
+                    tag_type: tag.tag_type(),
+                    item_key: item.key().clone(),
+                    description: item.description().to_string(),
+                    text,
+                });
             }
         }
     }
@@ -206,7 +225,12 @@ where
             };
 
             if contains_lrc_timestamp(&text) {
-                return Some(text);
+                return Some(EmbeddedLyricsMatch {
+                    tag_type: tag.tag_type(),
+                    item_key: item.key().clone(),
+                    description: item.description().to_string(),
+                    text,
+                });
             }
         }
     }
@@ -696,8 +720,8 @@ fn seems_like_lyrics_text(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_detail_metadata, extract_embedded_lyrics, extract_text_metadata, find_embedded_picture,
-        read_tagged_file_from_path, read_tagged_file_from_path_for_scan,
+        extract_detail_metadata, extract_embedded_lyrics, extract_text_metadata,
+        find_embedded_picture, read_tagged_file_from_path, read_tagged_file_from_path_for_scan,
     };
     use id3::frame::{Picture as Id3Picture, PictureType as Id3PictureType};
     use id3::TagLike;

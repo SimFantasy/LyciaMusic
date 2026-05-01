@@ -11,7 +11,7 @@ const props = defineProps<{
 }>();
 
 const {
-  currentSong, currentCover, currentCoverFull, isPlaying, dominantColors
+  currentSong, currentCover, currentCoverPath, currentCoverFull, isPlaying, dominantColors
 } = usePlaybackController();
 const { getFullCoverUrl, loadFullCover, preloadFullCovers, retainFullCoverPaths } = useCoverCache();
 const playbackStore = usePlaybackStore();
@@ -32,9 +32,16 @@ const handleContextMenu = (e: MouseEvent) => {
 
 const localCoverUrl = ref('');
 const bigCoverLoaded = ref(false);
+const fullCoverLoading = ref(false);
 const reflectionCoverUrl = ref('');
 let fullCoverRequestId = 0;
-const currentLocalCoverUrl = computed(() => localCoverUrl.value);
+const currentLocalCoverUrl = computed(() => {
+  if (props.isExpanded && currentCoverPath.value !== currentSongPath.value) {
+    return '';
+  }
+
+  return localCoverUrl.value;
+});
 const currentBigCoverUrl = computed(() => (
   props.isExpanded && currentCoverFull.value && currentCoverFull.value !== currentLocalCoverUrl.value
     ? currentCoverFull.value
@@ -75,6 +82,7 @@ watch(currentCover, (cover) => {
 watch([currentSongPath, () => props.isExpanded], async ([path, isExpanded]) => {
   const cachedFullCoverUrl = path ? getFullCoverUrl(path) : '';
   bigCoverLoaded.value = Boolean(cachedFullCoverUrl);
+  fullCoverLoading.value = false;
 
   if (!path || !isExpanded) {
     fullCoverRequestId += 1;
@@ -83,22 +91,27 @@ watch([currentSongPath, () => props.isExpanded], async ([path, isExpanded]) => {
 
   const retainedPaths = getRetainedFullCoverPaths(path);
   retainFullCoverPaths(retainedPaths);
-  preloadFullCovers(retainedPaths.filter(candidatePath => candidatePath !== path));
 
   if (cachedFullCoverUrl) {
     currentCoverFull.value = cachedFullCoverUrl;
+    preloadFullCovers(retainedPaths.filter(candidatePath => candidatePath !== path));
     return;
   }
 
   const requestId = ++fullCoverRequestId;
+  const fullCoverLoad = loadFullCover(path);
+  fullCoverLoading.value = true;
+  preloadFullCovers(retainedPaths.filter(candidatePath => candidatePath !== path));
 
   try {
-    const fullCoverUrl = await loadFullCover(path);
+    const fullCoverUrl = await fullCoverLoad;
     if (requestId !== fullCoverRequestId || path !== currentSongPath.value || !props.isExpanded) return;
-    currentCoverFull.value = fullCoverUrl || currentCover.value;
+    currentCoverFull.value = fullCoverUrl || '';
+    fullCoverLoading.value = false;
   } catch {
     if (requestId !== fullCoverRequestId || path !== currentSongPath.value || !props.isExpanded) return;
-    currentCoverFull.value = currentCover.value;
+    currentCoverFull.value = '';
+    fullCoverLoading.value = false;
   }
 }, { immediate: true });
 
@@ -108,6 +121,7 @@ watch(() => props.isExpanded, (isExpanded) => {
   }
 
   bigCoverLoaded.value = false;
+  fullCoverLoading.value = false;
   reflectionCoverUrl.value = '';
 });
 
@@ -132,10 +146,12 @@ watch([currentSongPath, currentLocalCoverUrl, () => props.isExpanded], ([path, l
 
 const onBigCoverLoad = () => {
   bigCoverLoaded.value = true;
+  fullCoverLoading.value = false;
 };
 
 const onBigCoverError = () => {
   bigCoverLoaded.value = false;
+  fullCoverLoading.value = false;
 };
 
 const detailCoverRef = ref<HTMLElement | null>(null);
@@ -160,8 +176,8 @@ defineExpose({ detailCoverRef });
     >
       <!-- Main Cover Container -->
       <div class="w-full h-full rounded-[inherit] overflow-hidden relative isolate z-20">
-        <img v-if="currentLocalCoverUrl" :key="`thumb:${currentSongPath}:${currentLocalCoverUrl}`" :src="currentLocalCoverUrl" class="absolute inset-0 w-full h-full object-cover select-none transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] z-10" :class="props.isExpanded ? 'scale-100' : 'scale-125'" draggable="false" decoding="async" />
-        <img v-if="currentBigCoverUrl" :key="`big:${currentSongPath}:${currentBigCoverUrl}`" :src="currentBigCoverUrl" @load="onBigCoverLoad" @error="onBigCoverError" class="absolute inset-0 w-full h-full object-cover select-none transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] z-20" :class="[props.isExpanded ? 'scale-100' : 'scale-125', bigCoverLoaded ? 'opacity-100' : 'opacity-0']" draggable="false" decoding="async" />
+        <img v-if="currentLocalCoverUrl" :key="`thumb:${currentSongPath}:${currentLocalCoverUrl}`" :src="currentLocalCoverUrl" class="absolute inset-0 w-full h-full object-cover select-none transition-[transform,filter,opacity] duration-[240ms] ease-out z-10" :class="props.isExpanded ? (fullCoverLoading ? 'scale-[1.03] blur-[10px] brightness-90' : 'scale-100 blur-0 brightness-100') : 'scale-125 blur-0 brightness-100'" draggable="false" decoding="async" />
+        <img v-if="currentBigCoverUrl" :key="`big:${currentSongPath}:${currentBigCoverUrl}`" :src="currentBigCoverUrl" @load="onBigCoverLoad" @error="onBigCoverError" class="absolute inset-0 w-full h-full object-cover select-none transition-opacity duration-[240ms] ease-out z-20" :class="[props.isExpanded ? 'scale-100' : 'scale-125', bigCoverLoaded ? 'opacity-100' : 'opacity-0']" draggable="false" decoding="async" />
         <div v-if="!currentLocalCoverUrl && !currentBigCoverUrl" class="absolute inset-0 w-full h-full bg-white/5 flex items-center justify-center text-white/10 z-0">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-32 w-32" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
         </div>

@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { LyricLine as AmlLyricLine, LyricLineMouseEvent } from '@applemusic-like-lyrics/core';
 import { PatchedLyricPlayer } from '../../lib/amll/PatchedLyricPlayer';
+import { syncAmlLyricSeekLayout } from './amllSeekLayout';
 
 const props = withDefaults(defineProps<{
   disabled?: boolean;
@@ -145,6 +146,16 @@ function queueRecovery(reason: string) {
 function handleLineClick(event: Event) {
   emit('line-click', event as LyricLineMouseEvent);
 }
+
+function syncSeekLayout(timeMs: number, lineIndex?: number) {
+  if (!player) return;
+
+  syncAmlLyricSeekLayout(player, timeMs, lineIndex);
+}
+
+defineExpose({
+  syncSeekLayout,
+});
 
 onMounted(() => {
   const wrapper = wrapperRef.value;

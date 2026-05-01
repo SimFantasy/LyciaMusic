@@ -46,15 +46,29 @@ export const createPlayerPlayback = ({
 }: CreatePlayerPlaybackDeps) => {
   const playbackStore = usePlaybackStore();
   const uiStore = useUiStore();
-  const { loadCover, loadCoverPath, loadFullCover, peekCoverUrl, peekCoverPath, getFullCoverUrl } = useCoverCache();
+  const {
+    loadCover,
+    loadCoverPath,
+    primeCoverPath,
+    loadFullCover,
+    peekCoverUrl,
+    peekCoverPath,
+    getFullCoverUrl,
+    preloadPriorityCovers,
+    preloadFullCovers,
+    retainFullCoverPaths,
+  } = useCoverCache();
   const {
     currentCover,
+    currentCoverPath,
     currentCoverFull,
     currentSong,
     currentTime,
     isPlaying,
     isSongLoaded,
     playQueue,
+    playMode,
+    tempQueue,
   } = storeToRefs(playbackStore);
   const { showPlayerDetail } = storeToRefs(uiStore);
 
@@ -81,6 +95,67 @@ export const createPlayerPlayback = ({
       song,
       ...baseQueue.slice(currentIndex + 1),
     ];
+  };
+
+  const getLikelyFullCoverPaths = (song: Song) => {
+    const retainedPaths: string[] = [song.path];
+    const pushUniquePath = (path: string | undefined) => {
+      if (!path || retainedPaths.includes(path)) {
+        return;
+      }
+
+      retainedPaths.push(path);
+    };
+
+    pushUniquePath(tempQueue.value[0]?.path);
+
+    const queue = playQueue.value;
+    const currentIndex = queue.findIndex(item => item.path === song.path);
+    if (currentIndex >= 0 && queue.length > 1) {
+      pushUniquePath(queue[(currentIndex - 1 + queue.length) % queue.length]?.path);
+      pushUniquePath(queue[(currentIndex + 1) % queue.length]?.path);
+    }
+
+    return retainedPaths.slice(0, 4);
+  };
+
+  const prepareDetailFullCovers = (song: Song) => {
+    if (!showPlayerDetail.value) {
+      return [];
+    }
+
+    const retainedPaths = getLikelyFullCoverPaths(song);
+    retainFullCoverPaths(retainedPaths);
+    return retainedPaths;
+  };
+
+  const getLikelyThumbnailPaths = (song: Song) => {
+    const paths: string[] = [];
+    const pushUniquePath = (path: string | undefined) => {
+      if (!path || paths.includes(path)) {
+        return;
+      }
+      paths.push(path);
+    };
+
+    pushUniquePath(song.path);
+    pushUniquePath(tempQueue.value[0]?.path);
+
+    const queue = playQueue.value;
+    const currentIndex = queue.findIndex(item => item.path === song.path);
+    if (currentIndex >= 0 && queue.length > 1) {
+      pushUniquePath(queue[(currentIndex - 1 + queue.length) % queue.length]?.path);
+      pushUniquePath(queue[(currentIndex + 1) % queue.length]?.path);
+    }
+
+    if (playMode.value === 2) {
+      const randomCandidates = (queue.length ? queue : getDisplaySongList())
+        .filter(item => item.path !== song.path)
+        .slice(0, 5);
+      randomCandidates.forEach(item => pushUniquePath(item.path));
+    }
+
+    return paths;
   };
 
   const stopPlaybackRuntime = () => {
@@ -143,7 +218,15 @@ export const createPlayerPlayback = ({
 
     const totalDuration = accumulatedTime + currentSession;
     if (totalDuration >= 10) {
-      playbackApi.recordPlay(song.path, Math.floor(totalDuration))
+      playbackApi.recordPlay({
+        songPath: song.path,
+        listenedMs: Math.floor(totalDuration * 1000),
+        durationMs: Math.floor(song.duration * 1000),
+        title: getSmtcTitle(song),
+        artist: song.artist || '',
+        album: song.album || '',
+        trackNumber: song.track_number,
+      })
         .catch(error => console.warn('record_play failed:', error));
     }
 
@@ -178,13 +261,40 @@ export const createPlayerPlayback = ({
       }
     }
 
+    const retainedFullCoverPaths = prepareDetailFullCovers(song);
+
     isPlaying.value = true;
     isSongLoaded.value = false;
     const cachedCover = peekCoverUrl(song.path);
-    const cachedCoverPath = peekCoverPath(song.path);
+    const cachedCoverPath = peekCoverPath(song.path) || song.cover_thumb_path || '';
+    const persistedCover = primeCoverPath(song.path, song.cover_thumb_path);
     const cachedFullCover = getFullCoverUrl(song.path);
-    currentCover.value = cachedCover;
-    currentCoverFull.value = cachedFullCover || '';
+    const immediateCover = cachedCover || persistedCover;
+    if (immediateCover) {
+      currentCover.value = immediateCover;
+      currentCoverPath.value = song.path;
+    }
+    currentCoverFull.value = cachedFullCover || immediateCover || '';
+    preloadPriorityCovers(getLikelyThumbnailPaths(song));
+    const currentThumbnailLoad = Promise.all([loadCover(song.path), loadCoverPath(song.path)]);
+    void currentThumbnailLoad
+      .then(([cover]) => {
+        if (requestId !== playRequestId || currentSong.value?.path !== song.path) {
+          return;
+        }
+
+        const normalizedCover = cover || '';
+        if (normalizedCover) {
+          currentCover.value = normalizedCover;
+          currentCoverPath.value = song.path;
+        } else if (!immediateCover) {
+          currentCoverPath.value = '';
+        }
+        if (!currentCoverFull.value) {
+          currentCoverFull.value = normalizedCover || '';
+        }
+      })
+      .catch(() => {});
     if (showPlayerDetail.value && !cachedFullCover) {
       void loadFullCover(song.path)
         .then((fullCoverUrl) => {
@@ -195,6 +305,9 @@ export const createPlayerPlayback = ({
           currentCoverFull.value = fullCoverUrl;
         })
         .catch(() => {});
+    }
+    if (retainedFullCoverPaths.length > 1) {
+      preloadFullCovers(retainedFullCoverPaths.filter(path => path !== song.path));
     }
     stopPlaybackRuntime();
     reanchorPlaybackClock(0);
@@ -219,7 +332,7 @@ export const createPlayerPlayback = ({
       loadLyrics();
       startPlaybackRuntime();
 
-      void Promise.all([loadCover(song.path), loadCoverPath(song.path)])
+      void currentThumbnailLoad
         .then(async ([cover, coverPath]) => {
           if (requestId !== playRequestId || currentSong.value?.path !== song.path) {
             return;

@@ -1,77 +1,149 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue';
-import { usePlayer } from '../../composables/player';
-import { useLyrics } from '../../composables/lyrics';
+import { LogicalSize } from '@tauri-apps/api/dpi';
+import { emitTo, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useCoverCache } from '../../composables/useCoverCache';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
-const {
-  currentSong,
-  isPlaying,
-  volume,
-  togglePlay,
-  nextSong,
-  prevSong,
-  handleVolume,
-  toggleMute,
-  isMiniMode,
-  playQueue,
-  songList,
-  playSong,
-  formatDuration,
-  showMiniPlaylist,
-  toggleMiniPlaylist,
-  showVolumePopover
-} = usePlayer();
+import {
+  MINI_PLAYER_ACTION_EVENT,
+  MINI_PLAYER_BOUNDS_EVENT,
+  MINI_PLAYER_READY_EVENT,
+  MINI_PLAYER_REQUEST_STATE_EVENT,
+  MINI_PLAYER_STATE_APPLIED_EVENT,
+  MINI_PLAYER_STATE_EVENT,
+  MINI_PLAYER_VISIBILITY_EVENT,
+  MINI_PLAYER_WINDOW_BASE_HEIGHT,
+  MINI_PLAYER_WINDOW_EXPANDED_HEIGHT,
+  MINI_PLAYER_WINDOW_VOLUME_HEIGHT,
+  MINI_PLAYER_WINDOW_WIDTH,
+  type MiniPlayerAction,
+  type MiniPlayerStatePayload,
+} from '../../features/miniPlayer/shared';
+import type { Song } from '../../types';
 
-const { currentLyricLine } = useLyrics();
 const appWindow = getCurrentWindow();
+const currentSong = ref<Song | null>(null);
+const isPlaying = ref(false);
+const volume = ref(100);
+const queue = ref<Song[]>([]);
+const lyricText = ref('');
 const localCoverUrl = ref('');
-const { loadCover } = useCoverCache();
-let coverRequestId = 0;
-
-const queue = computed(() => {
-  return playQueue.value.length > 0 ? playQueue.value : songList.value;
-});
-
-watch(currentSong, async (newSong) => {
-  const requestId = ++coverRequestId;
-  if (newSong && newSong.path) {
-    try {
-      const coverUrl = await loadCover(newSong.path);
-      if (requestId !== coverRequestId) return;
-      localCoverUrl.value = coverUrl || '';
-    } catch {
-      if (requestId !== coverRequestId) return;
-      localCoverUrl.value = '';
-    }
-  } else {
-    if (requestId !== coverRequestId) return;
-    localCoverUrl.value = '';
-  }
-}, { immediate: true });
-
-const handleRestore = async () => {
-  isMiniMode.value = false;
-};
-
-const closeWindow = async () => {
-  await appWindow.hide();
-};
-
+const isWindowVisible = ref(false);
+const showMiniPlaylist = ref(false);
+const showVolumePopover = ref(false);
 const isHovering = ref(false);
 const isCoverHovering = ref(false);
 const showLyrics = ref(false);
+const isDraggingVolume = ref(false);
+const volumeBarRef = ref<HTMLElement | null>(null);
+const volumeButtonRef = ref<HTMLElement | null>(null);
+const volumePopoverRef = ref<HTMLElement | null>(null);
+const volumePopoverStyle = ref<Record<string, string>>({
+  left: '0px',
+  top: '0px',
+});
 let idleTimer: number | null = null;
+let unlistenWindowMoved: (() => void) | null = null;
+let unlistenCloseRequested: (() => void) | null = null;
+let unlistenState: (() => void) | null = null;
+let unlistenVisibility: (() => void) | null = null;
+
+const VOLUME_POPOVER_WIDTH = 160;
+const VOLUME_POPOVER_GAP = 8;
+const VOLUME_POPOVER_MARGIN = 8;
+
+const displayQueue = computed(() => queue.value);
+
+const formatDuration = (seconds: number) => {
+  if (!seconds) return '00:00';
+
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+};
+
+const sendAction = (action: MiniPlayerAction) => {
+  void emitTo('main', MINI_PLAYER_ACTION_EVENT, action);
+};
+
+const stopIdleTimer = () => {
+  if (idleTimer) {
+    window.clearTimeout(idleTimer);
+    idleTimer = null;
+  }
+};
 
 const resetIdleTimer = () => {
-  if (idleTimer) window.clearTimeout(idleTimer);
+  stopIdleTimer();
   showLyrics.value = false;
 
-  if (isPlaying.value) {
+  if (isWindowVisible.value && isPlaying.value) {
     idleTimer = window.setTimeout(() => {
       if (!isHovering.value) showLyrics.value = true;
     }, 5000);
+  }
+};
+
+const applyWindowHeight = async () => {
+  let height = MINI_PLAYER_WINDOW_BASE_HEIGHT;
+  if (showMiniPlaylist.value) {
+    height = MINI_PLAYER_WINDOW_EXPANDED_HEIGHT;
+  } else if (showVolumePopover.value || isDraggingVolume.value) {
+    height = MINI_PLAYER_WINDOW_VOLUME_HEIGHT;
+  }
+
+  const size = new LogicalSize(MINI_PLAYER_WINDOW_WIDTH, height);
+  await appWindow.setMinSize(size);
+  await appWindow.setMaxSize(size);
+  await appWindow.setSize(size);
+};
+
+const updateVolumePopoverPosition = () => {
+  if (!volumeButtonRef.value) return;
+  const rect = volumeButtonRef.value.getBoundingClientRect();
+
+  let left = rect.left + rect.width / 2 - VOLUME_POPOVER_WIDTH / 2;
+  const maxLeft = window.innerWidth - VOLUME_POPOVER_WIDTH - VOLUME_POPOVER_MARGIN;
+  left = Math.max(VOLUME_POPOVER_MARGIN, Math.min(left, maxLeft));
+
+  volumePopoverStyle.value = {
+    left: `${left}px`,
+    top: `${rect.bottom + VOLUME_POPOVER_GAP}px`,
+  };
+};
+
+const setVolume = (nextVolume: number) => {
+  const normalizedVolume = Math.max(0, Math.min(100, Math.round(nextVolume)));
+  volume.value = normalizedVolume;
+  sendAction({ type: 'set-volume', volume: normalizedVolume });
+};
+
+const updateVolume = (clientX: number) => {
+  if (!volumeBarRef.value) return;
+  const rect = volumeBarRef.value.getBoundingClientRect();
+  const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  setVolume(percent * 100);
+};
+
+const startVolumeDrag = (event: MouseEvent) => {
+  event.preventDefault();
+  showVolumePopover.value = true;
+  isDraggingVolume.value = true;
+  updateVolume(event.clientX);
+};
+
+const toggleVolumePopover = () => {
+  showVolumePopover.value = !showVolumePopover.value;
+  if (showVolumePopover.value) {
+    showMiniPlaylist.value = false;
+    void nextTick(() => updateVolumePopoverPosition());
+  }
+};
+
+const toggleMiniPlaylist = () => {
+  showMiniPlaylist.value = !showMiniPlaylist.value;
+  if (showMiniPlaylist.value) {
+    showVolumePopover.value = false;
   }
 };
 
@@ -86,79 +158,10 @@ const onMouseLeave = () => {
   resetIdleTimer();
 };
 
-watch(isPlaying, () => {
-  resetIdleTimer();
-});
-
-onMounted(() => {
-  resetIdleTimer();
-});
-
-onUnmounted(() => {
-  if (idleTimer) window.clearTimeout(idleTimer);
-});
-
-
-const isDraggingVolume = ref(false);
-const volumeBarRef = ref<HTMLElement | null>(null);
-const volumeButtonRef = ref<HTMLElement | null>(null);
-const volumePopoverRef = ref<HTMLElement | null>(null);
-const volumePopoverStyle = ref<Record<string, string>>({
-  left: '0px',
-  top: '0px'
-});
-let unlistenWindowMoved: (() => void) | null = null;
-
-const VOLUME_POPOVER_WIDTH = 160;
-const VOLUME_POPOVER_GAP = 8;
-const VOLUME_POPOVER_MARGIN = 8;
-
-const updateVolume = (clientX: number) => {
-  if (!volumeBarRef.value) return;
-  const rect = volumeBarRef.value.getBoundingClientRect();
-  const width = rect.width;
-  const distance = clientX - rect.left;
-  const percent = Math.max(0, Math.min(1, distance / width));
-  const newVol = Math.round(percent * 100);
-  handleVolume({ target: { value: newVol.toString() } } as any);
-};
-
-const startVolumeDrag = (e: MouseEvent) => {
-  e.preventDefault();
-  showVolumePopover.value = true;
-  isDraggingVolume.value = true;
-  updateVolume(e.clientX);
-};
-
-const updateVolumePopoverPosition = () => {
-  if (!volumeButtonRef.value) return;
-  const rect = volumeButtonRef.value.getBoundingClientRect();
-
-  // 水平：以按钮中心为基准居中弹窗
-  let left = rect.left + rect.width / 2 - VOLUME_POPOVER_WIDTH / 2;
-  const maxLeft = window.innerWidth - VOLUME_POPOVER_WIDTH - VOLUME_POPOVER_MARGIN;
-  left = Math.max(VOLUME_POPOVER_MARGIN, Math.min(left, maxLeft));
-
-  // 垂直：紧贴按钮下方
-  const top = rect.bottom + VOLUME_POPOVER_GAP;
-
-  volumePopoverStyle.value = {
-    left: `${left}px`,
-    top: `${top}px`
-  };
-};
-
-const toggleVolumePopover = () => {
-  showVolumePopover.value = !showVolumePopover.value;
-  if (showVolumePopover.value) {
-    nextTick(() => updateVolumePopoverPosition());
-  }
-};
-
-const onGlobalMouseMove = (e: MouseEvent) => {
-  if (isDraggingVolume.value) {
-    e.preventDefault();
-    updateVolume(e.clientX);
+const onGlobalMouseMove = (event: MouseEvent) => {
+  if (isWindowVisible.value && isDraggingVolume.value) {
+    event.preventDefault();
+    updateVolume(event.clientX);
   }
 };
 
@@ -166,9 +169,9 @@ const onGlobalMouseUp = () => {
   isDraggingVolume.value = false;
 };
 
-const onGlobalMouseDown = (e: MouseEvent) => {
-  if (!showVolumePopover.value) return;
-  const target = e.target as Node | null;
+const onGlobalMouseDown = (event: MouseEvent) => {
+  if (!isWindowVisible.value || !showVolumePopover.value) return;
+  const target = event.target as Node | null;
   if (!target) return;
 
   const clickInButton = !!volumeButtonRef.value?.contains(target);
@@ -179,44 +182,99 @@ const onGlobalMouseDown = (e: MouseEvent) => {
 };
 
 const onGlobalResize = () => {
-  if (showVolumePopover.value) {
-    void updateVolumePopoverPosition();
+  if (isWindowVisible.value && showVolumePopover.value) {
+    updateVolumePopoverPosition();
   }
 };
 
-const onGlobalKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'Escape' && showVolumePopover.value) {
+const onGlobalKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
     showVolumePopover.value = false;
+    showMiniPlaylist.value = false;
   }
 };
 
-onMounted(() => {
+watch(isPlaying, () => {
+  resetIdleTimer();
+});
+
+watch([showMiniPlaylist, showVolumePopover, isDraggingVolume], () => {
+  void applyWindowHeight();
+  if (showVolumePopover.value) {
+    void nextTick(() => updateVolumePopoverPosition());
+  }
+});
+
+onMounted(async () => {
+  await appWindow.setAlwaysOnTop(true);
+  await applyWindowHeight();
+  resetIdleTimer();
+
   window.addEventListener('mousemove', onGlobalMouseMove);
   window.addEventListener('mouseup', onGlobalMouseUp);
   window.addEventListener('mousedown', onGlobalMouseDown);
   window.addEventListener('resize', onGlobalResize);
   window.addEventListener('keydown', onGlobalKeydown);
-  appWindow.onMoved(() => {
-    if (showVolumePopover.value) {
-      void updateVolumePopoverPosition();
-    }
-  }).then((unlisten) => {
-    unlistenWindowMoved = unlisten;
-  }).catch(() => {
-    unlistenWindowMoved = null;
+
+  unlistenState = await listen<MiniPlayerStatePayload>(MINI_PLAYER_STATE_EVENT, (event) => {
+    currentSong.value = event.payload.currentSong;
+    localCoverUrl.value = event.payload.coverUrl;
+    isPlaying.value = event.payload.isPlaying;
+    volume.value = event.payload.volume;
+    queue.value = event.payload.queue;
+    lyricText.value = event.payload.lyricText;
+    void nextTick(() => emitTo('main', MINI_PLAYER_STATE_APPLIED_EVENT));
   });
+
+  unlistenVisibility = await listen<{ visible: boolean }>(MINI_PLAYER_VISIBILITY_EVENT, (event) => {
+    isWindowVisible.value = event.payload.visible;
+    if (isWindowVisible.value) {
+      resetIdleTimer();
+      if (showVolumePopover.value) {
+        void nextTick(() => updateVolumePopoverPosition());
+      }
+      return;
+    }
+
+    stopIdleTimer();
+    showLyrics.value = false;
+    showVolumePopover.value = false;
+    isDraggingVolume.value = false;
+  });
+
+  unlistenWindowMoved = await appWindow.onMoved(async () => {
+    const factor = await appWindow.scaleFactor();
+    const position = (await appWindow.outerPosition()).toLogical(factor);
+    await emitTo('main', MINI_PLAYER_BOUNDS_EVENT, {
+      x: position.x,
+      y: position.y,
+    });
+
+    if (showVolumePopover.value) {
+      updateVolumePopoverPosition();
+    }
+  });
+
+  unlistenCloseRequested = await appWindow.onCloseRequested((event) => {
+    event.preventDefault();
+    sendAction({ type: 'close' });
+  });
+
+  await emitTo('main', MINI_PLAYER_READY_EVENT);
+  await emitTo('main', MINI_PLAYER_REQUEST_STATE_EVENT);
 });
 
 onUnmounted(() => {
+  stopIdleTimer();
   window.removeEventListener('mousemove', onGlobalMouseMove);
   window.removeEventListener('mouseup', onGlobalMouseUp);
   window.removeEventListener('mousedown', onGlobalMouseDown);
   window.removeEventListener('resize', onGlobalResize);
   window.removeEventListener('keydown', onGlobalKeydown);
-  if (unlistenWindowMoved) {
-    unlistenWindowMoved();
-    unlistenWindowMoved = null;
-  }
+  unlistenWindowMoved?.();
+  unlistenCloseRequested?.();
+  unlistenState?.();
+  unlistenVisibility?.();
 });
 </script>
 
@@ -236,24 +294,24 @@ onUnmounted(() => {
         <div class="flex-1 flex items-center justify-center overflow-hidden px-4 relative" data-tauri-drag-region>
           <transition name="fade">
             <div v-if="showLyrics" class="absolute inset-0 flex items-center justify-center px-4 overflow-hidden pointer-events-none" data-tauri-drag-region>
-              <div class="text-xs whitespace-nowrap text-[#EC4141] font-medium" :class="{ 'marquee': currentLyricLine && currentLyricLine.text && currentLyricLine.text.length > 20 }">
-                <span>{{ (currentLyricLine && currentLyricLine.text) ? currentLyricLine.text : (currentSong ? currentSong.title : 'Lycia Player') }}</span>
+              <div class="text-xs whitespace-nowrap text-[#EC4141] font-medium" :class="{ 'marquee': lyricText && lyricText.length > 20 }">
+                <span>{{ lyricText || (currentSong ? currentSong.title : 'Lycia Player') }}</span>
               </div>
             </div>
           </transition>
 
           <transition name="fade">
             <div v-show="!showLyrics" class="flex flex-1 items-center justify-center gap-4 h-full pointer-events-none" data-tauri-drag-region>
-              <button @click.stop="prevSong" class="text-gray-700 dark:text-white/80 hover:text-[#EC4141] transition-colors pointer-events-auto">
+              <button @click.stop="sendAction({ type: 'prev-song' })" class="text-gray-700 dark:text-white/80 hover:text-[#EC4141] transition-colors pointer-events-auto">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6V6zm3.5 6l8.5 6V6l-8.5 6z" /></svg>
               </button>
 
-              <button @click.stop="togglePlay" class="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-800 dark:text-white hover:text-[#EC4141] pointer-events-auto">
+              <button @click.stop="sendAction({ type: 'toggle-play' })" class="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-800 dark:text-white hover:text-[#EC4141] pointer-events-auto">
                 <svg v-if="isPlaying" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 fill-current" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
                 <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 fill-current ml-0.5" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
               </button>
 
-              <button @click.stop="nextSong" class="text-gray-700 dark:text-white/80 hover:text-[#EC4141] transition-colors pointer-events-auto">
+              <button @click.stop="sendAction({ type: 'next-song' })" class="text-gray-700 dark:text-white/80 hover:text-[#EC4141] transition-colors pointer-events-auto">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg>
               </button>
             </div>
@@ -270,7 +328,7 @@ onUnmounted(() => {
                 :style="volumePopoverStyle"
               >
                 <button
-                  @click.stop="toggleMute"
+                  @click.stop="sendAction({ type: 'toggle-mute' })"
                   class="shrink-0 text-gray-500 dark:text-white/80 hover:text-[#EC4141] transition-colors"
                 >
                   <svg v-if="volume === 0" xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" /></svg>
@@ -312,11 +370,11 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <button @click.stop="closeWindow" class="absolute top-1 right-1 text-gray-400 dark:text-white/50 hover:text-white hover:bg-[#EC4141] p-0.5 rounded transition-colors z-20 pointer-events-auto" title="关闭">
+        <button @click.stop="sendAction({ type: 'close' })" class="absolute top-1 right-1 text-gray-400 dark:text-white/50 hover:text-white hover:bg-[#EC4141] p-0.5 rounded transition-colors z-20 pointer-events-auto" title="关闭">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
 
-        <button @click.stop="handleRestore" class="absolute top-[18px] right-1 text-gray-400 dark:text-white/50 hover:text-[#EC4141] p-0.5 rounded hover:bg-gray-100 dark:hover:bg-white/10 transition-colors z-20 pointer-events-auto" title="还原窗口">
+        <button @click.stop="sendAction({ type: 'restore-main' })" class="absolute top-[18px] right-1 text-gray-400 dark:text-white/50 hover:text-[#EC4141] p-0.5 rounded hover:bg-gray-100 dark:hover:bg-white/10 transition-colors z-20 pointer-events-auto" title="显示主窗口">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
           </svg>
@@ -335,14 +393,14 @@ onUnmounted(() => {
     <transition name="mini-queue">
       <div v-if="showMiniPlaylist" class="absolute left-0 right-0 top-[45px] bottom-0 z-30 bg-white/95 dark:bg-gray-900/95">
         <div class="h-full overflow-y-auto custom-scrollbar px-1.5 pt-0 pb-1.5">
-          <div v-if="queue.length === 0" class="h-full flex items-center justify-center text-xs text-gray-400 dark:text-white/30">
+          <div v-if="displayQueue.length === 0" class="h-full flex items-center justify-center text-xs text-gray-400 dark:text-white/30">
             暂无歌曲
           </div>
 
           <button
-            v-for="(song, index) in queue"
+            v-for="(song, index) in displayQueue"
             :key="song.path + index"
-            @click="playSong(song)"
+            @click="sendAction({ type: 'play-song', song })"
             class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left transition-colors"
             :class="currentSong?.path === song.path ? 'bg-[#EC4141]/10 text-[#EC4141]' : 'text-gray-700 dark:text-white/80 hover:bg-black/5 dark:hover:bg-white/5'"
           >

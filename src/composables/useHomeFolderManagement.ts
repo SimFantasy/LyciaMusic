@@ -16,7 +16,6 @@ interface UseHomeFolderManagementOptions {
   libraryHierarchy: Ref<FolderNode[]>;
   sourceSongs: Ref<Song[]>;
   refreshFolder: (folderPath: string) => Promise<unknown>;
-  refreshAllFolders: () => Promise<unknown>;
   fetchFolderTree: () => Promise<unknown>;
   createFolder: (parentPath: string, folderName: string) => Promise<string>;
   deleteFolder: (path: string) => Promise<unknown>;
@@ -34,7 +33,6 @@ export function useHomeFolderManagement({
   libraryHierarchy,
   sourceSongs,
   refreshFolder,
-  refreshAllFolders,
   fetchFolderTree,
   createFolder,
   deleteFolder,
@@ -221,7 +219,8 @@ export function useHomeFolderManagement({
     }
 
     try {
-      const summary = await refreshAllFolders();
+      const summary = await refreshFolder(currentFolderFilter.value);
+      await fetchFolderTree();
       if (summary && typeof summary === 'object' && 'removedCount' in summary) {
         const removedCount = Number(summary.removedCount) || 0;
         showToast(

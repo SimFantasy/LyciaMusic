@@ -12,6 +12,7 @@ export interface SongCore {
   is_various_artists_album: boolean;
   collapse_artist_credits: boolean;
   duration: number;
+  cover_thumb_path?: string;
   genre?: string;
   year?: string;
   // Audio quality fields (v1.1.1)
@@ -131,11 +132,12 @@ export interface LibraryScanSession {
 export interface ThemeSettings {
   mode: 'light' | 'dark' | 'custom';
   dynamicBgType: 'none' | 'flow' | 'blur';
-  windowMaterial: 'none' | 'mica' | 'acrylic';
+  windowMaterial: 'none' | 'mica' | 'acrylic' | 'blur';
   flowColorBoost: number;
   flowDepth: number;
   flowSpeed: number;
   flowTexture: number;
+  windowBlurTint: number;
   customBgPath: string; // Legacy field, keeping for compatibility if needed, but we'll use customBackground
   opacity: number;      // Legacy field
   blur: number;         // Legacy field
@@ -161,7 +163,7 @@ export interface SidebarSettings {
 }
 
 export type LyricsPlayerAlignment = 'left' | 'center' | 'right';
-export type LyricsColorScheme = 'auto' | 'default' | 'pink' | 'blue' | 'green' | 'white';
+export type LyricsColorScheme = 'auto' | 'default' | 'pink' | 'blue' | 'green' | 'white' | 'custom';
 export type LyricsFontPreset = string;
 
 export interface LyricsSettings {
@@ -179,9 +181,15 @@ export interface DesktopLyricsSettings {
   isAlwaysOnTop: boolean;
   alwaysShowShadowBackground: boolean;
   autoHideWhenFullscreen: boolean;
+  showDoubleLine: boolean;
+  enableWordEffect: boolean;
   isLocked: boolean;
   persistLock: boolean;
   colorScheme: LyricsColorScheme;
+  customPlayedColor: string;
+  customUnplayedColor: string;
+  customRomajiColor: string;
+  customTranslationColor: string;
   playerFontScale: number;
   playerLineGap: number;
   playerOffsetX: number;
@@ -222,6 +230,7 @@ export interface ShortcutSettings {
 export interface AppSettings {
   closeToTray: boolean;
   showQualityBadges: boolean;
+  enableScrollToTopButton: boolean;
   // Deprecated compat field. Retained only for legacy config deserialization.
   linkFoldersToLibrary: boolean;
   lyricsSyncOffset: number;

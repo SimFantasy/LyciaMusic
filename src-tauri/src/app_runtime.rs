@@ -1,5 +1,8 @@
 use crate::database::DbState;
-use crate::music::{run_cache_cleanup, ImageConcurrencyLimit};
+use crate::music::{
+    run_cache_cleanup, FullCoverImageConcurrencyLimit, ThumbnailImageConcurrencyLimit,
+    FULL_COVER_IMAGE_CONCURRENCY_LIMIT, THUMBNAIL_IMAGE_CONCURRENCY_LIMIT,
+};
 use crate::player::init_player;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -10,6 +13,10 @@ use tauri::{
     Emitter, Manager,
 };
 use tokio::sync::Semaphore;
+
+const APP_SHOW_MAIN_EVENT: &str = "app:show-main";
+const MAIN_WINDOW_LABEL: &str = "main";
+const MINI_PLAYER_WINDOW_LABEL: &str = "mini-player";
 
 #[derive(Default)]
 pub(crate) struct PendingOpenPaths(pub(crate) Mutex<Vec<String>>);
@@ -72,7 +79,17 @@ fn queue_open_paths<R: tauri::Runtime>(app: &tauri::AppHandle<R>, paths: Vec<Str
 }
 
 fn reveal_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    if let Some(window) = app.get_webview_window("main") {
+    let mini_player_visible = app
+        .get_webview_window(MINI_PLAYER_WINDOW_LABEL)
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false);
+
+    if mini_player_visible {
+        let _ = app.emit(APP_SHOW_MAIN_EVENT, ());
+        return;
+    }
+
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
@@ -82,7 +99,7 @@ fn reveal_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 fn install_window_boundary<R: tauri::Runtime>(app: &tauri::App<R>) {
     #[cfg(target_os = "windows")]
     {
-        if let Some(window) = app.get_webview_window("main") {
+        if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
             use raw_window_handle::HasWindowHandle;
 
             if let Ok(handle) = window.as_ref().window().window_handle() {
@@ -146,7 +163,12 @@ pub(crate) fn setup_app(
     let player_state = init_player(app.handle());
     app.manage(player_state);
 
-    app.manage(ImageConcurrencyLimit(Semaphore::new(4)));
+    app.manage(ThumbnailImageConcurrencyLimit(Semaphore::new(
+        THUMBNAIL_IMAGE_CONCURRENCY_LIMIT,
+    )));
+    app.manage(FullCoverImageConcurrencyLimit(Semaphore::new(
+        FULL_COVER_IMAGE_CONCURRENCY_LIMIT,
+    )));
     run_cache_cleanup(app.handle());
 
     let current_exe = std::env::current_exe().ok();

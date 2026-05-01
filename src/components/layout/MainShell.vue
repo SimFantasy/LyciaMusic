@@ -12,7 +12,6 @@ const PlayQueueSidebar = defineAsyncComponent(() => import('../player/PlayQueueS
 const PlayerDetail = defineAsyncComponent(() => import('../player/PlayerDetail.vue'));
 const AddToPlaylistModal = defineAsyncComponent(() => import('../overlays/AddToPlaylistModal.vue'));
 const Toast = defineAsyncComponent(() => import('../common/Toast.vue'));
-const MiniPlayer = defineAsyncComponent(() => import('./MiniPlayer.vue'));
 const SongInfoModal = defineAsyncComponent(() => import('../overlays/SongInfoModal.vue'));
 
 const {
@@ -40,8 +39,6 @@ useDesktopLyricsWindowBridge();
 <template>
   <div
     class="flex flex-col h-screen w-full text-gray-800 dark:text-gray-200 relative overflow-hidden font-sans"
-    :class="{ 'bg-transparent border-0': isMiniMode }"
-    :style="{ backgroundColor: isMiniMode ? 'transparent' : '' }"
   >
     <transition name="window-restore">
       <GlobalBackground v-if="!isMiniMode" />
@@ -98,39 +95,35 @@ useDesktopLyricsWindowBridge();
       </div>
     </transition>
 
-    <MiniPlayer v-if="isMiniMode" />
+    <div
+      v-if="!isMiniMode"
+      class="flex-1 flex overflow-hidden relative z-10 transition-colors duration-500"
+      :class="mainContainerClass"
+      :style="{ backdropFilter: mainBlurStyle }"
+    >
+      <Sidebar />
 
-    <transition name="window-restore">
-      <div
-        v-if="!isMiniMode"
-        class="flex-1 flex overflow-hidden relative z-10 transition-colors duration-500"
-        :class="mainContainerClass"
-        :style="{ backdropFilter: mainBlurStyle }"
-      >
-        <Sidebar />
-
-        <div class="flex-1 flex flex-col min-w-0">
-          <TitleBar />
-          <main class="flex-1 overflow-hidden relative min-h-0">
-            <router-view v-slot="{ Component, route }">
-              <transition name="page-fade" mode="out-in">
+      <div class="flex-1 flex flex-col min-w-0">
+        <TitleBar />
+        <main class="flex-1 overflow-hidden relative min-h-0">
+          <router-view v-slot="{ Component, route }">
+            <transition name="page-fade" mode="out-in">
+              <component
+                v-if="!route.meta.keepAlive"
+                :is="Component"
+                :key="route.path"
+              />
+              <KeepAlive v-else include="Home">
                 <component
-                  v-if="!route.meta.keepAlive"
                   :is="Component"
-                  :key="route.path"
+                  :key="String(route.name ?? route.path)"
                 />
-                <KeepAlive v-else include="Home">
-                  <component
-                    :is="Component"
-                    :key="String(route.name ?? route.path)"
-                  />
-                </KeepAlive>
-              </transition>
-            </router-view>
-          </main>
-        </div>
+              </KeepAlive>
+            </transition>
+          </router-view>
+        </main>
       </div>
-    </transition>
+    </div>
 
     <div v-if="!isMiniMode && isFooterVisible" class="relative z-[60]">
       <PlayerDetail />
@@ -162,22 +155,6 @@ useDesktopLyricsWindowBridge();
 </template>
 
 <style>
-body.mini-mode-active,
-html.mini-mode-active,
-#app.mini-mode-active {
-  background-color: transparent !important;
-  background: transparent !important;
-  border-width: 0 !important;
-  outline: none !important;
-  border-style: none !important;
-  box-shadow: none !important;
-}
-
-.mini-mode-active * {
-  border-color: transparent !important;
-  box-shadow: none !important;
-}
-
 .page-fade-enter-active,
 .page-fade-leave-active {
   transition: opacity 0.3s ease, transform 0.3s ease;

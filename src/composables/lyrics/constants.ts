@@ -24,6 +24,10 @@ export const MAX_PLAYER_OFFSET_Y = 25;
 export const DEFAULT_PLAYER_ALIGNMENT: LyricsPlayerAlignment = 'left';
 export const DEFAULT_DESKTOP_PLAYER_ALIGNMENT: LyricsPlayerAlignment = 'center';
 export const DEFAULT_PLAYER_FONT_PRESET: LyricsFontPreset = 'system';
+export const DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR = '#EC4141';
+export const DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR = '#FFFFFF';
+export const DEFAULT_DESKTOP_CUSTOM_ROMAJI_COLOR = '#BFDBFE';
+export const DEFAULT_DESKTOP_CUSTOM_TRANSLATION_COLOR = '#FBCFE8';
 
 export interface LyricsFontOption {
   value: LyricsFontPreset;
@@ -95,9 +99,15 @@ export const defaultDesktopLyricsSettings: DesktopLyricsSettings = {
   isAlwaysOnTop: false,
   alwaysShowShadowBackground: false,
   autoHideWhenFullscreen: true,
+  showDoubleLine: false,
+  enableWordEffect: true,
   isLocked: false,
   persistLock: false,
   colorScheme: 'auto',
+  customPlayedColor: DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR,
+  customUnplayedColor: DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR,
+  customRomajiColor: DEFAULT_DESKTOP_CUSTOM_ROMAJI_COLOR,
+  customTranslationColor: DEFAULT_DESKTOP_CUSTOM_TRANSLATION_COLOR,
   playerFontScale: DEFAULT_PLAYER_FONT_SCALE,
   playerLineGap: DEFAULT_PLAYER_LINE_GAP,
   playerOffsetX: DEFAULT_PLAYER_OFFSET_X,
@@ -142,9 +152,21 @@ export function normalizePlayerAlignment(
 }
 
 export function normalizeLyricsColorScheme(value: unknown): LyricsColorScheme {
-  return value === 'default' || value === 'pink' || value === 'blue' || value === 'green' || value === 'white'
+  return value === 'default'
+    || value === 'pink'
+    || value === 'blue'
+    || value === 'green'
+    || value === 'white'
+    || value === 'custom'
     ? value
     : 'auto';
+}
+
+export function normalizeHexColor(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback;
+
+  const normalized = value.trim();
+  return /^#[0-9a-f]{6}$/i.test(normalized) ? normalized.toUpperCase() : fallback;
 }
 
 export function normalizeCustomFontName(value: string): string {
@@ -206,6 +228,12 @@ export function normalizeDesktopLyricsSettingsPatch(
     autoHideWhenFullscreen: typeof patch.autoHideWhenFullscreen === 'boolean'
       ? patch.autoHideWhenFullscreen
       : defaultDesktopLyricsSettings.autoHideWhenFullscreen,
+    showDoubleLine: typeof patch.showDoubleLine === 'boolean'
+      ? patch.showDoubleLine
+      : defaultDesktopLyricsSettings.showDoubleLine,
+    enableWordEffect: typeof patch.enableWordEffect === 'boolean'
+      ? patch.enableWordEffect
+      : defaultDesktopLyricsSettings.enableWordEffect,
     isLocked: typeof patch.isLocked === 'boolean'
       ? patch.isLocked
       : defaultDesktopLyricsSettings.isLocked,
@@ -213,6 +241,22 @@ export function normalizeDesktopLyricsSettingsPatch(
       ? patch.persistLock
       : defaultDesktopLyricsSettings.persistLock,
     colorScheme: normalizeLyricsColorScheme(patch.colorScheme),
+    customPlayedColor: normalizeHexColor(
+      patch.customPlayedColor,
+      defaultDesktopLyricsSettings.customPlayedColor,
+    ),
+    customUnplayedColor: normalizeHexColor(
+      patch.customUnplayedColor,
+      defaultDesktopLyricsSettings.customUnplayedColor,
+    ),
+    customRomajiColor: normalizeHexColor(
+      patch.customRomajiColor,
+      defaultDesktopLyricsSettings.customRomajiColor,
+    ),
+    customTranslationColor: normalizeHexColor(
+      patch.customTranslationColor,
+      defaultDesktopLyricsSettings.customTranslationColor,
+    ),
     playerFontScale: clampPlayerFontScale(patch.playerFontScale ?? DEFAULT_PLAYER_FONT_SCALE),
     playerLineGap: clampPlayerLineGap(patch.playerLineGap ?? DEFAULT_PLAYER_LINE_GAP),
     playerOffsetX: clampPlayerOffsetX(patch.playerOffsetX ?? DEFAULT_PLAYER_OFFSET_X),

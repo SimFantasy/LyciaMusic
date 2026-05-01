@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
+import { open, save } from '@tauri-apps/plugin-dialog';
 import StatsOverviewCards from './StatsOverviewCards.vue';
 import BehaviorStatsSection from './BehaviorStatsSection.vue';
 import QualityPieChart from './QualityPieChart.vue';
 import FormatPieChart from './FormatPieChart.vue';
 import { useStatisticsStore, type TimeRangeType } from '../../features/statistics/store';
+import StatisticsImportDialog from './StatisticsImportDialog.vue';
+import { useToast } from '../../composables/toast';
+import { statisticsApi, type StatisticsImportMode } from '../../services/tauri/statisticsApi';
+import type { StatisticsImportPreview } from '../../services/tauri/contracts';
 
 const TEXT = {
   range7Days: '\u8fd17\u5929',
@@ -37,6 +42,8 @@ const TEXT = {
   qualityDetail: '\u97f3\u8d28\u5206\u5e03\u8be6\u60c5',
   formatDetail: '\u97f3\u4e50\u683c\u5f0f\u5206\u5e03',
   behaviorTitle: '\u542c\u6b4c\u884c\u4e3a',
+  exportStats: '\u5bfc\u51fa\u7edf\u8ba1',
+  importStats: '\u5bfc\u5165\u7edf\u8ba1',
 };
 
 const CARD_TITLES = {
@@ -96,6 +103,13 @@ const {
 const expandedCard = ref<string | null>(null);
 const hiddenCards = ref<Set<string>>(new Set());
 const showManager = ref(false);
+const importDialogVisible = ref(false);
+const importPreview = ref<StatisticsImportPreview | null>(null);
+const importMode = ref<StatisticsImportMode>('merge');
+const importFilePath = ref('');
+const exportPending = ref(false);
+const importPending = ref(false);
+const { showToast } = useToast();
 
 async function handleCardClick(cardTitle: string) {
   if (expandedCard.value === cardTitle) {
@@ -138,6 +152,96 @@ async function handleRefresh() {
   }
 }
 
+function buildExportDefaultName() {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `LyciaStats_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}.json`;
+}
+
+async function handleExportStatistics() {
+  if (exportPending.value) {
+    return;
+  }
+
+  try {
+    const selected = await save({
+      title: '导出统计',
+      defaultPath: buildExportDefaultName(),
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+
+    if (!selected || Array.isArray(selected)) {
+      return;
+    }
+
+    exportPending.value = true;
+    const result = await statisticsApi.exportStatisticsFile(selected, true);
+    showToast(`统计数据已导出：${result.filePath}`, 'success');
+  } catch (error) {
+    console.error('Failed to export statistics:', error);
+    showToast(`导出统计失败: ${error}`, 'error');
+  } finally {
+    exportPending.value = false;
+  }
+}
+
+async function handleSelectImportFile() {
+  if (importPending.value) {
+    return;
+  }
+
+  try {
+    const selected = await open({
+      title: '导入统计',
+      multiple: false,
+      directory: false,
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+
+    if (!selected || Array.isArray(selected)) {
+      return;
+    }
+
+    importPending.value = true;
+    importFilePath.value = selected;
+    importMode.value = 'merge';
+    importPreview.value = await statisticsApi.previewStatisticsImport(selected);
+    importDialogVisible.value = true;
+  } catch (error) {
+    console.error('Failed to preview statistics import:', error);
+    showToast(String(error), 'error');
+  } finally {
+    importPending.value = false;
+  }
+}
+
+async function confirmImportStatistics() {
+  if (!importFilePath.value || importPending.value) {
+    return;
+  }
+
+  try {
+    importPending.value = true;
+    const result = await statisticsApi.importStatisticsFile(
+      importFilePath.value,
+      importMode.value,
+      importPreview.value?.duplicateImportDetected ?? false,
+    );
+    importDialogVisible.value = false;
+    importPreview.value = null;
+    await statisticsStore.refreshAll('All');
+    showToast(
+      `统计导入完成：已合并 ${result.mergedSongCount} 首，未匹配 ${result.unmatchedSongCount} 首，新增最近播放 ${result.importedRecentPlaysCount} 条`,
+      'success',
+    );
+  } catch (error) {
+    console.error('Failed to import statistics:', error);
+    showToast(`导入统计失败: ${error}`, 'error');
+  } finally {
+    importPending.value = false;
+  }
+}
+
 function loadHiddenSettings() {
   const saved = localStorage.getItem('lycia-hidden-stats-cards');
   if (!saved) {
@@ -172,7 +276,15 @@ function hideCard(cardTitle: string) {
 onMounted(async () => {
   loadHiddenSettings();
   statisticsStore.cancelHeavyDataRelease();
+  const hadBehaviorStats = !!behaviorStats.value;
   await statisticsStore.ensureLoaded(currentBehaviorTimeRange.value);
+  if (hadBehaviorStats) {
+    try {
+      await statisticsStore.refreshBehaviorOnly(currentBehaviorTimeRange.value);
+    } catch (e) {
+      console.warn('Failed to refresh behavior stats on enter:', e);
+    }
+  }
 });
 
 onUnmounted(() => {
@@ -344,7 +456,25 @@ onUnmounted(() => {
 
         <section class="mt-8 animate-fade-in-up" style="animation-delay: 700ms;">
           <div class="flex items-center justify-between mb-6">
-            <h2 class="text-lg font-bold text-gray-900 dark:text-gray-100 italic">{{ TEXT.behaviorTitle }}</h2>
+            <div class="flex items-center gap-3">
+              <h2 class="text-lg font-bold text-gray-900 dark:text-gray-100 italic">{{ TEXT.behaviorTitle }}</h2>
+              <button
+                type="button"
+                class="rounded-full border border-[#EC4141]/20 px-3 py-1.5 text-xs font-medium text-[#EC4141] transition-colors hover:bg-[#EC4141]/8 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="exportPending"
+                @click="handleExportStatistics"
+              >
+                {{ exportPending ? '导出中...' : TEXT.exportStats }}
+              </button>
+              <button
+                type="button"
+                class="rounded-full border border-[#EC4141]/20 px-3 py-1.5 text-xs font-medium text-[#EC4141] transition-colors hover:bg-[#EC4141]/8 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="importPending"
+                @click="handleSelectImportFile"
+              >
+                {{ importPending ? '读取中...' : TEXT.importStats }}
+              </button>
+            </div>
 
             <div class="relative bg-gray-100 dark:bg-white/5 rounded-lg p-1 shrink-0 grid grid-cols-4" style="min-width: 240px;">
               <div
@@ -384,6 +514,15 @@ onUnmounted(() => {
       </template>
     </div>
   </div>
+
+  <StatisticsImportDialog
+    v-model:visible="importDialogVisible"
+    :preview="importPreview"
+    :mode="importMode"
+    :importing="importPending"
+    @update:mode="importMode = $event"
+    @confirm="confirmImportStatistics"
+  />
 </template>
 
 <style scoped>

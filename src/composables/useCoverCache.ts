@@ -12,6 +12,7 @@ const FULL_COVER_CACHE_TTL_MS = 2 * 60 * 1000;
 const HIDDEN_THUMBNAIL_CACHE_LIMIT = 12;
 const PRELOAD_CONCURRENCY = 4;
 const BACKGROUND_PRELOAD_CONCURRENCY = 1;
+const BACKGROUND_FULL_PRELOAD_CONCURRENCY = 1;
 const FAILURE_RETRY_MS = 10_000;
 
 // Small in-memory LRU for thumbnail URLs. The actual image files live on disk.
@@ -30,6 +31,9 @@ const recentFailureCache = new MemoryCache<string, true>({
 const priorityPreloadQueue: string[] = [];
 const backgroundPreloadQueue: string[] = [];
 const queuedPathPriority = new Map<string, PreloadPriority>();
+const backgroundFullPreloadQueue: string[] = [];
+const queuedBackgroundFullPaths = new Set<string>();
+let activeBackgroundFullPreloadCount = 0;
 let backgroundPreloadTimer: ReturnType<typeof setTimeout> | null = null;
 let backgroundPreloadIdleId: number | null = null;
 let cachePruneTimer: ReturnType<typeof setTimeout> | null = null;
@@ -38,6 +42,7 @@ const cacheEpochs: Record<CoverKind, number> = {
   thumbnail: 0,
   full: 0,
 };
+const invalidatedRequestKeys = new Set<string>();
 
 const getCacheForKind = (kind: CoverKind) =>
   kind === 'full' ? fullCoverCache : thumbnailCache;
@@ -248,7 +253,9 @@ const trimTransientCoverState = () => {
   clearCacheEntries(fullCoverCache, fullCoverCacheExpiry, fullCoverPathCache);
   priorityPreloadQueue.length = 0;
   backgroundPreloadQueue.length = 0;
+  backgroundFullPreloadQueue.length = 0;
   queuedPathPriority.clear();
+  queuedBackgroundFullPaths.clear();
   cancelBackgroundPreload();
   recentFailureCache.prune();
 };
@@ -283,7 +290,7 @@ const loadCoverInternal = (path: string, kind: CoverKind): Promise<string> => {
     try {
       const command = kind === 'full' ? 'get_song_cover' : 'get_song_cover_thumbnail';
       const coverPath = await invoke<string>(command, { path });
-      if (requestEpoch !== getCacheEpoch(kind)) {
+      if (requestEpoch !== getCacheEpoch(kind) || invalidatedRequestKeys.has(requestKey)) {
         return '';
       }
       const finalUrl = coverPath ? convertFileSrc(coverPath) : '';
@@ -293,7 +300,7 @@ const loadCoverInternal = (path: string, kind: CoverKind): Promise<string> => {
       }
       return finalUrl;
     } catch {
-      if (requestEpoch !== getCacheEpoch(kind)) {
+      if (requestEpoch !== getCacheEpoch(kind) || invalidatedRequestKeys.has(requestKey)) {
         return '';
       }
       recentFailureCache.set(requestKey, true);
@@ -301,6 +308,7 @@ const loadCoverInternal = (path: string, kind: CoverKind): Promise<string> => {
     } finally {
       loadingSet.delete(requestKey);
       inFlightRequests.delete(requestKey);
+      invalidatedRequestKeys.delete(requestKey);
     }
   })();
 
@@ -442,17 +450,47 @@ const enqueuePreload = (path: string, priority: PreloadPriority) => {
   }
 };
 
-const startFullPreload = (path: string) => {
+const scheduleBackgroundFullPreload = () => {
+  while (
+    activeBackgroundFullPreloadCount < BACKGROUND_FULL_PRELOAD_CONCURRENCY
+    && backgroundFullPreloadQueue.length > 0
+  ) {
+    const path = backgroundFullPreloadQueue.shift();
+    if (!path) {
+      continue;
+    }
+
+    queuedBackgroundFullPaths.delete(path);
+
+    if (
+      fullCoverCache.has(path)
+      || loadingSet.has(buildCacheKey(path, 'full'))
+      || hasRecentFailure(path, 'full')
+    ) {
+      continue;
+    }
+
+    activeBackgroundFullPreloadCount += 1;
+    void loadCoverInternal(path, 'full').finally(() => {
+      activeBackgroundFullPreloadCount = Math.max(0, activeBackgroundFullPreloadCount - 1);
+      scheduleBackgroundFullPreload();
+    });
+  }
+};
+
+const enqueueBackgroundFullPreload = (path: string) => {
   if (
     !path
     || fullCoverCache.has(path)
     || loadingSet.has(buildCacheKey(path, 'full'))
+    || queuedBackgroundFullPaths.has(path)
     || hasRecentFailure(path, 'full')
   ) {
     return;
   }
 
-  void loadCoverInternal(path, 'full');
+  queuedBackgroundFullPaths.add(path);
+  backgroundFullPreloadQueue.push(path);
 };
 
 export function useCoverCache() {
@@ -562,6 +600,21 @@ export function useCoverCache() {
     return getCachedCoverPath(path, 'thumbnail');
   };
 
+  const primeCoverPath = (path: string | undefined, rawPath: string | undefined | null) => {
+    if (!path || !rawPath) {
+      return '';
+    }
+
+    const cachedValue = getCachedCover(path, 'thumbnail');
+    if (cachedValue !== undefined) {
+      return cachedValue;
+    }
+
+    const finalUrl = convertFileSrc(rawPath);
+    setCachedCover(path, 'thumbnail', finalUrl, rawPath);
+    return finalUrl;
+  };
+
   const preloadCovers = (paths: string[], priority: PreloadPriority = 'background') => {
     for (const path of paths) {
       enqueuePreload(path, priority);
@@ -578,13 +631,12 @@ export function useCoverCache() {
   const preloadFullCovers = (paths: string[]) => {
     const uniquePaths = Array.from(new Set(paths.filter(Boolean)));
     for (const path of uniquePaths) {
-      startFullPreload(path);
+      enqueueBackgroundFullPreload(path);
     }
+    scheduleBackgroundFullPreload();
   };
 
   const retainFullCoverPaths = (fullPaths: string[]) => {
-    bumpCacheEpoch('full');
-
     const retainedFullPaths = new Set(fullPaths.filter(Boolean));
     retainCacheEntries(
       fullCoverCache,
@@ -603,6 +655,7 @@ export function useCoverCache() {
         continue;
       }
 
+      invalidatedRequestKeys.add(requestKey);
       inFlightRequests.delete(requestKey);
       loadingSet.delete(requestKey);
     }
@@ -619,6 +672,19 @@ export function useCoverCache() {
       queuedPathPriority.delete(path);
     }
 
+    for (const path of Array.from(queuedBackgroundFullPaths)) {
+      if (retainedFullPaths.has(path)) {
+        continue;
+      }
+
+      queuedBackgroundFullPaths.delete(path);
+    }
+    backgroundFullPreloadQueue.splice(
+      0,
+      backgroundFullPreloadQueue.length,
+      ...backgroundFullPreloadQueue.filter(path => retainedFullPaths.has(path)),
+    );
+
     pruneCache(
       fullCoverCache,
       fullCoverCacheExpiry,
@@ -634,9 +700,13 @@ export function useCoverCache() {
     loadingSet.clear();
     inFlightRequests.clear();
     recentFailureCache.clear();
+    invalidatedRequestKeys.clear();
     priorityPreloadQueue.length = 0;
     backgroundPreloadQueue.length = 0;
+    backgroundFullPreloadQueue.length = 0;
     queuedPathPriority.clear();
+    queuedBackgroundFullPaths.clear();
+    activeBackgroundFullPreloadCount = 0;
     cancelBackgroundPreload();
     if (cachePruneTimer) {
       clearTimeout(cachePruneTimer);
@@ -655,6 +725,7 @@ export function useCoverCache() {
     isCoverLoading,
     loadCover,
     loadCoverPath,
+    primeCoverPath,
     loadFullCover,
     preloadCovers,
     preloadPriorityCovers: (paths: string[]) => preloadCovers(paths, 'priority'),

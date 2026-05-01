@@ -49,6 +49,10 @@ export function useThemeSettings() {
     patchTheme({ mode });
   };
 
+  const toggleThemeMode = () => {
+    setThemeMode(isDarkTheme.value ? 'light' : 'dark');
+  };
+
   const setDynamicBackgroundType = (dynamicBgType: ThemeSettings['dynamicBgType']) => {
     patchTheme({ dynamicBgType });
   };
@@ -72,6 +76,7 @@ export function useThemeSettings() {
     replaceTheme,
     patchTheme,
     setThemeMode,
+    toggleThemeMode,
     setDynamicBackgroundType,
     setWindowMaterial,
     updateCustomBackground,

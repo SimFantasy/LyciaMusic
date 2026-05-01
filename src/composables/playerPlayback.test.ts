@@ -7,6 +7,10 @@ const loadFullCoverMock = vi.fn().mockResolvedValue('');
 const peekCoverUrlMock = vi.fn().mockReturnValue('');
 const peekCoverPathMock = vi.fn().mockReturnValue('');
 const getFullCoverUrlMock = vi.fn().mockReturnValue('');
+const preloadFullCoversMock = vi.fn();
+const preloadPriorityCoversMock = vi.fn();
+const retainFullCoverPathsMock = vi.fn();
+const primeCoverPathMock = vi.fn().mockReturnValue('');
 
 vi.mock('../services/tauri/playbackApi', () => ({
   playbackApi: {
@@ -28,6 +32,10 @@ vi.mock('./useCoverCache', () => ({
     peekCoverUrl: peekCoverUrlMock,
     peekCoverPath: peekCoverPathMock,
     getFullCoverUrl: getFullCoverUrlMock,
+    preloadFullCovers: preloadFullCoversMock,
+    preloadPriorityCovers: preloadPriorityCoversMock,
+    retainFullCoverPaths: retainFullCoverPathsMock,
+    primeCoverPath: primeCoverPathMock,
   }),
 }));
 
@@ -63,6 +71,10 @@ describe('player playback domain', () => {
     peekCoverUrlMock.mockReturnValue('');
     peekCoverPathMock.mockReturnValue('');
     getFullCoverUrlMock.mockReturnValue('');
+    preloadFullCoversMock.mockReset();
+    preloadPriorityCoversMock.mockReset();
+    retainFullCoverPathsMock.mockReset();
+    primeCoverPathMock.mockReturnValue('');
   });
 
   it('rebuilds the queue from the display song list order when playback starts', async () => {
@@ -168,6 +180,148 @@ describe('player playback domain', () => {
 
     expect(loadFullCoverMock).toHaveBeenCalledWith(song.path);
     expect(playbackStore.currentCoverFull).toBe('full-url');
+    playerPlayback.dispose();
+  });
+
+  it('starts loading the current thumbnail before the audio backend finishes switching songs', async () => {
+    const song = makeSong({ path: '/music/current-thumbnail.flac', title: 'Current Thumbnail' });
+    let resolvePlayAudio!: () => void;
+    vi.mocked(playbackApi.playAudio).mockReturnValueOnce(new Promise<void>((resolve) => {
+      resolvePlayAudio = resolve;
+    }));
+
+    const playerPlayback = createPlayerPlayback({
+      getDisplaySongList: () => [song],
+      addToHistory: vi.fn(),
+      loadLyrics: vi.fn(),
+      handleAutoNext: vi.fn(),
+    });
+
+    const playPromise = playerPlayback.playSong(song);
+
+    expect(loadCoverMock).toHaveBeenCalledWith(song.path);
+
+    resolvePlayAudio();
+    await playPromise;
+    playerPlayback.dispose();
+  });
+
+  it('uses the persisted thumbnail path immediately when switching songs', async () => {
+    const playbackStore = usePlaybackStore();
+    const song = makeSong({
+      path: '/music/persisted-thumb.flac',
+      title: 'Persisted Thumb',
+      cover_thumb_path: 'C:\\covers\\persisted-thumb.jpg',
+    });
+    primeCoverPathMock.mockReturnValue('asset://C:\\covers\\persisted-thumb.jpg');
+
+    const playerPlayback = createPlayerPlayback({
+      getDisplaySongList: () => [song],
+      addToHistory: vi.fn(),
+      loadLyrics: vi.fn(),
+      handleAutoNext: vi.fn(),
+    });
+
+    await playerPlayback.playSong(song);
+
+    expect(primeCoverPathMock).toHaveBeenCalledWith(song.path, song.cover_thumb_path);
+    expect(playbackStore.currentCover).toBe('asset://C:\\covers\\persisted-thumb.jpg');
+    expect(loadCoverMock).toHaveBeenCalledWith(song.path);
+    playerPlayback.dispose();
+  });
+
+  it('keeps the previous visible cover while the next thumbnail is loading', async () => {
+    const playbackStore = usePlaybackStore();
+    const oldCover = 'asset://C:\\covers\\old-thumb.jpg';
+    const song = makeSong({ path: '/music/cold-hdd.flac', title: 'Cold HDD' });
+    let resolvePlayAudio!: () => void;
+    playbackStore.currentCover = oldCover;
+    vi.mocked(playbackApi.playAudio).mockReturnValueOnce(new Promise<void>((resolve) => {
+      resolvePlayAudio = resolve;
+    }));
+
+    const playerPlayback = createPlayerPlayback({
+      getDisplaySongList: () => [song],
+      addToHistory: vi.fn(),
+      loadLyrics: vi.fn(),
+      handleAutoNext: vi.fn(),
+    });
+
+    const playPromise = playerPlayback.playSong(song);
+
+    expect(playbackStore.currentCover).toBe(oldCover);
+
+    resolvePlayAudio();
+    await playPromise;
+    playerPlayback.dispose();
+  });
+
+  it('does not carry the previous full cover into the next song detail view', async () => {
+    const playbackStore = usePlaybackStore();
+    const uiStore = useUiStore();
+    const oldCover = 'asset://C:\\covers\\old-thumb.jpg';
+    const oldFullCover = 'asset://C:\\covers\\old-full.png';
+    const song = makeSong({ path: '/music/new-song.flac', title: 'New Song' });
+    let resolvePlayAudio!: () => void;
+    uiStore.showPlayerDetail = true;
+    playbackStore.currentCover = oldCover;
+    playbackStore.currentCoverPath = '/music/old-song.flac';
+    playbackStore.currentCoverFull = oldFullCover;
+    vi.mocked(playbackApi.playAudio).mockReturnValueOnce(new Promise<void>((resolve) => {
+      resolvePlayAudio = resolve;
+    }));
+
+    const playerPlayback = createPlayerPlayback({
+      getDisplaySongList: () => [song],
+      addToHistory: vi.fn(),
+      loadLyrics: vi.fn(),
+      handleAutoNext: vi.fn(),
+    });
+
+    const playPromise = playerPlayback.playSong(song);
+
+    expect(playbackStore.currentCover).toBe(oldCover);
+    expect(playbackStore.currentCoverPath).toBe('/music/old-song.flac');
+    expect(playbackStore.currentCoverFull).toBe('');
+
+    resolvePlayAudio();
+    await playPromise;
+    playerPlayback.dispose();
+  });
+
+  it('prepares likely full-size covers before switching songs in the player detail view', async () => {
+    const playbackStore = usePlaybackStore();
+    const uiStore = useUiStore();
+    const previousSong = makeSong({ path: '/music/previous.flac', title: 'Previous' });
+    const song = makeSong({ path: '/music/current.flac', title: 'Current' });
+    const nextSong = makeSong({ path: '/music/next.flac', title: 'Next' });
+    const tempSong = makeSong({ path: '/music/temp.flac', title: 'Temp' });
+
+    uiStore.showPlayerDetail = true;
+    playbackStore.currentSong = previousSong;
+    playbackStore.playQueue = [previousSong, song, nextSong];
+    playbackStore.tempQueue = [tempSong];
+
+    const playerPlayback = createPlayerPlayback({
+      getDisplaySongList: () => [previousSong, song, nextSong],
+      addToHistory: vi.fn(),
+      loadLyrics: vi.fn(),
+      handleAutoNext: vi.fn(),
+    });
+
+    await playerPlayback.playSong(song, { preserveQueue: true });
+
+    expect(retainFullCoverPathsMock).toHaveBeenCalledWith([
+      song.path,
+      tempSong.path,
+      previousSong.path,
+      nextSong.path,
+    ]);
+    expect(preloadFullCoversMock).toHaveBeenCalledWith([
+      tempSong.path,
+      previousSong.path,
+      nextSong.path,
+    ]);
     playerPlayback.dispose();
   });
 });

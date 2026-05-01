@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 
+import { useGlobalShortcutStatus } from '../../composables/useKeyboardShortcuts';
 import { useToast } from '../../composables/toast';
 import { useSettings } from '../../features/settings/useSettings';
 import {
@@ -15,8 +16,16 @@ import type { ShortcutActionId } from '../../types';
 
 const { settings } = useSettings();
 const { showToast } = useToast();
+const { occupiedActionIdSet } = useGlobalShortcutStatus();
 
-const capturingActionId = ref<ShortcutActionId | null>(null);
+type ShortcutScope = 'local' | 'global';
+
+interface CapturingTarget {
+  actionId: ShortcutActionId;
+  scope: ShortcutScope;
+}
+
+const capturingTarget = ref<CapturingTarget | null>(null);
 
 const shortcutRows = computed(() => shortcutActionOrder.map((actionId) => ({
   actionId,
@@ -25,12 +34,18 @@ const shortcutRows = computed(() => shortcutActionOrder.map((actionId) => ({
   globalBinding: settings.value.shortcuts.global[actionId],
 })));
 
-const startCapture = (actionId: ShortcutActionId) => {
-  capturingActionId.value = actionId;
+const hasOccupiedGlobalShortcuts = computed(() => occupiedActionIdSet.value.size > 0);
+
+const isCapturing = (scope: ShortcutScope, actionId: ShortcutActionId) => (
+  capturingTarget.value?.scope === scope && capturingTarget.value.actionId === actionId
+);
+
+const startCapture = (scope: ShortcutScope, actionId: ShortcutActionId) => {
+  capturingTarget.value = { scope, actionId };
 };
 
 const stopCapture = () => {
-  capturingActionId.value = null;
+  capturingTarget.value = null;
 };
 
 const restoreDefaults = () => {
@@ -38,15 +53,16 @@ const restoreDefaults = () => {
   stopCapture();
 };
 
-const updateLocalShortcut = (
+const updateShortcut = (
+  scope: ShortcutScope,
   actionId: ShortcutActionId,
   nextBinding: ReturnType<typeof getShortcutBindingFromEvent>,
 ) => {
-  settings.value.shortcuts.local[actionId] = nextBinding;
+  settings.value.shortcuts[scope][actionId] = nextBinding;
 };
 
-const handleShortcutCapture = (actionId: ShortcutActionId, event: KeyboardEvent) => {
-  if (capturingActionId.value !== actionId) {
+const handleShortcutCapture = (scope: ShortcutScope, actionId: ShortcutActionId, event: KeyboardEvent) => {
+  if (!isCapturing(scope, actionId)) {
     return;
   }
 
@@ -59,7 +75,7 @@ const handleShortcutCapture = (actionId: ShortcutActionId, event: KeyboardEvent)
   }
 
   if (event.key === 'Backspace' || event.key === 'Delete') {
-    updateLocalShortcut(actionId, null);
+    updateShortcut(scope, actionId, null);
     stopCapture();
     return;
   }
@@ -71,7 +87,7 @@ const handleShortcutCapture = (actionId: ShortcutActionId, event: KeyboardEvent)
 
   const conflictActionId = shortcutActionOrder.find(candidateActionId => (
     candidateActionId !== actionId
-    && areShortcutBindingsEqual(settings.value.shortcuts.local[candidateActionId], nextBinding)
+    && areShortcutBindingsEqual(settings.value.shortcuts[scope][candidateActionId], nextBinding)
   ));
 
   if (conflictActionId) {
@@ -82,7 +98,7 @@ const handleShortcutCapture = (actionId: ShortcutActionId, event: KeyboardEvent)
     return;
   }
 
-  updateLocalShortcut(actionId, nextBinding);
+  updateShortcut(scope, actionId, nextBinding);
   stopCapture();
 };
 </script>
@@ -126,24 +142,39 @@ const handleShortcutCapture = (actionId: ShortcutActionId, event: KeyboardEvent)
           <button
             type="button"
             data-shortcut-capture="true"
-            @click="startCapture(row.actionId)"
-            @blur="capturingActionId === row.actionId && stopCapture()"
-            @keydown="handleShortcutCapture(row.actionId, $event)"
+            @click="startCapture('local', row.actionId)"
+            @blur="isCapturing('local', row.actionId) && stopCapture()"
+            @keydown="handleShortcutCapture('local', row.actionId, $event)"
             class="w-full rounded-full border px-4 py-3 text-left text-sm transition-all backdrop-blur-md"
-            :class="capturingActionId === row.actionId
+            :class="isCapturing('local', row.actionId)
               ? 'border-[#EC4141] bg-red-500/10 text-[#EC4141] dark:bg-red-500/20 shadow-[0_0_12px_rgba(236,65,65,0.2)]'
               : 'border-white/30 bg-white/40 text-gray-800 shadow-sm hover:border-[#EC4141] hover:text-[#EC4141] hover:bg-white/50 dark:border-white/10 dark:bg-white/10 dark:text-gray-200 dark:hover:bg-white/20 dark:hover:border-[#EC4141]'"
           >
-            {{ capturingActionId === row.actionId ? '按下新的快捷键' : formatShortcutBinding(row.localBinding) }}
+            {{ isCapturing('local', row.actionId) ? '按下新的快捷键' : formatShortcutBinding(row.localBinding) }}
           </button>
 
           <button
             type="button"
-            disabled
-            class="w-full rounded-full border border-white/20 bg-white/20 px-4 py-3 text-left text-sm text-gray-500 cursor-not-allowed backdrop-blur-sm dark:border-white/5 dark:bg-white/[0.02] dark:text-white/30"
+            data-shortcut-capture="true"
+            @click="startCapture('global', row.actionId)"
+            @blur="isCapturing('global', row.actionId) && stopCapture()"
+            @keydown="handleShortcutCapture('global', row.actionId, $event)"
+            class="w-full rounded-full border px-4 py-3 text-left text-sm transition-all backdrop-blur-md"
+            :class="isCapturing('global', row.actionId)
+              ? 'border-[#EC4141] bg-red-500/10 text-[#EC4141] dark:bg-red-500/20 shadow-[0_0_12px_rgba(236,65,65,0.2)]'
+              : occupiedActionIdSet.has(row.actionId)
+                ? 'border-[#f3b0b0] bg-[#f9ecec] text-[#b14c4c] shadow-sm hover:border-[#e78f8f] hover:bg-[#f7e4e4] dark:border-[#6a3030] dark:bg-[#3a1f1f]/80 dark:text-[#f2b1b1] dark:hover:border-[#874444] dark:hover:bg-[#472525]/80'
+              : 'border-white/30 bg-white/40 text-gray-800 shadow-sm hover:border-[#EC4141] hover:text-[#EC4141] hover:bg-white/50 dark:border-white/10 dark:bg-white/10 dark:text-gray-200 dark:hover:bg-white/20 dark:hover:border-[#EC4141]'"
           >
-            {{ formatShortcutBinding(row.globalBinding, '预留') }}
+            {{ isCapturing('global', row.actionId) ? '按下新的快捷键' : formatShortcutBinding(row.globalBinding) }}
           </button>
+        </div>
+
+        <div
+          v-if="settings.shortcuts.globalEnabled && hasOccupiedGlobalShortcuts"
+          class="px-4 py-3 border-t border-white/30 dark:border-white/5 bg-[#fff5f5] text-[#c65a5a] text-xs dark:bg-[#3b2020]/70 dark:text-[#f0abab]"
+        >
+          淡红色背景代表热键被其他软件占用，暂时无法启用。
         </div>
       </div>
     </section>
@@ -172,14 +203,21 @@ const handleShortcutCapture = (actionId: ShortcutActionId, event: KeyboardEvent)
           </button>
         </div>
 
-        <div class="p-4 flex items-center justify-between border-b border-white/30 dark:border-white/5 last:border-0 opacity-70 cursor-not-allowed">
+        <div class="p-4 flex items-center justify-between border-b border-white/30 dark:border-white/5 last:border-0 hover:bg-white/40 dark:hover:bg-white/10 transition-colors">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">启用全局快捷键</div>
-            <div class="text-xs text-gray-600 dark:text-white/60 mt-0.5">结构已预留，当前版本暂未接入系统级监听</div>
+            <div class="text-xs text-gray-600 dark:text-white/60 mt-0.5">开启后在后台也可响应上方设置的全局快捷键，默认关闭</div>
           </div>
-          <div class="relative inline-flex h-6 w-11 items-center rounded-full bg-gray-300 dark:bg-gray-700">
-            <span class="inline-block h-4 w-4 transform rounded-full bg-white translate-x-1 shadow-sm" />
-          </div>
+          <button
+            @click="settings.shortcuts.globalEnabled = !settings.shortcuts.globalEnabled"
+            class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none"
+            :class="settings.shortcuts.globalEnabled ? 'bg-[#EC4141]' : 'bg-gray-300 dark:bg-gray-700'"
+          >
+            <span
+              class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out shadow-sm"
+              :class="settings.shortcuts.globalEnabled ? 'translate-x-6' : 'translate-x-1'"
+            />
+          </button>
         </div>
 
         <div class="p-4 flex items-center justify-between hover:bg-white/40 dark:hover:bg-white/10 transition-colors opacity-70 cursor-not-allowed">

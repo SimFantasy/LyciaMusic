@@ -8,6 +8,7 @@ import { dragSession } from '../composables/dragState';
 import { useCoverCache } from '../composables/useCoverCache';
 import { useHomeNavigation } from '../composables/useHomeNavigation';
 import { useListScrollMemory } from '../composables/useListScrollMemory';
+import SortModeIcon from '../components/common/SortModeIcon.vue';
 import { useLibraryBrowse } from '../features/library/useLibraryBrowse';
 import type { AlbumListItem } from '../features/library/playerLibraryViewShared';
 import { getAlphabetIndexKey } from '../utils/alphabetIndex';
@@ -600,9 +601,7 @@ onUnmounted(() => {
             class="bg-white/1 hover:bg-white/10 border border-white/1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 w-7 h-7 flex items-center justify-center rounded-full transition active:scale-95 shadow-sm hover:border-gray-200 dark:hover:border-white/20"
             @click.stop="showSortMenu = !showSortMenu"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
-            </svg>
+            <SortModeIcon class="h-4 w-4" />
           </button>
 
           <div v-if="showSortMenu" class="absolute right-0 top-full mt-2 w-48 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-xl shadow-xl border border-gray-100 dark:border-white/10 overflow-hidden animate-in fade-in zoom-in-95 duration-100 origin-top-right">

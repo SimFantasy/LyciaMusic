@@ -7,9 +7,83 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+pub const VISUALIZER_BAND_COUNT: usize = 48;
+pub const VISUALIZER_WINDOW_SIZE: usize = 2048;
+
+pub struct SharedVisualizer {
+    samples: Vec<AtomicU32>,
+    pub cursor: AtomicU64,
+}
+
+impl SharedVisualizer {
+    pub fn new() -> Self {
+        Self {
+            samples: (0..VISUALIZER_WINDOW_SIZE)
+                .map(|_| AtomicU32::new(0))
+                .collect(),
+            cursor: AtomicU64::new(0),
+        }
+    }
+
+    pub fn reset(&self) {
+        for sample in &self.samples {
+            sample.store(0.0_f32.to_bits(), Ordering::Relaxed);
+        }
+        self.cursor.store(0, Ordering::Relaxed);
+    }
+
+    pub fn push_sample(&self, sample: f32) {
+        let cursor = self.cursor.fetch_add(1, Ordering::Relaxed) as usize;
+        self.samples[cursor % VISUALIZER_WINDOW_SIZE]
+            .store(sample.clamp(-1.0, 1.0).to_bits(), Ordering::Relaxed);
+    }
+
+    pub fn snapshot(&self) -> Vec<f32> {
+        let cursor = self.cursor.load(Ordering::Relaxed) as usize;
+        let written = cursor.min(VISUALIZER_WINDOW_SIZE);
+        let empty = VISUALIZER_WINDOW_SIZE - written;
+        let mut output = Vec::with_capacity(VISUALIZER_WINDOW_SIZE);
+
+        output.extend(std::iter::repeat(0.0).take(empty));
+
+        for logical_position in 0..written {
+            let index = if cursor < VISUALIZER_WINDOW_SIZE {
+                logical_position
+            } else {
+                (cursor + logical_position) % VISUALIZER_WINDOW_SIZE
+            };
+            output.push(f32::from_bits(self.samples[index].load(Ordering::Relaxed)));
+        }
+
+        output
+    }
+}
+
 pub struct TimedSource<S> {
     pub inner: S,
     pub samples_played: Arc<AtomicU64>,
+    pub visualizer: Arc<SharedVisualizer>,
+    channel_sum: f32,
+    channel_samples: u16,
+}
+
+impl<S> TimedSource<S>
+where
+    S: Source<Item = f32>,
+{
+    pub fn new(
+        inner: S,
+        samples_played: Arc<AtomicU64>,
+        visualizer: Arc<SharedVisualizer>,
+    ) -> Self {
+        Self {
+            inner,
+            samples_played,
+            visualizer,
+            channel_sum: 0.0,
+            channel_samples: 0,
+        }
+    }
 }
 
 impl<S> Iterator for TimedSource<S>
@@ -20,8 +94,17 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         let sample = self.inner.next();
-        if sample.is_some() {
+        if let Some(value) = sample {
             self.samples_played.fetch_add(1, Ordering::Relaxed);
+            self.channel_sum += value;
+            self.channel_samples += 1;
+
+            if self.channel_samples >= self.channels() {
+                self.visualizer
+                    .push_sample(self.channel_sum / self.channel_samples as f32);
+                self.channel_sum = 0.0;
+                self.channel_samples = 0;
+            }
         }
         sample
     }
@@ -56,6 +139,7 @@ pub struct SharedProgress {
     pub samples_played: Arc<AtomicU64>,
     pub sample_rate: Arc<AtomicU32>,
     pub channels: Arc<AtomicU32>,
+    pub visualizer: Arc<SharedVisualizer>,
 }
 
 pub enum AudioCommand {

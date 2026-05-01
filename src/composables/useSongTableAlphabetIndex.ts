@@ -19,6 +19,7 @@ import {
 const ROW_HEIGHT = 72;
 const INDEX_PROXIMITY_PX = 72;
 const INDEX_AUTO_HIDE_MS = 500;
+const SCROLL_TO_TOP_VIEW_MODES = new Set(['all', 'playlist', 'artist', 'album']);
 
 type StringRef = Ref<string> | ComputedRef<string>;
 
@@ -181,6 +182,13 @@ export function useSongTableAlphabetIndex({
     !isCurrentSongVisibleInViewport.value,
   );
 
+  const showScrollToTopButton = computed(() =>
+    routePath.value === '/' &&
+    SCROLL_TO_TOP_VIEW_MODES.has(currentViewMode.value) &&
+    songs.value.length > 0 &&
+    scrollTop.value > ROW_HEIGHT,
+  );
+
   const clearHideIndexBarTimer = () => {
     if (hideIndexBarTimer) {
       clearTimeout(hideIndexBarTimer);
@@ -224,6 +232,10 @@ export function useSongTableAlphabetIndex({
     const targetTop = songIndex * ROW_HEIGHT;
     containerRef.value.scrollTo({ top: targetTop, behavior: 'auto' });
     scrollTop.value = targetTop;
+  };
+
+  const scrollToTop = () => {
+    containerRef.value?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const scrollFolderTargetsIntoView = (folderPath: string, rootPath: string | null) => {
@@ -430,6 +442,7 @@ export function useSongTableAlphabetIndex({
     isIndexBarVisible,
     canLocateCurrentSong,
     showLocateCurrentSongButton,
+    showScrollToTopButton,
     handleIndexHotspotEnter,
     handleIndexHotspotMove,
     handleIndexHotspotLeave,
@@ -438,5 +451,6 @@ export function useSongTableAlphabetIndex({
     handleIndexPointerDown,
     showIndexBar,
     scrollToCurrentSong,
+    scrollToTop,
   };
 }

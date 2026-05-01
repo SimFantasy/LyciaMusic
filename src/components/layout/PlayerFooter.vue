@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { AudioLines } from 'lucide-vue-next';
 import { useLibraryCollections } from '../../features/collections/useLibraryCollections';
 import { useLyrics } from '../../composables/lyrics';
 import { usePlaybackController } from '../../features/playback/usePlaybackController';
+import AudioVisualizer from '../player/AudioVisualizer.vue';
 import FooterContextMenu from "../overlays/FooterContextMenu.vue";
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 
@@ -35,6 +37,12 @@ const handleContextMenu = (e: MouseEvent) => {
 const toggleLyrics = () => { showDesktopLyrics.value = !showDesktopLyrics.value; };
 const toggleLyricsPlayerSettings = () => {
   showLyricsPlayerSettingsPanel.value = !showLyricsPlayerSettingsPanel.value;
+};
+const isVisualizerEnabled = ref(localStorage.getItem('footer_visualizer_enabled') !== 'false');
+
+const toggleVisualizer = () => {
+  isVisualizerEnabled.value = !isVisualizerEnabled.value;
+  localStorage.setItem('footer_visualizer_enabled', isVisualizerEnabled.value.toString());
 };
 
 // 不再使用单独的模糊样式 -> 全透明
@@ -199,6 +207,18 @@ onUnmounted(() => {
     @mouseleave="handleFooterMouseLeave"
   >
     
+    <div
+      v-if="showPlayerDetail && currentSong && isVisualizerEnabled"
+      class="pointer-events-none absolute left-5 right-5 top-[-76px] h-16 z-40 transition-opacity duration-500 [mask-image:linear-gradient(90deg,transparent,black_1.5%,black_98.5%,transparent)]"
+      :class="isIdle ? 'opacity-25' : 'opacity-100'"
+    >
+      <AudioVisualizer
+        :active="showPlayerDetail && isVisualizerEnabled"
+        :is-playing="isPlaying"
+        :song-path="currentSong.path"
+      />
+    </div>
+
     <div 
       ref="progressBarRef"
       class="absolute top-[-10px] left-0 w-full h-[22px] cursor-pointer group/progress z-50"
@@ -297,7 +317,7 @@ onUnmounted(() => {
       </button>
 
       <button @click="toggleMode" class="transition-colors" 
-        :class="showPlayerDetail ? 'text-white/60 hover:text-white' : 'text-gray-500 dark:text-white/60 hover:text-gray-800 dark:hover:text-white'"
+        :class="showPlayerDetail ? 'text-white/80 hover:text-white' : 'text-gray-700 dark:text-white/80 hover:text-black dark:hover:text-white'"
         :title="['列表循环', '单曲循环', '随机播放'][playMode]">
         <svg v-if="playMode === 0" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
         <svg v-else-if="playMode === 1" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /><text x="12" y="16" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="currentColor" stroke="none">1</text></svg>
@@ -318,7 +338,7 @@ onUnmounted(() => {
           : 'text-gray-800 dark:text-white bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 border-black/5 dark:border-white/5'"
       >
         <svg v-if="isPlaying" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 fill-current" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
-        <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 ml-1 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+        <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 fill-current" viewBox="0 0 24 24"><path d="M8.3 5v14l11-7z" /></svg>
       </button>
 
       <button @click="nextSong" 
@@ -370,7 +390,7 @@ onUnmounted(() => {
         </div>
         <button @click="toggleMute" 
           class="transition-colors flex items-center justify-center shrink-0 w-8 h-8 rounded-full"
-          :class="showPlayerDetail ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-500 dark:text-white/60 hover:text-gray-800 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10'"
+          :class="showPlayerDetail ? 'text-white/80 hover:text-white hover:bg-white/10' : 'text-gray-700 dark:text-white/80 hover:text-black dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10'"
           title="音量"
         > 
           <!-- 静音 -->
@@ -383,10 +403,19 @@ onUnmounted(() => {
           <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
         </button>
       </div>
+
+      <button
+        v-if="showPlayerDetail"
+        @click="toggleVisualizer"
+        :class="['transition-colors w-8 h-8 flex items-center justify-center rounded-full', isVisualizerEnabled ? 'text-[#EC4141] bg-[#EC4141]/10' : 'text-white/60 hover:text-white hover:bg-white/10']"
+        :title="isVisualizerEnabled ? '关闭可视化' : '开启可视化'"
+      >
+        <AudioLines class="h-4 w-4" :stroke-width="2.2" />
+      </button>
       
       <button 
         @click="toggleLyrics"
-        :class="['text-[14px] font-bold transition-colors w-8 h-8 flex items-center justify-center rounded-full', showDesktopLyrics ? 'text-[#EC4141] bg-[#EC4141]/10' : (showPlayerDetail ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-500 dark:text-white/60 hover:text-gray-800 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10')]"
+        :class="['text-[14px] font-bold transition-colors w-8 h-8 flex items-center justify-center rounded-full', showDesktopLyrics ? 'text-[#EC4141] bg-[#EC4141]/10' : (showPlayerDetail ? 'text-white/80 hover:text-white hover:bg-white/10' : 'text-gray-700 dark:text-white/80 hover:text-black dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10')]"
         title="桌面歌词"
       >
         词
@@ -394,7 +423,7 @@ onUnmounted(() => {
 
       <button @click="togglePin"
         class="transition-colors w-8 h-8 flex items-center justify-center rounded-full"
-        :class="showPlayerDetail ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-500 dark:text-white/60 hover:text-gray-800 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10'"
+        :class="showPlayerDetail ? 'text-white/80 hover:text-white hover:bg-white/10' : 'text-gray-700 dark:text-white/80 hover:text-black dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10'"
         :title="isPinned ? '取消固定 (当前已常驻)' : '固定状态栏 (当前离开后消失)'"
       >
         <!-- 已固定：完整图钉 -->

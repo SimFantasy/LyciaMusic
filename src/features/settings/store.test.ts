@@ -36,6 +36,7 @@ describe('settings store', () => {
       flowDepth: 54,
       flowSpeed: 48,
       flowTexture: 28,
+      windowBlurTint: 50,
       customBgPath: '',
       opacity: 0.75,
       blur: 18,
@@ -65,6 +66,7 @@ describe('settings store', () => {
       flowDepth: 30,
       flowSpeed: 52,
       flowTexture: 34,
+      windowBlurTint: 50,
       customBgPath: '',
       opacity: 0.8,
       blur: 20,
@@ -116,6 +118,12 @@ describe('settings store', () => {
 
     expect(merged.closeToTray).toBe(true);
     expect('minimizeToTray' in merged).toBe(false);
+  });
+
+  it('enables the scroll to top button by default', () => {
+    const settingsStore = useSettingsStore();
+
+    expect(settingsStore.settings.enableScrollToTopButton).toBe(true);
   });
 
   it('merges lyrics settings without dropping untouched display preferences', () => {

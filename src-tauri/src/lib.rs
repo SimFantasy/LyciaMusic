@@ -23,19 +23,21 @@ use music::{
     get_library_song_paths_for_all_view, get_library_song_paths_for_folder_view,
     get_library_songs_cached, get_sidebar_folders, get_sidebar_hierarchy, get_song_cover,
     get_song_cover_thumbnail, get_song_detail, get_song_lyrics, get_song_lyrics_payload,
-    is_directory, move_file_to_folder, move_music_file, parse_audio_files, remove_library_folder,
-    remove_sidebar_folder, scan_folder_as_playlists, scan_library, scan_music_folder,
-    show_in_folder,
+    get_song_lyrics_for_edit, is_directory, move_file_to_folder, move_music_file,
+    parse_audio_files, remove_library_folder, remove_sidebar_folder, save_song_lyrics,
+    scan_folder_as_playlists, scan_library, scan_music_folder, show_in_folder,
 };
 use player::{
-    get_current_output_device, get_output_devices, get_playback_progress, pause_audio, play_audio,
-    resume_audio, seek_audio, set_output_device, set_volume, update_playback_metadata,
+    get_audio_visualizer_samples, get_current_output_device, get_output_devices,
+    get_playback_progress, pause_audio, play_audio, resume_audio, seek_audio, set_output_device,
+    set_volume, update_playback_metadata,
 };
 use statistics::{
-    add_to_history, clear_recent_history, get_behavior_stats, get_favorite_album_catalog,
-    get_favorite_artist_catalog, get_favorite_song_paths_view, get_format_distribution,
-    get_library_stats, get_quality_distribution, get_recent_album_catalog, get_recent_history,
-    get_recent_playlist_catalog, get_recent_song_paths_view, import_recent_history, record_play,
+    add_to_history, clear_recent_history, export_statistics_file, get_behavior_stats,
+    get_favorite_album_catalog, get_favorite_artist_catalog, get_favorite_song_paths_view,
+    get_format_distribution, get_library_stats, get_quality_distribution, get_recent_album_catalog,
+    get_recent_history, get_recent_playlist_catalog, get_recent_song_paths_view,
+    import_recent_history, import_statistics_file, preview_statistics_import, record_play,
     remove_from_recent_history,
 };
 use system_fonts::get_system_fonts;
@@ -52,6 +54,7 @@ pub fn run() {
             handle_single_instance(app, argv);
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| setup_app(app))
         .invoke_handler(tauri::generate_handler![
@@ -63,6 +66,8 @@ pub fn run() {
             clear_cover_cache,
             get_song_lyrics,
             get_song_lyrics_payload,
+            get_song_lyrics_for_edit,
+            save_song_lyrics,
             get_song_detail,
             batch_move_music_files,
             move_music_file,
@@ -75,6 +80,7 @@ pub fn run() {
             seek_audio,
             set_volume,
             get_playback_progress,
+            get_audio_visualizer_samples,
             preview_rename,
             apply_rename,
             get_output_devices,
@@ -114,6 +120,9 @@ pub fn run() {
             get_recent_song_paths_view,
             get_recent_playlist_catalog,
             import_recent_history,
+            export_statistics_file,
+            preview_statistics_import,
+            import_statistics_file,
             remove_from_recent_history,
             clear_recent_history,
             get_behavior_stats,

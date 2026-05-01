@@ -8,6 +8,7 @@ import { DomLyricPlayer } from '@applemusic-like-lyrics/core';
 
 export class PatchedLyricPlayer extends DomLyricPlayer {
   private lineGap = 1;
+  private restoreScrollFrameId = 0;
 
   private hasFiniteTime(value: number | undefined): value is number {
     return Number.isFinite(value);
@@ -265,6 +266,71 @@ export class PatchedLyricPlayer extends DomLyricPlayer {
     this.lineGap = this.clamp(0.6, value, 2);
   }
 
+  suspendScrollForSeek() {
+    this.allowScroll = false;
+
+    if (this.restoreScrollFrameId !== 0) {
+      cancelAnimationFrame(this.restoreScrollFrameId);
+      this.restoreScrollFrameId = 0;
+    }
+
+    this.restoreScrollFrameId = requestAnimationFrame(() => {
+      this.restoreScrollFrameId = requestAnimationFrame(() => {
+        this.allowScroll = true;
+        this.restoreScrollFrameId = 0;
+      });
+    });
+  }
+
+  alignScrollToSeekTarget(lineIndex?: number) {
+    let explicitIndex: number | undefined;
+    if (
+      Number.isInteger(lineIndex) &&
+      lineIndex !== undefined &&
+      lineIndex >= 0 &&
+      lineIndex < this.currentLyricLineObjects.length &&
+      !this.currentLyricLineObjects[lineIndex].getLine().isBG
+    ) {
+      explicitIndex = lineIndex;
+    }
+
+    const targetIndex = explicitIndex ?? (this.bufferedLines.size > 0
+      ? Math.min(...this.bufferedLines)
+      : undefined);
+
+    if (targetIndex !== undefined) {
+      this.hotLines.clear();
+      this.bufferedLines.clear();
+
+      this.hotLines.add(targetIndex);
+      this.bufferedLines.add(targetIndex);
+      this.currentLyricLineObjects[targetIndex]?.enable(this.currentTime);
+
+      const backgroundIndex = targetIndex + 1;
+      if (this.currentLyricLineObjects[backgroundIndex]?.getLine().isBG) {
+        this.hotLines.add(backgroundIndex);
+        this.bufferedLines.add(backgroundIndex);
+        this.currentLyricLineObjects[backgroundIndex]?.enable(this.currentTime);
+      }
+
+      this.currentLyricLineObjects.forEach((lineObj, index) => {
+        if (!this.hotLines.has(index)) {
+          lineObj.disable();
+        }
+      });
+
+      this.scrollToIndex = targetIndex;
+    } else {
+      const nextIndex = this.currentLyricLineObjects.findIndex((lineObj) => {
+        const line = lineObj.getLine();
+        return !line.isBG && line.startTime >= this.currentTime;
+      });
+      this.scrollToIndex = nextIndex === -1
+        ? Math.max(0, this.currentLyricLineObjects.length - 1)
+        : nextIndex;
+    }
+  }
+
   protected override getCurrentInterlude(): [number, number, number, boolean] | undefined {
     if (this.bufferedLines.size > 0) return undefined;
 
@@ -509,5 +575,14 @@ export class PatchedLyricPlayer extends DomLyricPlayer {
     this.update(0);
     this.syncLineTransformsToDom();
     this.syncAuxiliaryTransformsToDom();
+  }
+
+  override dispose(): void {
+    if (this.restoreScrollFrameId !== 0) {
+      cancelAnimationFrame(this.restoreScrollFrameId);
+      this.restoreScrollFrameId = 0;
+    }
+
+    super.dispose();
   }
 }

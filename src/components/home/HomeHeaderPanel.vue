@@ -83,7 +83,7 @@ const isManagementModeModel = computed({
     v-else-if="localViewMode === 'playlist'"
     v-model:isBatchMode="isBatchModeModel"
     :title="playlistDetail?.name || ''"
-    :subtitle="playlistDetail?.date ? `${playlistDetail.date} created` : ''"
+    :subtitle="playlistDetail?.date ? `创建于 ${playlistDetail.date}` : ''"
     :songs="localSongList"
     :selectedCount="selectedCount"
     :showRename="true"

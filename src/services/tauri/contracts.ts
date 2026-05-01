@@ -21,6 +21,23 @@ export interface AudioOutputStatus {
   follows_system_default: boolean;
 }
 
+export interface MovedMusicFilePath {
+  old_path: string;
+  new_path: string;
+}
+
+export interface BatchMoveMusicFilesResult {
+  moved_paths: MovedMusicFilePath[];
+}
+
+export type LyricsStorageSource = 'embedded' | 'sidecar' | 'empty';
+
+export interface SongLyricsForEdit {
+  lyrics: string;
+  source: LyricsStorageSource;
+  sourcePath: string | null;
+}
+
 export interface RecentHistoryRecord {
   songPath: string;
   playedAt: number;
@@ -29,6 +46,34 @@ export interface RecentHistoryRecord {
 export interface RecentHistoryImportRecord {
   songPath: string;
   playedAt: number;
+}
+
+export interface StatisticsExportResult {
+  filePath: string;
+  exportId: string;
+  exportedAt: string;
+}
+
+export interface StatisticsImportPreview {
+  version: number;
+  exportedAt: string;
+  appVersion: string;
+  exportId: string;
+  songStatsCount: number;
+  dailyStatsCount: number;
+  recentPlaysCount: number;
+  matchedSongCount: number;
+  unmatchedSongCount: number;
+  duplicateImportDetected: boolean;
+}
+
+export interface StatisticsImportResult {
+  mode: 'overwrite' | 'merge';
+  matchedSongCount: number;
+  unmatchedSongCount: number;
+  mergedSongCount: number;
+  importedRecentPlaysCount: number;
+  duplicateImportSkipped: boolean;
 }
 
 export interface PlayAudioOptions {
@@ -59,6 +104,7 @@ export interface WindowMaterialCapabilities {
   isWindows: boolean;
   supportsAcrylic: boolean;
   supportsMica: boolean;
+  supportsBlur: boolean;
   systemTransparencyEnabled: boolean | null;
   windowsBuildNumber: number | null;
 }
@@ -109,7 +155,7 @@ export interface TauriCommandMap {
   };
   batch_move_music_files: {
     payload: { paths: string[]; targetFolder: string };
-    response: number;
+    response: BatchMoveMusicFilesResult;
   };
   get_folder_first_song: {
     payload: { folderPath: string };
@@ -123,10 +169,35 @@ export interface TauriCommandMap {
   parse_audio_files: { payload: { paths: string[] }; response: Song[] };
   set_volume: { payload: { volume: number }; response: void };
   get_playback_progress: { payload: undefined; response: number };
-  record_play: { payload: { songPath: string; duration: number }; response: void };
+  get_audio_visualizer_samples: { payload: undefined; response: number[] };
+  record_play: {
+    payload: {
+      payload: {
+        songPath: string;
+        listenedMs: number;
+        durationMs: number;
+        title: string;
+        artist: string;
+        album: string;
+        trackNumber?: string;
+      };
+    };
+    response: void;
+  };
   get_song_cover_thumbnail: { payload: { path: string }; response: string };
   get_song_cover: { payload: { path: string }; response: string };
   clear_cover_cache: { payload: undefined; response: void };
+  get_song_lyrics: { payload: { path: string }; response: string };
+  get_song_lyrics_for_edit: { payload: { path: string }; response: SongLyricsForEdit };
+  save_song_lyrics: {
+    payload: {
+      path: string;
+      lyrics: string;
+      source: LyricsStorageSource;
+      sourcePath: string | null;
+    };
+    response: SongLyricsForEdit;
+  };
   get_song_detail: { payload: { path: string }; response: SongDetail };
   play_audio: { payload: PlayAudioOptions; response: void };
   update_playback_metadata: { payload: UpdatePlaybackMetadataOptions; response: void };
@@ -174,6 +245,33 @@ export interface TauriCommandMap {
   import_recent_history: {
     payload: { entries: RecentHistoryImportRecord[] };
     response: void;
+  };
+  export_statistics_file: {
+    payload: {
+      options: {
+        filePath: string;
+        includeRecentPlays: boolean;
+      };
+    };
+    response: StatisticsExportResult;
+  };
+  preview_statistics_import: {
+    payload: {
+      options: {
+        filePath: string;
+      };
+    };
+    response: StatisticsImportPreview;
+  };
+  import_statistics_file: {
+    payload: {
+      options: {
+        filePath: string;
+        mode: 'overwrite' | 'merge';
+        continueDuplicateImport: boolean;
+      };
+    };
+    response: StatisticsImportResult;
   };
   set_mini_boundary_enabled: { payload: { enabled: boolean }; response: void };
   set_dark_mode_for_window: { payload: { dark: boolean }; response: void };

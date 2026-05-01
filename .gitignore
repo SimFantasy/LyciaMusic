@@ -42,9 +42,12 @@ image.png
 
 # --- 🛠️ 本地开发脚本 ---
 scripts/bump-version.js
+src-tauri/examples/*_probe.rs
 
 .codex/
 
 tools/
 
 MD/
+
+图标备选/

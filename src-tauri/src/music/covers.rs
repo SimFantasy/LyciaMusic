@@ -1,8 +1,9 @@
 // music/covers.rs - 封面缓存与缩略图生成
 
 use super::tags::{find_embedded_picture, read_tagged_file_from_path};
-use super::types::ImageConcurrencyLimit;
+use super::types::{FullCoverImageConcurrencyLimit, ThumbnailImageConcurrencyLimit};
 use super::utils::normalize_path;
+use crate::database::DbState;
 use image::{DynamicImage, ImageFormat};
 use lofty::picture::MimeType;
 use sha2::{Digest, Sha256};
@@ -13,12 +14,22 @@ use std::time::SystemTime;
 use tauri::{AppHandle, Manager, State};
 
 const COVER_CACHE_MAX_SIZE_BYTES: u64 = 4 * 1024 * 1024 * 1024; // 4 GB
-const THUMBNAIL_EDGE_PX: u32 = 300;
-const FULL_COVER_EDGE_PX: u32 = 1400;
+const THUMBNAIL_EDGE_PX: u32 = 150;
+const FULL_COVER_EDGE_PX: u32 = 800;
 const FULL_COVER_CACHE_VERSION: &str = "v3";
 const FULL_COVER_FALLBACK_EXT: &str = "png";
 const FULL_COVER_CACHE_EXTENSIONS: [&str; 5] = ["jpg", "png", "webp", "gif", "bmp"];
 const CACHE_ALIAS_EXT: &str = "ref";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn full_cover_edge_is_capped_for_now_playing_memory() {
+        assert_eq!(FULL_COVER_EDGE_PX, 800);
+    }
+}
 
 pub fn get_cover_cache_dir(app: &AppHandle) -> PathBuf {
     let dir = app.path().app_data_dir().unwrap().join("covers");
@@ -390,7 +401,8 @@ pub fn get_or_create_full_cover(path: &Path, app: &AppHandle) -> Option<String> 
 pub async fn get_song_cover_thumbnail(
     path: String,
     app: AppHandle,
-    semaphore: State<'_, ImageConcurrencyLimit>,
+    semaphore: State<'_, ThumbnailImageConcurrencyLimit>,
+    db_state: State<'_, DbState>,
 ) -> Result<String, String> {
     let _permit = semaphore.0.acquire().await.map_err(|e| e.to_string())?;
 
@@ -404,6 +416,14 @@ pub async fn get_song_cover_thumbnail(
             .map_err(|e| e.to_string())?;
 
     if let Some(cache_path_str) = result {
+        if !cache_path_str.is_empty() {
+            if let Ok(conn) = db_state.conn.lock() {
+                let _ = conn.execute(
+                    "UPDATE songs SET cover_thumb_path = ?1 WHERE path = ?2",
+                    rusqlite::params![&cache_path_str, &path],
+                );
+            }
+        }
         return Ok(cache_path_str);
     }
     Ok(String::new())
@@ -413,7 +433,7 @@ pub async fn get_song_cover_thumbnail(
 pub async fn get_song_cover(
     path: String,
     app: AppHandle,
-    semaphore: State<'_, ImageConcurrencyLimit>,
+    semaphore: State<'_, FullCoverImageConcurrencyLimit>,
 ) -> Result<String, String> {
     let _permit = semaphore.0.acquire().await.map_err(|e| e.to_string())?;
 

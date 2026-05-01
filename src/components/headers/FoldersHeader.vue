@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 
 import FolderContextMenu from '../overlays/FolderContextMenu.vue';
+import SortModeIcon from '../common/SortModeIcon.vue';
 import { useToast } from '../../composables/toast';
 import { usePlayerViewState } from '../../composables/usePlayerViewState';
 import { dragSession } from '../../composables/dragState';
@@ -227,9 +228,7 @@ onUnmounted(() => {
           :class="{ 'text-blue-500 border-blue-200 bg-blue-50/50 dark:bg-blue-500/10': folderSortMode !== 'title' }"
           title="排序方式"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
-          </svg>
+          <SortModeIcon class="h-4 w-4" />
         </button>
 
         <Teleport to="body">

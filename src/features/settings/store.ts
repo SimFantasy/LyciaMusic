@@ -54,6 +54,7 @@ export const defaultThemeSettings: ThemeSettings = {
   flowDepth: 30,
   flowSpeed: 52,
   flowTexture: 34,
+  windowBlurTint: 50,
   customBgPath: '',
   opacity: 0.8,
   blur: 20,
@@ -81,6 +82,7 @@ export const defaultSidebarSettings: SidebarSettings = {
 export const defaultAppSettings: AppSettings = {
   closeToTray: false,
   showQualityBadges: true,
+  enableScrollToTopButton: true,
   // Deprecated compat field. Main folder-source behavior no longer depends on it.
   linkFoldersToLibrary: false,
   lyricsSyncOffset: 0,

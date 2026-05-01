@@ -2,7 +2,8 @@ use crate::player::device::{
     create_output_stream, default_output_device_name, emit_output_status, restore_current_playback,
 };
 use crate::player::types::{
-    AudioCommand, AudioOutputStatus, PlayerState, SeekCompletedPayload, SharedProgress, TimedSource,
+    AudioCommand, AudioOutputStatus, PlayerState, SeekCompletedPayload, SharedProgress,
+    SharedVisualizer, TimedSource,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use rodio::{Decoder, Sink, Source};
@@ -90,11 +91,13 @@ fn handle_play(
                 progress.sample_rate.store(rate, Ordering::Relaxed);
                 progress.channels.store(channels as u32, Ordering::Relaxed);
                 progress.samples_played.store(0, Ordering::Relaxed);
+                progress.visualizer.reset();
 
-                let timed_source = TimedSource {
-                    inner: source.convert_samples::<f32>(),
-                    samples_played: progress.samples_played.clone(),
-                };
+                let timed_source = TimedSource::new(
+                    source.convert_samples::<f32>(),
+                    progress.samples_played.clone(),
+                    progress.visualizer.clone(),
+                );
 
                 if let Some(sink) = current_sink {
                     sink.append(timed_source);
@@ -121,6 +124,7 @@ fn handle_seek(
     let clamped_time = time.max(0.0);
     let jump_target = Duration::from_secs_f64(clamped_time);
     *is_playing_flag = is_playing;
+    progress.visualizer.reset();
 
     if let Some(sink) = current_sink {
         match sink.try_seek(jump_target) {
@@ -156,12 +160,11 @@ fn handle_seek(
                                     .samples_played
                                     .store(samples_to_skip, Ordering::Relaxed);
 
-                                let timed_source = TimedSource {
-                                    inner: source
-                                        .convert_samples::<f32>()
-                                        .skip_duration(jump_target),
-                                    samples_played: progress.samples_played.clone(),
-                                };
+                                let timed_source = TimedSource::new(
+                                    source.convert_samples::<f32>().skip_duration(jump_target),
+                                    progress.samples_played.clone(),
+                                    progress.visualizer.clone(),
+                                );
 
                                 if let Some(new_sink) = current_sink {
                                     new_sink.set_volume(current_volume);
@@ -195,6 +198,7 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
         samples_played: Arc::new(AtomicU64::new(0)),
         sample_rate: Arc::new(AtomicU32::new(44100)),
         channels: Arc::new(AtomicU32::new(2)),
+        visualizer: Arc::new(SharedVisualizer::new()),
     });
     let thread_progress = shared_progress.clone();
     let thread_app_handle = app.clone();
