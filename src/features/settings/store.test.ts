@@ -126,6 +126,20 @@ describe('settings store', () => {
     expect(settingsStore.settings.enableScrollToTopButton).toBe(true);
   });
 
+  it('uses shared audio output by default and preserves persisted output mode', () => {
+    const settingsStore = useSettingsStore();
+
+    expect(settingsStore.settings.audio.outputMode).toBe('shared');
+
+    const merged = mergeAppSettings(settingsStore.settings, {
+      audio: {
+        outputMode: 'wasapiExclusive',
+      },
+    });
+
+    expect(merged.audio.outputMode).toBe('wasapiExclusive');
+  });
+
   it('merges lyrics settings without dropping untouched display preferences', () => {
     const settingsStore = useSettingsStore();
 

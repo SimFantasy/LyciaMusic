@@ -1,5 +1,5 @@
 use crate::player::spectrum::build_frequency_bands;
-use crate::player::types::{AudioCommand, PlayerState, VISUALIZER_BAND_COUNT};
+use crate::player::types::{AudioCommand, AudioOutputMode, PlayerState, VISUALIZER_BAND_COUNT};
 use souvlaki::{MediaMetadata, MediaPlayback, MediaPosition};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -30,11 +30,12 @@ pub fn play_audio(
     album: String,
     cover: String,
     duration: u32,
+    output_mode: AudioOutputMode,
     state: tauri::State<PlayerState>,
 ) -> Result<(), String> {
     let normalized_cover = normalize_cover_for_smtc(&cover);
     let tx = state.tx.lock().map_err(|e| e.to_string())?;
-    tx.send(AudioCommand::Play(path))
+    tx.send(AudioCommand::Play { path, output_mode })
         .map_err(|e| e.to_string())?;
 
     if let Ok(mut controls) = state.controls.lock() {

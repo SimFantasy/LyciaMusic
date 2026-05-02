@@ -30,4 +30,26 @@ describe('playbackApi', () => {
 
     expect(tauriInvoke).toHaveBeenCalledWith('record_play', { payload });
   });
+
+  it('passes audio output mode to play_audio', () => {
+    playbackApi.playAudio({
+      path: '/music/demo.flac',
+      title: 'Demo',
+      artist: 'Artist',
+      album: 'Album',
+      cover: '',
+      duration: 180,
+      outputMode: 'wasapiExclusive',
+    });
+
+    expect(tauriInvoke).toHaveBeenCalledWith('play_audio', {
+      path: '/music/demo.flac',
+      title: 'Demo',
+      artist: 'Artist',
+      album: 'Album',
+      cover: '',
+      duration: 180,
+      outputMode: 'wasapiExclusive',
+    });
+  });
 });

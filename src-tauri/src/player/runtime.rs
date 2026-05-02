@@ -1,9 +1,12 @@
-use crate::player::device::{
-    create_output_stream, default_output_device_name, emit_output_status, restore_current_playback,
-};
+use crate::player::device::{default_output_device_name, emit_output_status};
+use crate::player::output::shared::progress_seconds_from_samples;
+use crate::player::output::shared::{restore_current_playback, SharedOutputBackend};
+#[cfg(target_os = "windows")]
+use crate::player::output::wasapi_exclusive::{ExclusivePlayRequest, WasapiExclusivePlayback};
+use crate::player::output::OutputBackend;
 use crate::player::types::{
-    AudioCommand, AudioOutputStatus, PlayerState, SeekCompletedPayload, SharedProgress,
-    SharedVisualizer, TimedSource,
+    AudioCommand, AudioOutputMode, AudioOutputStatus, PlayerState, SeekCompletedPayload,
+    SharedProgress, SharedVisualizer, TimedSource,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use rodio::{Decoder, Sink, Source};
@@ -16,6 +19,45 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
+
+fn progress_duration(progress: &Arc<SharedProgress>) -> Duration {
+    let current_samples = progress.samples_played.load(Ordering::Relaxed);
+    let rate = progress.sample_rate.load(Ordering::Relaxed);
+    let channels = progress.channels.load(Ordering::Relaxed);
+
+    Duration::from_secs_f64(progress_seconds_from_samples(
+        current_samples,
+        rate,
+        channels,
+    ))
+}
+
+#[cfg(target_os = "windows")]
+fn stop_exclusive_playback(exclusive_playback: &mut Option<WasapiExclusivePlayback>) {
+    if let Some(mut playback) = exclusive_playback.take() {
+        playback.stop();
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn start_exclusive_playback(
+    path: String,
+    selected_device_name: Option<String>,
+    current_volume: f32,
+    is_playing: bool,
+    start_time: Duration,
+    progress: &Arc<SharedProgress>,
+) -> Result<WasapiExclusivePlayback, String> {
+    WasapiExclusivePlayback::start(ExclusivePlayRequest {
+        path,
+        device_name: selected_device_name,
+        volume: current_volume,
+        is_playing,
+        progress: progress.clone(),
+        start_time,
+    })
+    .map_err(|error| error.to_string())
+}
 
 fn initialize_media_controls(app: &AppHandle) -> Arc<Mutex<Option<MediaControls>>> {
     let controls = Arc::new(Mutex::new(None));
@@ -67,7 +109,7 @@ fn initialize_media_controls(app: &AppHandle) -> Arc<Mutex<Option<MediaControls>
 
 fn handle_play(
     path: String,
-    stream_data: &Option<crate::player::device::StreamData>,
+    output: &Option<SharedOutputBackend>,
     current_sink: &mut Option<Sink>,
     current_path: &mut String,
     current_volume: f32,
@@ -77,11 +119,11 @@ fn handle_play(
     *current_path = path;
     *is_playing_flag = true;
 
-    if let Some((_, handle, _)) = stream_data {
+    if let Some(output) = output {
         if let Some(sink) = current_sink {
             sink.stop();
         }
-        *current_sink = Sink::try_new(handle).ok();
+        *current_sink = output.create_sink().ok();
 
         if let Ok(file) = File::open(current_path.as_str()) {
             let reader = BufReader::with_capacity(512 * 1024, file);
@@ -113,7 +155,7 @@ fn handle_seek(
     time: f64,
     is_playing: bool,
     request_id: u64,
-    stream_data: &Option<crate::player::device::StreamData>,
+    output: &Option<SharedOutputBackend>,
     current_sink: &mut Option<Sink>,
     current_path: &str,
     current_volume: f32,
@@ -145,9 +187,9 @@ fn handle_seek(
             }
             Err(_) => {
                 if !current_path.is_empty() {
-                    if let Some((_, handle, _)) = stream_data {
+                    if let Some(output) = output {
                         sink.stop();
-                        *current_sink = Sink::try_new(handle).ok();
+                        *current_sink = output.create_sink().ok();
 
                         if let Ok(file) = File::open(current_path) {
                             let reader = BufReader::with_capacity(512 * 1024, file);
@@ -209,15 +251,22 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
     thread::spawn(move || {
         let host = cpal::default_host();
         let mut selected_device_name: Option<String> = None;
-        let mut stream_data = create_output_stream(&host, None);
+        let mut output = SharedOutputBackend::open(&host, None).ok();
         let mut current_sink: Option<Sink> = None;
+        #[cfg(target_os = "windows")]
+        let mut exclusive_playback: Option<WasapiExclusivePlayback> = None;
         let mut current_path = String::new();
         let mut current_volume = 1.0;
         let mut is_playing_flag = false;
-        let mut active_device_name = stream_data.as_ref().map(|(_, _, name)| name.clone());
+        let mut requested_output_mode = AudioOutputMode::Shared;
+        let mut active_output_mode = AudioOutputMode::Shared;
+        let mut fallback_reason: Option<String> = None;
+        let mut active_device_name = output
+            .as_ref()
+            .map(|output| output.active_device_name().to_string());
 
-        if let Some((_, handle, _)) = &stream_data {
-            current_sink = Sink::try_new(handle).ok();
+        if let Some(output) = &output {
+            current_sink = output.create_sink().ok();
         }
 
         emit_output_status(
@@ -225,28 +274,117 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
             &thread_output_status,
             selected_device_name.clone(),
             active_device_name.clone(),
+            requested_output_mode,
+            active_output_mode,
+            fallback_reason.clone(),
         );
 
         loop {
             match rx.recv_timeout(Duration::from_millis(750)) {
                 Ok(cmd) => match cmd {
-                    AudioCommand::Play(path) => handle_play(
-                        path,
-                        &stream_data,
-                        &mut current_sink,
-                        &mut current_path,
-                        current_volume,
-                        &mut is_playing_flag,
-                        &thread_progress,
-                    ),
+                    AudioCommand::Play { path, output_mode } => {
+                        requested_output_mode = output_mode;
+
+                        if let Some(sink) = &current_sink {
+                            sink.stop();
+                        }
+                        current_sink = None;
+                        #[cfg(target_os = "windows")]
+                        stop_exclusive_playback(&mut exclusive_playback);
+
+                        #[cfg(target_os = "windows")]
+                        if output_mode == AudioOutputMode::WasapiExclusive {
+                            match start_exclusive_playback(
+                                path.clone(),
+                                selected_device_name.clone(),
+                                current_volume,
+                                true,
+                                Duration::ZERO,
+                                &thread_progress,
+                            ) {
+                                Ok(playback) => {
+                                    active_device_name =
+                                        Some(playback.active_device_name().to_string());
+                                    active_output_mode = AudioOutputMode::WasapiExclusive;
+                                    fallback_reason = None;
+                                    current_path = path;
+                                    is_playing_flag = true;
+                                    exclusive_playback = Some(playback);
+
+                                    emit_output_status(
+                                        &thread_app_handle,
+                                        &thread_output_status,
+                                        selected_device_name.clone(),
+                                        active_device_name.clone(),
+                                        requested_output_mode,
+                                        active_output_mode,
+                                        fallback_reason.clone(),
+                                    );
+                                    continue;
+                                }
+                                Err(error) => {
+                                    active_output_mode = AudioOutputMode::Shared;
+                                    fallback_reason = Some(error);
+                                }
+                            }
+                        }
+
+                        #[cfg(not(target_os = "windows"))]
+                        if output_mode == AudioOutputMode::WasapiExclusive {
+                            active_output_mode = AudioOutputMode::Shared;
+                            fallback_reason = Some(
+                                "WASAPI exclusive mode is only available on Windows".to_string(),
+                            );
+                        }
+
+                        if active_output_mode == AudioOutputMode::Shared {
+                            active_device_name = output
+                                .as_ref()
+                                .map(|output| output.active_device_name().to_string());
+                        }
+
+                        emit_output_status(
+                            &thread_app_handle,
+                            &thread_output_status,
+                            selected_device_name.clone(),
+                            active_device_name.clone(),
+                            requested_output_mode,
+                            active_output_mode,
+                            fallback_reason.clone(),
+                        );
+
+                        handle_play(
+                            path,
+                            &output,
+                            &mut current_sink,
+                            &mut current_path,
+                            current_volume,
+                            &mut is_playing_flag,
+                            &thread_progress,
+                        )
+                    }
                     AudioCommand::Pause => {
                         is_playing_flag = false;
+                        #[cfg(target_os = "windows")]
+                        if let Some(playback) = &exclusive_playback {
+                            playback.pause();
+                        } else if let Some(sink) = &current_sink {
+                            sink.pause();
+                        }
+                        #[cfg(not(target_os = "windows"))]
                         if let Some(sink) = &current_sink {
                             sink.pause();
                         }
                     }
                     AudioCommand::Resume => {
                         is_playing_flag = true;
+                        #[cfg(target_os = "windows")]
+                        if let Some(playback) = &exclusive_playback {
+                            playback.resume();
+                        } else if let Some(sink) = &current_sink {
+                            sink.play();
+                        }
+                        #[cfg(not(target_os = "windows"))]
                         if let Some(sink) = &current_sink {
                             sink.play();
                         }
@@ -255,20 +393,44 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                         time,
                         is_playing,
                         request_id,
-                    } => handle_seek(
-                        time,
-                        is_playing,
-                        request_id,
-                        &stream_data,
-                        &mut current_sink,
-                        &current_path,
-                        current_volume,
-                        &mut is_playing_flag,
-                        &thread_progress,
-                        &thread_app_handle,
-                    ),
+                    } => {
+                        #[cfg(target_os = "windows")]
+                        if let Some(playback) = &exclusive_playback {
+                            let clamped_time = time.max(0.0);
+                            is_playing_flag = is_playing;
+                            playback.seek(Duration::from_secs_f64(clamped_time), is_playing);
+                            let _ = thread_app_handle.emit(
+                                "seek_completed",
+                                SeekCompletedPayload {
+                                    request_id,
+                                    time: clamped_time,
+                                },
+                            );
+                            continue;
+                        }
+
+                        handle_seek(
+                            time,
+                            is_playing,
+                            request_id,
+                            &output,
+                            &mut current_sink,
+                            &current_path,
+                            current_volume,
+                            &mut is_playing_flag,
+                            &thread_progress,
+                            &thread_app_handle,
+                        )
+                    }
                     AudioCommand::SetVolume(vol) => {
                         current_volume = vol;
+                        #[cfg(target_os = "windows")]
+                        if let Some(playback) = &exclusive_playback {
+                            playback.set_volume(vol);
+                        } else if let Some(sink) = &current_sink {
+                            sink.set_volume(vol);
+                        }
+                        #[cfg(not(target_os = "windows"))]
                         if let Some(sink) = &current_sink {
                             sink.set_volume(vol);
                         }
@@ -280,41 +442,174 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                             sink.stop();
                         }
                         current_sink = None;
+                        #[cfg(target_os = "windows")]
+                        stop_exclusive_playback(&mut exclusive_playback);
 
-                        stream_data = create_output_stream(&host, selected_device_name.as_deref());
-                        active_device_name = stream_data.as_ref().map(|(_, _, name)| name.clone());
+                        output =
+                            SharedOutputBackend::open(&host, selected_device_name.as_deref()).ok();
+                        active_device_name = output
+                            .as_ref()
+                            .map(|output| output.active_device_name().to_string());
 
-                        restore_current_playback(
-                            &stream_data,
-                            &mut current_sink,
-                            &current_path,
-                            current_volume,
-                            is_playing_flag,
-                            &thread_progress,
-                        );
+                        #[cfg(target_os = "windows")]
+                        if requested_output_mode == AudioOutputMode::WasapiExclusive
+                            && !current_path.is_empty()
+                        {
+                            match start_exclusive_playback(
+                                current_path.clone(),
+                                selected_device_name.clone(),
+                                current_volume,
+                                is_playing_flag,
+                                progress_duration(&thread_progress),
+                                &thread_progress,
+                            ) {
+                                Ok(playback) => {
+                                    active_device_name =
+                                        Some(playback.active_device_name().to_string());
+                                    active_output_mode = AudioOutputMode::WasapiExclusive;
+                                    fallback_reason = None;
+                                    exclusive_playback = Some(playback);
+                                }
+                                Err(error) => {
+                                    active_output_mode = AudioOutputMode::Shared;
+                                    fallback_reason = Some(error);
+                                    restore_current_playback(
+                                        &output,
+                                        &mut current_sink,
+                                        &current_path,
+                                        current_volume,
+                                        is_playing_flag,
+                                        &thread_progress,
+                                    );
+                                }
+                            }
+                        } else {
+                            active_output_mode = AudioOutputMode::Shared;
+                            fallback_reason = None;
+                            restore_current_playback(
+                                &output,
+                                &mut current_sink,
+                                &current_path,
+                                current_volume,
+                                is_playing_flag,
+                                &thread_progress,
+                            );
+                        }
+
+                        #[cfg(not(target_os = "windows"))]
+                        {
+                            active_output_mode = AudioOutputMode::Shared;
+                            fallback_reason = None;
+                            restore_current_playback(
+                                &output,
+                                &mut current_sink,
+                                &current_path,
+                                current_volume,
+                                is_playing_flag,
+                                &thread_progress,
+                            );
+                        }
 
                         emit_output_status(
                             &thread_app_handle,
                             &thread_output_status,
                             selected_device_name.clone(),
                             active_device_name.clone(),
+                            requested_output_mode,
+                            active_output_mode,
+                            fallback_reason.clone(),
+                        );
+                    }
+                    AudioCommand::SetOutputMode(output_mode) => {
+                        requested_output_mode = output_mode;
+
+                        if let Some(sink) = &current_sink {
+                            sink.stop();
+                        }
+                        current_sink = None;
+                        #[cfg(target_os = "windows")]
+                        stop_exclusive_playback(&mut exclusive_playback);
+
+                        #[cfg(target_os = "windows")]
+                        if output_mode == AudioOutputMode::WasapiExclusive
+                            && !current_path.is_empty()
+                        {
+                            match start_exclusive_playback(
+                                current_path.clone(),
+                                selected_device_name.clone(),
+                                current_volume,
+                                is_playing_flag,
+                                progress_duration(&thread_progress),
+                                &thread_progress,
+                            ) {
+                                Ok(playback) => {
+                                    active_device_name =
+                                        Some(playback.active_device_name().to_string());
+                                    active_output_mode = AudioOutputMode::WasapiExclusive;
+                                    fallback_reason = None;
+                                    exclusive_playback = Some(playback);
+                                }
+                                Err(error) => {
+                                    active_output_mode = AudioOutputMode::Shared;
+                                    fallback_reason = Some(error);
+                                    restore_current_playback(
+                                        &output,
+                                        &mut current_sink,
+                                        &current_path,
+                                        current_volume,
+                                        is_playing_flag,
+                                        &thread_progress,
+                                    );
+                                }
+                            }
+                        } else {
+                            active_output_mode = AudioOutputMode::Shared;
+                            fallback_reason = None;
+                            restore_current_playback(
+                                &output,
+                                &mut current_sink,
+                                &current_path,
+                                current_volume,
+                                is_playing_flag,
+                                &thread_progress,
+                            );
+                        }
+
+                        #[cfg(not(target_os = "windows"))]
+                        if output_mode == AudioOutputMode::WasapiExclusive {
+                            active_output_mode = AudioOutputMode::Shared;
+                            fallback_reason = Some(
+                                "WASAPI exclusive mode is only available on Windows".to_string(),
+                            );
+                        }
+
+                        emit_output_status(
+                            &thread_app_handle,
+                            &thread_output_status,
+                            selected_device_name.clone(),
+                            active_device_name.clone(),
+                            requested_output_mode,
+                            active_output_mode,
+                            fallback_reason.clone(),
                         );
                     }
                 },
                 Err(RecvTimeoutError::Timeout) => {
-                    if selected_device_name.is_none() {
-                        let next_default_name = default_output_device_name(&host);
-                        if next_default_name != active_device_name {
-                            if let Some(sink) = &current_sink {
-                                sink.stop();
-                            }
-                            current_sink = None;
-                            stream_data = create_output_stream(&host, None);
-                            active_device_name =
-                                stream_data.as_ref().map(|(_, _, name)| name.clone());
+                    #[cfg(target_os = "windows")]
+                    if let Some(result) = exclusive_playback
+                        .as_ref()
+                        .and_then(|playback| playback.try_finished())
+                    {
+                        stop_exclusive_playback(&mut exclusive_playback);
 
+                        if let Err(error) = result {
+                            active_output_mode = AudioOutputMode::Shared;
+                            fallback_reason = Some(error);
+                            active_device_name = output
+                                .as_ref()
+                                .map(|output| output.active_device_name().to_string());
                             restore_current_playback(
-                                &stream_data,
+                                &output,
                                 &mut current_sink,
                                 &current_path,
                                 current_volume,
@@ -325,8 +620,96 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                             emit_output_status(
                                 &thread_app_handle,
                                 &thread_output_status,
+                                selected_device_name.clone(),
+                                active_device_name.clone(),
+                                requested_output_mode,
+                                active_output_mode,
+                                fallback_reason.clone(),
+                            );
+                        }
+                    }
+
+                    if selected_device_name.is_none() {
+                        let next_default_name = default_output_device_name(&host);
+                        if next_default_name != active_device_name {
+                            if let Some(sink) = &current_sink {
+                                sink.stop();
+                            }
+                            current_sink = None;
+                            #[cfg(target_os = "windows")]
+                            stop_exclusive_playback(&mut exclusive_playback);
+                            output = SharedOutputBackend::open(&host, None).ok();
+                            active_device_name = output
+                                .as_ref()
+                                .map(|output| output.active_device_name().to_string());
+
+                            #[cfg(target_os = "windows")]
+                            if requested_output_mode == AudioOutputMode::WasapiExclusive
+                                && !current_path.is_empty()
+                            {
+                                match start_exclusive_playback(
+                                    current_path.clone(),
+                                    selected_device_name.clone(),
+                                    current_volume,
+                                    is_playing_flag,
+                                    progress_duration(&thread_progress),
+                                    &thread_progress,
+                                ) {
+                                    Ok(playback) => {
+                                        active_device_name =
+                                            Some(playback.active_device_name().to_string());
+                                        active_output_mode = AudioOutputMode::WasapiExclusive;
+                                        fallback_reason = None;
+                                        exclusive_playback = Some(playback);
+                                    }
+                                    Err(error) => {
+                                        active_output_mode = AudioOutputMode::Shared;
+                                        fallback_reason = Some(error);
+                                        restore_current_playback(
+                                            &output,
+                                            &mut current_sink,
+                                            &current_path,
+                                            current_volume,
+                                            is_playing_flag,
+                                            &thread_progress,
+                                        );
+                                    }
+                                }
+                            } else {
+                                active_output_mode = AudioOutputMode::Shared;
+                                fallback_reason = None;
+                                restore_current_playback(
+                                    &output,
+                                    &mut current_sink,
+                                    &current_path,
+                                    current_volume,
+                                    is_playing_flag,
+                                    &thread_progress,
+                                );
+                            }
+
+                            #[cfg(not(target_os = "windows"))]
+                            {
+                                active_output_mode = AudioOutputMode::Shared;
+                                fallback_reason = None;
+                                restore_current_playback(
+                                    &output,
+                                    &mut current_sink,
+                                    &current_path,
+                                    current_volume,
+                                    is_playing_flag,
+                                    &thread_progress,
+                                );
+                            }
+
+                            emit_output_status(
+                                &thread_app_handle,
+                                &thread_output_status,
                                 None,
                                 active_device_name.clone(),
+                                requested_output_mode,
+                                active_output_mode,
+                                fallback_reason.clone(),
                             );
                         }
                     }

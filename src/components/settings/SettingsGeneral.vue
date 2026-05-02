@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, onScopeDispose, ref } from 'vue';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useSettings } from '../../features/settings/useSettings';
 import { usePlayer } from '../../composables/player';
 import { useToast } from '../../composables/toast';
@@ -7,6 +8,8 @@ import { useCoverCache } from '../../composables/useCoverCache';
 import { clearPaletteCache } from '../../composables/colorExtraction';
 import { clearImageCaches } from '../../caches/imageCaches';
 import { appApi } from '../../services/tauri/appApi';
+import { playbackApi } from '../../services/tauri/playbackApi';
+import type { AudioOutputStatus } from '../../services/tauri/contracts';
 import ConfirmModal from '../overlays/ConfirmModal.vue';
 
 const { settings } = useSettings();
@@ -23,6 +26,8 @@ const showLyricsSyncOffsetPanel = ref(false);
 const showClearAllDataConfirm = ref(false);
 const isClearingAllData = ref(false);
 const isClearingCache = ref(false);
+const audioOutputStatus = ref<AudioOutputStatus | null>(null);
+let unlistenAudioOutput: UnlistenFn | null = null;
 const { clearCoverCaches } = useCoverCache();
 
 const isLibraryScanActive = computed(
@@ -43,6 +48,35 @@ const lyricsSyncOffsetLabel = computed(() => {
   if (offset === 0) return '0 ms';
   return `${offset > 0 ? '+' : ''}${offset} ms`;
 });
+
+const isWasapiExclusiveEnabled = computed(
+  () => settings.value.audio.outputMode === 'wasapiExclusive',
+);
+
+const audioOutputModeLabel = computed(() => {
+  if (!audioOutputStatus.value) {
+    return isWasapiExclusiveEnabled.value ? '独占' : '共享';
+  }
+
+  if (audioOutputStatus.value.active_output_mode === 'wasapiExclusive') {
+    return '独占';
+  }
+
+  return audioOutputStatus.value.fallback_reason ? '共享（已回退）' : '共享';
+});
+
+const toggleWasapiExclusive = async () => {
+  const outputMode = isWasapiExclusiveEnabled.value ? 'shared' : 'wasapiExclusive';
+  settings.value.audio.outputMode = outputMode;
+
+  try {
+    await playbackApi.setAudioOutputMode(outputMode);
+    audioOutputStatus.value = await playbackApi.getCurrentOutputDevice();
+  } catch (error) {
+    console.error('Failed to update audio output mode:', error);
+    showToast('切换音频输出模式失败', 'error');
+  }
+};
 
 const resetLyricsSyncOffset = () => {
   lyricsSyncOffsetMs.value = 0;
@@ -97,6 +131,18 @@ const handleClearCaches = async () => {
     isClearingCache.value = false;
   }
 };
+
+onMounted(async () => {
+  audioOutputStatus.value = await playbackApi.getCurrentOutputDevice().catch(() => null);
+  unlistenAudioOutput = await listen<AudioOutputStatus>('audio-output-device-changed', event => {
+    audioOutputStatus.value = event.payload;
+  });
+});
+
+onScopeDispose(() => {
+  unlistenAudioOutput?.();
+  unlistenAudioOutput = null;
+});
 </script>
 
 <template>
@@ -170,6 +216,17 @@ const handleClearCaches = async () => {
            <button @click="autoPlay = !autoPlay" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none" :class="autoPlay ? 'bg-[#EC4141]' : 'bg-gray-300 dark:bg-gray-700'">
             <span class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out shadow-sm" :class="autoPlay ? 'translate-x-6' : 'translate-x-1'" />
           </button>
+        </div>
+        <div class="p-4 flex items-center justify-between border-b border-white/30 dark:border-white/5 last:border-0 hover:bg-white/40 dark:hover:bg-white/10 transition-colors">
+          <div>
+            <div class="text-sm font-medium text-gray-800 dark:text-gray-200">WASAPI 独占模式</div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ audioOutputModeLabel }}</span>
+            <button @click="toggleWasapiExclusive" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none" :class="isWasapiExclusiveEnabled ? 'bg-[#EC4141]' : 'bg-gray-300 dark:bg-gray-700'">
+              <span class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out shadow-sm" :class="isWasapiExclusiveEnabled ? 'translate-x-6' : 'translate-x-1'" />
+            </button>
+          </div>
         </div>
         <div class="border-t border-white/30 dark:border-white/5">
           <button

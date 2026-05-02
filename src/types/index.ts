@@ -198,6 +198,12 @@ export interface DesktopLyricsSettings {
   playerFontPreset: LyricsFontPreset;
 }
 
+export type AudioOutputMode = 'shared' | 'wasapiExclusive';
+
+export interface AudioSettings {
+  outputMode: AudioOutputMode;
+}
+
 export type ShortcutActionId =
   | 'togglePlay'
   | 'prevSong'
@@ -237,6 +243,7 @@ export interface AppSettings {
   organizeRoot: string;
   enableAutoOrganize: boolean;
   organizeRule: string;
+  audio: AudioSettings;
   lyrics: LyricsSettings;
   desktopLyrics: DesktopLyricsSettings;
   theme: ThemeSettings;

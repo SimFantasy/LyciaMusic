@@ -22,15 +22,15 @@ use music::{
     get_library_hierarchy, get_library_song_paths_by_album, get_library_song_paths_by_artist,
     get_library_song_paths_for_all_view, get_library_song_paths_for_folder_view,
     get_library_songs_cached, get_sidebar_folders, get_sidebar_hierarchy, get_song_cover,
-    get_song_cover_thumbnail, get_song_detail, get_song_lyrics, get_song_lyrics_payload,
-    get_song_lyrics_for_edit, is_directory, move_file_to_folder, move_music_file,
-    parse_audio_files, remove_library_folder, remove_sidebar_folder, save_song_lyrics,
-    scan_folder_as_playlists, scan_library, scan_music_folder, show_in_folder,
+    get_song_cover_thumbnail, get_song_detail, get_song_lyrics, get_song_lyrics_for_edit,
+    get_song_lyrics_payload, is_directory, move_file_to_folder, move_music_file, parse_audio_files,
+    remove_library_folder, remove_sidebar_folder, save_song_lyrics, scan_folder_as_playlists,
+    scan_library, scan_music_folder, show_in_folder,
 };
 use player::{
     get_audio_visualizer_samples, get_current_output_device, get_output_devices,
-    get_playback_progress, pause_audio, play_audio, resume_audio, seek_audio, set_output_device,
-    set_volume, update_playback_metadata,
+    get_playback_progress, pause_audio, play_audio, resume_audio, seek_audio,
+    set_audio_output_mode, set_output_device, set_volume, update_playback_metadata,
 };
 use statistics::{
     add_to_history, clear_recent_history, export_statistics_file, get_behavior_stats,
@@ -86,6 +86,7 @@ pub fn run() {
             get_output_devices,
             get_current_output_device,
             set_output_device,
+            set_audio_output_mode,
             get_library_folders,
             is_directory,
             add_library_folder,

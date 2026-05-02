@@ -1,6 +1,6 @@
 use rodio::source::SeekError;
 use rodio::Source;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use souvlaki::MediaControls;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
@@ -143,7 +143,10 @@ pub struct SharedProgress {
 }
 
 pub enum AudioCommand {
-    Play(String),
+    Play {
+        path: String,
+        output_mode: AudioOutputMode,
+    },
     Pause,
     Resume,
     Seek {
@@ -153,6 +156,7 @@ pub enum AudioCommand {
     },
     SetVolume(f32),
     SetDevice(Option<String>),
+    SetOutputMode(AudioOutputMode),
 }
 
 pub struct PlayerState {
@@ -173,6 +177,17 @@ pub struct AudioOutputStatus {
     pub selected_device_id: Option<String>,
     pub active_device_name: Option<String>,
     pub follows_system_default: bool,
+    pub requested_output_mode: AudioOutputMode,
+    pub active_output_mode: AudioOutputMode,
+    pub fallback_reason: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum AudioOutputMode {
+    #[default]
+    Shared,
+    WasapiExclusive,
 }
 
 #[derive(Serialize, Clone)]

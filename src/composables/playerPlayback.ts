@@ -2,6 +2,7 @@ import { storeToRefs } from 'pinia';
 import type { Song } from '../types';
 import { playbackApi } from '../services/tauri/playbackApi';
 import { usePlaybackStore } from '../features/playback/store';
+import { useSettingsStore } from '../features/settings/store';
 import { useUiStore } from '../shared/stores/ui';
 import { useCoverCache } from './useCoverCache';
 
@@ -45,6 +46,7 @@ export const createPlayerPlayback = ({
   onBeforePlay,
 }: CreatePlayerPlaybackDeps) => {
   const playbackStore = usePlaybackStore();
+  const settingsStore = useSettingsStore();
   const uiStore = useUiStore();
   const {
     loadCover,
@@ -324,6 +326,7 @@ export const createPlayerPlayback = ({
         album: song.album || 'Unknown Album',
         cover: cachedCoverPath,
         duration: Math.floor(song.duration),
+        outputMode: settingsStore.settings.audio.outputMode,
       });
       if (requestId !== playRequestId || currentSong.value?.path !== song.path) return;
 

@@ -28,6 +28,8 @@ export const playbackApi = {
   pauseAudio: (): Promise<void> => tauriInvoke('pause_audio'),
   resumeAudio: (): Promise<void> => tauriInvoke('resume_audio'),
   seekAudio: (options: SeekAudioOptions): Promise<void> => tauriInvoke('seek_audio', options),
+  setAudioOutputMode: (outputMode: PlayAudioOptions['outputMode']): Promise<void> =>
+    tauriInvoke('set_audio_output_mode', { outputMode }),
   setOutputDevice: (deviceId: string | null) =>
     tauriInvoke('set_output_device', { deviceId }),
   getOutputDevices: (): Promise<AudioDevice[]> => tauriInvoke('get_output_devices'),
