@@ -533,6 +533,9 @@ export const createPlayerLifecycle = ({
         playlistSortMode,
       });
       restoreAppSettings(settings.value, settingsStore.replaceSettings);
+      await playbackApi.setAudioOutputMode(settings.value.audio.outputMode).catch(error => {
+        console.warn('Failed to restore audio output mode:', error);
+      });
 
       await restorePathBackedState();
       await restoreRecentHistory();

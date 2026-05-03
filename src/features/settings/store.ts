@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 
 import type {
   AppSettings,
+  AudioSettings,
   DesktopLyricsSettings,
   LyricsSettings,
   SidebarSettings,
@@ -28,14 +29,16 @@ export type SidebarSettingsPatch = Partial<SidebarSettings>;
 
 export type LyricsSettingsPatch = Partial<LyricsSettings>;
 export type DesktopLyricsSettingsPatch = Partial<DesktopLyricsSettings>;
+export type AudioSettingsPatch = Partial<AudioSettings>;
 
 export interface AppSettingsPatch
-  extends Partial<Omit<AppSettings, 'theme' | 'sidebar' | 'shortcuts' | 'lyrics' | 'desktopLyrics'>> {
+  extends Partial<Omit<AppSettings, 'theme' | 'sidebar' | 'shortcuts' | 'lyrics' | 'desktopLyrics' | 'audio'>> {
   theme?: ThemeSettingsPatch;
   sidebar?: SidebarSettingsPatch;
   shortcuts?: ShortcutSettingsPatch;
   lyrics?: LyricsSettingsPatch;
   desktopLyrics?: DesktopLyricsSettingsPatch;
+  audio?: AudioSettingsPatch;
 }
 
 export interface DeprecatedAppSettingsPatch extends AppSettingsPatch {
@@ -79,6 +82,10 @@ export const defaultSidebarSettings: SidebarSettings = {
   showStatistics: true,
 };
 
+export const defaultAudioSettings: AudioSettings = {
+  outputMode: 'shared',
+};
+
 export const defaultAppSettings: AppSettings = {
   closeToTray: false,
   showQualityBadges: true,
@@ -89,6 +96,7 @@ export const defaultAppSettings: AppSettings = {
   organizeRoot: 'D:\\Music',
   enableAutoOrganize: true,
   organizeRule: '{Artist}/{Album}/{Title}',
+  audio: defaultAudioSettings,
   lyrics: createDefaultLyricsSettings(),
   desktopLyrics: createDefaultDesktopLyricsSettings(),
   theme: defaultThemeSettings,
@@ -107,10 +115,15 @@ export const createDefaultSidebarSettings = (): SidebarSettings => ({
   ...defaultSidebarSettings,
 });
 
+export const createDefaultAudioSettings = (): AudioSettings => ({
+  ...defaultAudioSettings,
+});
+
 export const createDefaultAppSettings = (): AppSettings => ({
   ...defaultAppSettings,
   lyrics: createDefaultLyricsSettings(),
   desktopLyrics: createDefaultDesktopLyricsSettings(),
+  audio: createDefaultAudioSettings(),
   theme: createDefaultThemeSettings(),
   sidebar: createDefaultSidebarSettings(),
   shortcuts: createDefaultShortcutSettings(),
@@ -143,6 +156,14 @@ export const mergeSidebarSettings = (
   ...patch,
 });
 
+export const mergeAudioSettings = (
+  base: AudioSettings,
+  patch: AudioSettingsPatch,
+): AudioSettings => ({
+  ...base,
+  outputMode: patch.outputMode === 'wasapiExclusive' ? 'wasapiExclusive' : 'shared',
+});
+
 export const mergeAppSettings = (
   base: AppSettings,
   patch: DeprecatedAppSettingsPatch,
@@ -152,6 +173,7 @@ export const mergeAppSettings = (
   ...((({ minimizeToTray: _deprecated, ...rest }) => rest)(patch)),
   lyrics: mergeLyricsSettings(base.lyrics, patch.lyrics ?? {}),
   desktopLyrics: mergeDesktopLyricsSettings(base.desktopLyrics, patch.desktopLyrics ?? {}),
+  audio: mergeAudioSettings(base.audio ?? createDefaultAudioSettings(), patch.audio ?? {}),
   theme: mergeThemeSettings(base.theme, patch.theme ?? {}),
   sidebar: mergeSidebarSettings(base.sidebar, patch.sidebar ?? {}),
   shortcuts: mergeShortcutSettings(base.shortcuts, patch.shortcuts ?? {}),

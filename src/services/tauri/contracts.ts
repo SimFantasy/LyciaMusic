@@ -9,6 +9,7 @@ import type {
   Song,
   SongDetail,
 } from '../../types';
+import type { AudioOutputMode } from '../../types';
 
 export interface AudioDevice {
   id: string;
@@ -19,6 +20,9 @@ export interface AudioOutputStatus {
   selected_device_id: string | null;
   active_device_name: string | null;
   follows_system_default: boolean;
+  requested_output_mode: AudioOutputMode;
+  active_output_mode: AudioOutputMode;
+  fallback_reason: string | null;
 }
 
 export interface MovedMusicFilePath {
@@ -83,6 +87,7 @@ export interface PlayAudioOptions {
   album: string;
   cover: string;
   duration: number;
+  outputMode: AudioOutputMode;
 }
 
 export interface UpdatePlaybackMetadataOptions {
@@ -204,6 +209,7 @@ export interface TauriCommandMap {
   pause_audio: { payload: undefined; response: void };
   resume_audio: { payload: undefined; response: void };
   seek_audio: { payload: SeekAudioOptions; response: void };
+  set_audio_output_mode: { payload: { outputMode: AudioOutputMode }; response: void };
   set_output_device: { payload: { deviceId: string | null }; response: void };
   get_output_devices: { payload: undefined; response: AudioDevice[] };
   get_current_output_device: { payload: undefined; response: AudioOutputStatus };
