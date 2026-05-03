@@ -4,7 +4,7 @@ use rodio::{Decoder, Source};
 use std::fs::File;
 use std::io::BufReader;
 use std::sync::atomic::Ordering;
-use std::sync::mpsc::{channel, sync_channel, Receiver, Sender, TryRecvError};
+use std::sync::mpsc::{channel, sync_channel, Receiver, RecvTimeoutError, Sender, TryRecvError};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -66,12 +66,17 @@ impl WasapiExclusivePlayback {
                 let _ = join_handle.join();
                 Err(OutputError::Exclusive(error))
             }
-            Err(error) => {
+            Err(RecvTimeoutError::Timeout) => {
                 let _ = command_tx.send(ExclusiveCommand::Stop);
-                let _ = join_handle.join();
                 Err(OutputError::Exclusive(format!(
-                    "WASAPI exclusive initialization timed out: {error}"
+                    "WASAPI exclusive initialization timed out after 3 seconds"
                 )))
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                let _ = join_handle.join();
+                Err(OutputError::Exclusive(
+                    "WASAPI exclusive initialization thread disconnected".to_string(),
+                ))
             }
         }
     }
@@ -129,6 +134,20 @@ struct ExclusiveSource {
     channel_samples: u16,
 }
 
+#[derive(Clone, Copy)]
+enum ExclusiveSampleFormat {
+    Float32,
+    Int32,
+    Int24,
+    Int16,
+}
+
+struct ExclusiveOutputFormat {
+    wave_format: WaveFormat,
+    sample_format: ExclusiveSampleFormat,
+    bytes_per_frame: usize,
+}
+
 impl ExclusiveSource {
     fn open(
         path: &str,
@@ -164,10 +183,16 @@ impl ExclusiveSource {
         ))
     }
 
-    fn read_frames(&mut self, frame_count: usize, volume: f32) -> (Vec<u8>, bool) {
+    fn read_frames_into(
+        &mut self,
+        frame_count: usize,
+        volume: f32,
+        sample_format: ExclusiveSampleFormat,
+        output: &mut Vec<u8>,
+    ) -> bool {
         let sample_count = frame_count.saturating_mul(self.channels as usize);
-        let mut bytes = Vec::with_capacity(sample_count * std::mem::size_of::<f32>());
         let mut ended = false;
+        output.clear();
 
         for _ in 0..sample_count {
             let sample = match self.source.next() {
@@ -191,11 +216,68 @@ impl ExclusiveSource {
                 }
             };
 
-            bytes.extend_from_slice(&(sample * volume).clamp(-1.0, 1.0).to_le_bytes());
+            push_sample_bytes(output, sample * volume, sample_format);
         }
 
-        (bytes, ended)
+        ended
     }
+}
+
+fn push_sample_bytes(output: &mut Vec<u8>, sample: f32, sample_format: ExclusiveSampleFormat) {
+    let sample = sample.clamp(-1.0, 1.0);
+
+    match sample_format {
+        ExclusiveSampleFormat::Float32 => output.extend_from_slice(&sample.to_le_bytes()),
+        ExclusiveSampleFormat::Int32 => {
+            let value = (sample * i32::MAX as f32).round() as i32;
+            output.extend_from_slice(&value.to_le_bytes());
+        }
+        ExclusiveSampleFormat::Int24 => {
+            let value = (sample * 8_388_607.0).round() as i32;
+            output.extend_from_slice(&value.to_le_bytes()[..3]);
+        }
+        ExclusiveSampleFormat::Int16 => {
+            let value = (sample * i16::MAX as f32).round() as i16;
+            output.extend_from_slice(&value.to_le_bytes());
+        }
+    }
+}
+
+fn negotiate_exclusive_format(
+    audio_client: &wasapi::AudioClient,
+    sample_rate: u32,
+    channels: u16,
+) -> Result<ExclusiveOutputFormat, String> {
+    let candidates = [
+        (32, 32, SampleType::Float, ExclusiveSampleFormat::Float32),
+        (32, 32, SampleType::Int, ExclusiveSampleFormat::Int32),
+        (24, 24, SampleType::Int, ExclusiveSampleFormat::Int24),
+        (16, 16, SampleType::Int, ExclusiveSampleFormat::Int16),
+    ];
+
+    for (store_bits, valid_bits, sample_type, sample_format) in candidates {
+        let requested_format = WaveFormat::new(
+            store_bits,
+            valid_bits,
+            &sample_type,
+            sample_rate as usize,
+            channels as usize,
+            None,
+        );
+
+        if let Ok(wave_format) = audio_client.is_supported_exclusive_with_quirks(&requested_format)
+        {
+            return Ok(ExclusiveOutputFormat {
+                bytes_per_frame: wave_format.get_blockalign() as usize,
+                wave_format,
+                sample_format,
+            });
+        }
+    }
+
+    Err(format!(
+        "Unsupported WASAPI exclusive format: {sample_rate} Hz, {channels} channels"
+    ))
 }
 
 fn run_exclusive_playback(
@@ -229,19 +311,9 @@ fn run_exclusive_playback(
     let mut audio_client = device
         .get_iaudioclient()
         .map_err(|error| error.to_string())?;
-    let requested_format = WaveFormat::new(
-        32,
-        32,
-        &SampleType::Float,
-        sample_rate as usize,
-        channels as usize,
-        None,
-    );
-    let exclusive_format = audio_client
-        .is_supported_exclusive_with_quirks(&requested_format)
-        .map_err(|error| error.to_string())?;
+    let exclusive_format = negotiate_exclusive_format(&audio_client, sample_rate, channels)?;
     let period_hns = audio_client
-        .calculate_aligned_period_near(EXCLUSIVE_PERIOD_HNS, None, &exclusive_format)
+        .calculate_aligned_period_near(EXCLUSIVE_PERIOD_HNS, None, &exclusive_format.wave_format)
         .unwrap_or(EXCLUSIVE_PERIOD_HNS);
     let mode = StreamMode::PollingExclusive {
         buffer_duration_hns: period_hns * EXCLUSIVE_BUFFER_MULTIPLIER,
@@ -249,7 +321,7 @@ fn run_exclusive_playback(
     };
 
     audio_client
-        .initialize_client(&exclusive_format, &Direction::Render, &mode)
+        .initialize_client(&exclusive_format.wave_format, &Direction::Render, &mode)
         .map_err(|error| error.to_string())?;
     let render_client = audio_client
         .get_audiorenderclient()
@@ -259,9 +331,16 @@ fn run_exclusive_playback(
         .map_err(|error| error.to_string())? as usize;
 
     let volume = request.volume.clamp(0.0, 1.0);
-    let (prefill, _) = source.read_frames(buffer_size, volume);
+    let mut write_buffer =
+        Vec::with_capacity(buffer_size.saturating_mul(exclusive_format.bytes_per_frame));
+    let _ = source.read_frames_into(
+        buffer_size,
+        volume,
+        exclusive_format.sample_format,
+        &mut write_buffer,
+    );
     render_client
-        .write_to_device(buffer_size, &prefill, None)
+        .write_to_device(buffer_size, &write_buffer, None)
         .map_err(|error| error.to_string())?;
 
     if request.is_playing {
@@ -304,9 +383,14 @@ fn run_exclusive_playback(
                         .map_err(|error| error.to_string())?;
                     source =
                         ExclusiveSource::open(&request.path, time, request.progress.clone())?.0;
-                    let (prefill, _) = source.read_frames(buffer_size, volume);
+                    let _ = source.read_frames_into(
+                        buffer_size,
+                        volume,
+                        exclusive_format.sample_format,
+                        &mut write_buffer,
+                    );
                     render_client
-                        .write_to_device(buffer_size, &prefill, None)
+                        .write_to_device(buffer_size, &write_buffer, None)
                         .map_err(|error| error.to_string())?;
                     if next_playing {
                         audio_client
@@ -339,9 +423,14 @@ fn run_exclusive_playback(
             continue;
         }
 
-        let (bytes, ended) = source.read_frames(available_frames, volume);
+        let ended = source.read_frames_into(
+            available_frames,
+            volume,
+            exclusive_format.sample_format,
+            &mut write_buffer,
+        );
         render_client
-            .write_to_device(available_frames, &bytes, None)
+            .write_to_device(available_frames, &write_buffer, None)
             .map_err(|error| error.to_string())?;
 
         if ended {

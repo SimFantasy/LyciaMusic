@@ -20,6 +20,8 @@ use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
+const PLAYER_POLL_INTERVAL: Duration = Duration::from_millis(150);
+
 fn progress_duration(progress: &Arc<SharedProgress>) -> Duration {
     let current_samples = progress.samples_played.load(Ordering::Relaxed);
     let rate = progress.sample_rate.load(Ordering::Relaxed);
@@ -57,6 +59,72 @@ fn start_exclusive_playback(
         start_time,
     })
     .map_err(|error| error.to_string())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn restore_preferred_output(
+    selected_device_name: &Option<String>,
+    output: &Option<SharedOutputBackend>,
+    current_sink: &mut Option<Sink>,
+    #[cfg(target_os = "windows")] exclusive_playback: &mut Option<WasapiExclusivePlayback>,
+    active_device_name: &mut Option<String>,
+    active_output_mode: &mut AudioOutputMode,
+    fallback_reason: &mut Option<String>,
+    requested_output_mode: AudioOutputMode,
+    current_path: &str,
+    current_volume: f32,
+    is_playing_flag: bool,
+    progress: &Arc<SharedProgress>,
+) {
+    *active_device_name = output
+        .as_ref()
+        .map(|output| output.active_device_name().to_string());
+
+    #[cfg(target_os = "windows")]
+    if requested_output_mode == AudioOutputMode::WasapiExclusive && !current_path.is_empty() {
+        match start_exclusive_playback(
+            current_path.to_string(),
+            selected_device_name.clone(),
+            current_volume,
+            is_playing_flag,
+            progress_duration(progress),
+            progress,
+        ) {
+            Ok(playback) => {
+                *active_device_name = Some(playback.active_device_name().to_string());
+                *active_output_mode = AudioOutputMode::WasapiExclusive;
+                *fallback_reason = None;
+                *exclusive_playback = Some(playback);
+                return;
+            }
+            Err(error) => {
+                *active_output_mode = AudioOutputMode::Shared;
+                *fallback_reason = Some(error);
+            }
+        }
+    } else {
+        *active_output_mode = AudioOutputMode::Shared;
+        *fallback_reason = None;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        *active_output_mode = AudioOutputMode::Shared;
+        *fallback_reason = if requested_output_mode == AudioOutputMode::WasapiExclusive {
+            Some("WASAPI exclusive mode is only available on Windows".to_string())
+        } else {
+            None
+        };
+    }
+
+    restore_current_playback(
+        output,
+        current_sink,
+        current_path,
+        current_volume,
+        is_playing_flag,
+        progress,
+    );
 }
 
 fn initialize_media_controls(app: &AppHandle) -> Arc<Mutex<Option<MediaControls>>> {
@@ -280,7 +348,7 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
         );
 
         loop {
-            match rx.recv_timeout(Duration::from_millis(750)) {
+            match rx.recv_timeout(PLAYER_POLL_INTERVAL) {
                 Ok(cmd) => match cmd {
                     AudioCommand::Play { path, output_mode } => {
                         requested_output_mode = output_mode;
@@ -447,68 +515,21 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
 
                         output =
                             SharedOutputBackend::open(&host, selected_device_name.as_deref()).ok();
-                        active_device_name = output
-                            .as_ref()
-                            .map(|output| output.active_device_name().to_string());
-
-                        #[cfg(target_os = "windows")]
-                        if requested_output_mode == AudioOutputMode::WasapiExclusive
-                            && !current_path.is_empty()
-                        {
-                            match start_exclusive_playback(
-                                current_path.clone(),
-                                selected_device_name.clone(),
-                                current_volume,
-                                is_playing_flag,
-                                progress_duration(&thread_progress),
-                                &thread_progress,
-                            ) {
-                                Ok(playback) => {
-                                    active_device_name =
-                                        Some(playback.active_device_name().to_string());
-                                    active_output_mode = AudioOutputMode::WasapiExclusive;
-                                    fallback_reason = None;
-                                    exclusive_playback = Some(playback);
-                                }
-                                Err(error) => {
-                                    active_output_mode = AudioOutputMode::Shared;
-                                    fallback_reason = Some(error);
-                                    restore_current_playback(
-                                        &output,
-                                        &mut current_sink,
-                                        &current_path,
-                                        current_volume,
-                                        is_playing_flag,
-                                        &thread_progress,
-                                    );
-                                }
-                            }
-                        } else {
-                            active_output_mode = AudioOutputMode::Shared;
-                            fallback_reason = None;
-                            restore_current_playback(
-                                &output,
-                                &mut current_sink,
-                                &current_path,
-                                current_volume,
-                                is_playing_flag,
-                                &thread_progress,
-                            );
-                        }
-
-                        #[cfg(not(target_os = "windows"))]
-                        {
-                            active_output_mode = AudioOutputMode::Shared;
-                            fallback_reason = None;
-                            restore_current_playback(
-                                &output,
-                                &mut current_sink,
-                                &current_path,
-                                current_volume,
-                                is_playing_flag,
-                                &thread_progress,
-                            );
-                        }
+                        restore_preferred_output(
+                            &selected_device_name,
+                            &output,
+                            &mut current_sink,
+                            #[cfg(target_os = "windows")]
+                            &mut exclusive_playback,
+                            &mut active_device_name,
+                            &mut active_output_mode,
+                            &mut fallback_reason,
+                            requested_output_mode,
+                            &current_path,
+                            current_volume,
+                            is_playing_flag,
+                            &thread_progress,
+                        );
 
                         emit_output_status(
                             &thread_app_handle,
@@ -530,58 +551,21 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                         #[cfg(target_os = "windows")]
                         stop_exclusive_playback(&mut exclusive_playback);
 
-                        #[cfg(target_os = "windows")]
-                        if output_mode == AudioOutputMode::WasapiExclusive
-                            && !current_path.is_empty()
-                        {
-                            match start_exclusive_playback(
-                                current_path.clone(),
-                                selected_device_name.clone(),
-                                current_volume,
-                                is_playing_flag,
-                                progress_duration(&thread_progress),
-                                &thread_progress,
-                            ) {
-                                Ok(playback) => {
-                                    active_device_name =
-                                        Some(playback.active_device_name().to_string());
-                                    active_output_mode = AudioOutputMode::WasapiExclusive;
-                                    fallback_reason = None;
-                                    exclusive_playback = Some(playback);
-                                }
-                                Err(error) => {
-                                    active_output_mode = AudioOutputMode::Shared;
-                                    fallback_reason = Some(error);
-                                    restore_current_playback(
-                                        &output,
-                                        &mut current_sink,
-                                        &current_path,
-                                        current_volume,
-                                        is_playing_flag,
-                                        &thread_progress,
-                                    );
-                                }
-                            }
-                        } else {
-                            active_output_mode = AudioOutputMode::Shared;
-                            fallback_reason = None;
-                            restore_current_playback(
-                                &output,
-                                &mut current_sink,
-                                &current_path,
-                                current_volume,
-                                is_playing_flag,
-                                &thread_progress,
-                            );
-                        }
-
-                        #[cfg(not(target_os = "windows"))]
-                        if output_mode == AudioOutputMode::WasapiExclusive {
-                            active_output_mode = AudioOutputMode::Shared;
-                            fallback_reason = Some(
-                                "WASAPI exclusive mode is only available on Windows".to_string(),
-                            );
-                        }
+                        restore_preferred_output(
+                            &selected_device_name,
+                            &output,
+                            &mut current_sink,
+                            #[cfg(target_os = "windows")]
+                            &mut exclusive_playback,
+                            &mut active_device_name,
+                            &mut active_output_mode,
+                            &mut fallback_reason,
+                            requested_output_mode,
+                            &current_path,
+                            current_volume,
+                            is_playing_flag,
+                            &thread_progress,
+                        );
 
                         emit_output_status(
                             &thread_app_handle,
@@ -639,68 +623,21 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                             #[cfg(target_os = "windows")]
                             stop_exclusive_playback(&mut exclusive_playback);
                             output = SharedOutputBackend::open(&host, None).ok();
-                            active_device_name = output
-                                .as_ref()
-                                .map(|output| output.active_device_name().to_string());
-
-                            #[cfg(target_os = "windows")]
-                            if requested_output_mode == AudioOutputMode::WasapiExclusive
-                                && !current_path.is_empty()
-                            {
-                                match start_exclusive_playback(
-                                    current_path.clone(),
-                                    selected_device_name.clone(),
-                                    current_volume,
-                                    is_playing_flag,
-                                    progress_duration(&thread_progress),
-                                    &thread_progress,
-                                ) {
-                                    Ok(playback) => {
-                                        active_device_name =
-                                            Some(playback.active_device_name().to_string());
-                                        active_output_mode = AudioOutputMode::WasapiExclusive;
-                                        fallback_reason = None;
-                                        exclusive_playback = Some(playback);
-                                    }
-                                    Err(error) => {
-                                        active_output_mode = AudioOutputMode::Shared;
-                                        fallback_reason = Some(error);
-                                        restore_current_playback(
-                                            &output,
-                                            &mut current_sink,
-                                            &current_path,
-                                            current_volume,
-                                            is_playing_flag,
-                                            &thread_progress,
-                                        );
-                                    }
-                                }
-                            } else {
-                                active_output_mode = AudioOutputMode::Shared;
-                                fallback_reason = None;
-                                restore_current_playback(
-                                    &output,
-                                    &mut current_sink,
-                                    &current_path,
-                                    current_volume,
-                                    is_playing_flag,
-                                    &thread_progress,
-                                );
-                            }
-
-                            #[cfg(not(target_os = "windows"))]
-                            {
-                                active_output_mode = AudioOutputMode::Shared;
-                                fallback_reason = None;
-                                restore_current_playback(
-                                    &output,
-                                    &mut current_sink,
-                                    &current_path,
-                                    current_volume,
-                                    is_playing_flag,
-                                    &thread_progress,
-                                );
-                            }
+                            restore_preferred_output(
+                                &selected_device_name,
+                                &output,
+                                &mut current_sink,
+                                #[cfg(target_os = "windows")]
+                                &mut exclusive_playback,
+                                &mut active_device_name,
+                                &mut active_output_mode,
+                                &mut fallback_reason,
+                                requested_output_mode,
+                                &current_path,
+                                current_volume,
+                                is_playing_flag,
+                                &thread_progress,
+                            );
 
                             emit_output_status(
                                 &thread_app_handle,
