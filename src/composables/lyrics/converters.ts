@@ -13,6 +13,17 @@ function toMs(seconds: number): number {
   return Math.max(0, Math.round(seconds * 1000));
 }
 
+const MAX_AML_LINE_LEAD_IN_MS = 300;
+const AML_LINE_LEAD_IN_RATIO = 0.25;
+const MIN_AML_LINE_DURATION_MS = 40;
+
+function getAdaptiveAmlLineLeadInMs(currentStartTime: number, nextStartTime: number): number {
+  const gap = nextStartTime - currentStartTime;
+  if (gap <= 0) return 0;
+
+  return Math.min(MAX_AML_LINE_LEAD_IN_MS, Math.round(gap * AML_LINE_LEAD_IN_RATIO));
+}
+
 function createPlainFragment(text: string): DisplayFragment[] | undefined {
   return text ? [{ text }] : undefined;
 }
@@ -128,11 +139,15 @@ export function convertLyricsToAmlLines(
 
     const startTime = renderLine.startMs;
     const parsedEndTime = renderLine.endMs;
-    const nextStartTime = toMs(lines[lineIndex + 1]?.time ?? line.time + 3);
-    const endTime = Math.max(
-      startTime + 40,
-      parsedEndTime > startTime ? parsedEndTime : nextStartTime,
-    );
+    const nextLine = lines[lineIndex + 1];
+    const nextStartTime = toMs(nextLine?.time ?? line.time + 3);
+    const adaptiveLeadIn = nextLine
+      ? getAdaptiveAmlLineLeadInMs(startTime, nextStartTime)
+      : 0;
+    const lineBoundaryEndTime = nextLine
+      ? nextStartTime - adaptiveLeadIn
+      : Math.max(parsedEndTime, nextStartTime);
+    const endTime = Math.max(startTime + MIN_AML_LINE_DURATION_MS, lineBoundaryEndTime);
 
     const sourceWords = line.words ?? [];
     const convertedWords = sourceWords.map((word, wordIndex) => {
