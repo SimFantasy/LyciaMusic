@@ -64,7 +64,8 @@ fn start_exclusive_playback(
 #[allow(clippy::too_many_arguments)]
 fn restore_preferred_output(
     selected_device_name: &Option<String>,
-    output: &Option<SharedOutputBackend>,
+    output: &mut Option<SharedOutputBackend>,
+    host: &cpal::Host,
     current_sink: &mut Option<Sink>,
     #[cfg(target_os = "windows")] exclusive_playback: &mut Option<WasapiExclusivePlayback>,
     active_device_name: &mut Option<String>,
@@ -76,6 +77,7 @@ fn restore_preferred_output(
     is_playing_flag: bool,
     progress: &Arc<SharedProgress>,
 ) {
+    *output = SharedOutputBackend::open(host, selected_device_name.as_deref()).ok();
     *active_device_name = output
         .as_ref()
         .map(|output| output.active_device_name().to_string());
@@ -117,6 +119,31 @@ fn restore_preferred_output(
         };
     }
 
+    restore_current_playback(
+        output,
+        current_sink,
+        current_path,
+        current_volume,
+        is_playing_flag,
+        progress,
+    );
+}
+
+fn restore_shared_output(
+    selected_device_name: &Option<String>,
+    output: &mut Option<SharedOutputBackend>,
+    host: &cpal::Host,
+    current_sink: &mut Option<Sink>,
+    active_device_name: &mut Option<String>,
+    current_path: &str,
+    current_volume: f32,
+    is_playing_flag: bool,
+    progress: &Arc<SharedProgress>,
+) {
+    *output = SharedOutputBackend::open(host, selected_device_name.as_deref()).ok();
+    *active_device_name = output
+        .as_ref()
+        .map(|output| output.active_device_name().to_string());
     restore_current_playback(
         output,
         current_sink,
@@ -378,6 +405,8 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                                     current_path = path;
                                     is_playing_flag = true;
                                     exclusive_playback = Some(playback);
+                                    current_sink = None;
+                                    output = None;
 
                                     emit_output_status(
                                         &thread_app_handle,
@@ -406,6 +435,9 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                         }
 
                         if active_output_mode == AudioOutputMode::Shared {
+                            output =
+                                SharedOutputBackend::open(&host, selected_device_name.as_deref())
+                                    .ok();
                             active_device_name = output
                                 .as_ref()
                                 .map(|output| output.active_device_name().to_string());
@@ -513,11 +545,10 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                         #[cfg(target_os = "windows")]
                         stop_exclusive_playback(&mut exclusive_playback);
 
-                        output =
-                            SharedOutputBackend::open(&host, selected_device_name.as_deref()).ok();
                         restore_preferred_output(
                             &selected_device_name,
-                            &output,
+                            &mut output,
+                            &host,
                             &mut current_sink,
                             #[cfg(target_os = "windows")]
                             &mut exclusive_playback,
@@ -553,7 +584,8 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
 
                         restore_preferred_output(
                             &selected_device_name,
-                            &output,
+                            &mut output,
+                            &host,
                             &mut current_sink,
                             #[cfg(target_os = "windows")]
                             &mut exclusive_playback,
@@ -589,12 +621,12 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                         if let Err(error) = result {
                             active_output_mode = AudioOutputMode::Shared;
                             fallback_reason = Some(error);
-                            active_device_name = output
-                                .as_ref()
-                                .map(|output| output.active_device_name().to_string());
-                            restore_current_playback(
-                                &output,
+                            restore_shared_output(
+                                &selected_device_name,
+                                &mut output,
+                                &host,
                                 &mut current_sink,
+                                &mut active_device_name,
                                 &current_path,
                                 current_volume,
                                 is_playing_flag,
@@ -622,10 +654,10 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                             current_sink = None;
                             #[cfg(target_os = "windows")]
                             stop_exclusive_playback(&mut exclusive_playback);
-                            output = SharedOutputBackend::open(&host, None).ok();
                             restore_preferred_output(
                                 &selected_device_name,
-                                &output,
+                                &mut output,
+                                &host,
                                 &mut current_sink,
                                 #[cfg(target_os = "windows")]
                                 &mut exclusive_playback,

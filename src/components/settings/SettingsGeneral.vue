@@ -10,6 +10,8 @@ import { clearImageCaches } from '../../caches/imageCaches';
 import { appApi } from '../../services/tauri/appApi';
 import { playbackApi } from '../../services/tauri/playbackApi';
 import type { AudioOutputStatus } from '../../services/tauri/contracts';
+import type { AudioDevice } from '../../services/tauri/contracts';
+import { playerStorage, playerStorageKeys } from '../../services/storage/playerStorage';
 import ConfirmModal from '../overlays/ConfirmModal.vue';
 
 const { settings } = useSettings();
@@ -27,6 +29,9 @@ const showClearAllDataConfirm = ref(false);
 const isClearingAllData = ref(false);
 const isClearingCache = ref(false);
 const audioOutputStatus = ref<AudioOutputStatus | null>(null);
+const audioOutputDevices = ref<AudioDevice[]>([]);
+const selectedOutputDeviceId = ref<string>('');
+const isChangingOutputDevice = ref(false);
 let unlistenAudioOutput: UnlistenFn | null = null;
 const { clearCoverCaches } = useCoverCache();
 
@@ -64,6 +69,52 @@ const audioOutputModeLabel = computed(() => {
 
   return audioOutputStatus.value.fallback_reason ? '共享（已回退）' : '共享';
 });
+
+const activeOutputDeviceLabel = computed(() =>
+  audioOutputStatus.value?.active_device_name || '系统默认',
+);
+
+const loadAudioOutputDevices = async () => {
+  const [devices, status] = await Promise.all([
+    playbackApi.getOutputDevices(),
+    playbackApi.getCurrentOutputDevice(),
+  ]);
+
+  audioOutputDevices.value = devices;
+  audioOutputStatus.value = status;
+  selectedOutputDeviceId.value = status.selected_device_id ?? '';
+};
+
+const handleOutputDeviceChange = async (event: Event) => {
+  if (isChangingOutputDevice.value) {
+    return;
+  }
+
+  const deviceId = (event.target as HTMLSelectElement).value;
+  isChangingOutputDevice.value = true;
+
+  try {
+    const nextDeviceId = deviceId || null;
+    await playbackApi.setOutputDevice(nextDeviceId);
+
+    if (nextDeviceId) {
+      playerStorage.setString(playerStorageKeys.outputDevice, nextDeviceId);
+      playerStorage.setString(playerStorageKeys.outputDeviceMode, 'manual');
+    } else {
+      playerStorage.remove(playerStorageKeys.outputDevice);
+      playerStorage.setString(playerStorageKeys.outputDeviceMode, 'default');
+    }
+
+    selectedOutputDeviceId.value = deviceId;
+    audioOutputStatus.value = await playbackApi.getCurrentOutputDevice();
+  } catch (error) {
+    console.error('Failed to update audio output device:', error);
+    showToast('切换播放设备失败', 'error');
+    selectedOutputDeviceId.value = audioOutputStatus.value?.selected_device_id ?? '';
+  } finally {
+    isChangingOutputDevice.value = false;
+  }
+};
 
 const toggleWasapiExclusive = async () => {
   const outputMode = isWasapiExclusiveEnabled.value ? 'shared' : 'wasapiExclusive';
@@ -133,9 +184,12 @@ const handleClearCaches = async () => {
 };
 
 onMounted(async () => {
-  audioOutputStatus.value = await playbackApi.getCurrentOutputDevice().catch(() => null);
+  await loadAudioOutputDevices().catch(error => {
+    console.warn('Failed to load audio output devices:', error);
+  });
   unlistenAudioOutput = await listen<AudioOutputStatus>('audio-output-device-changed', event => {
     audioOutputStatus.value = event.payload;
+    selectedOutputDeviceId.value = event.payload.selected_device_id ?? '';
   });
 });
 
@@ -216,6 +270,29 @@ onScopeDispose(() => {
            <button @click="autoPlay = !autoPlay" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none" :class="autoPlay ? 'bg-[#EC4141]' : 'bg-gray-300 dark:bg-gray-700'">
             <span class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out shadow-sm" :class="autoPlay ? 'translate-x-6' : 'translate-x-1'" />
           </button>
+        </div>
+        <div class="p-4 flex items-center justify-between gap-4 border-b border-white/30 dark:border-white/5 last:border-0 hover:bg-white/40 dark:hover:bg-white/10 transition-colors">
+          <div>
+            <div class="text-sm font-medium text-gray-800 dark:text-gray-200">播放设备</div>
+          </div>
+          <div class="flex min-w-0 items-center gap-3">
+            <span class="hidden max-w-[180px] truncate text-xs font-medium text-gray-600 dark:text-gray-300 md:inline">{{ activeOutputDeviceLabel }}</span>
+            <select
+              v-model="selectedOutputDeviceId"
+              :disabled="isChangingOutputDevice"
+              class="settings-select"
+              @change="handleOutputDeviceChange"
+            >
+              <option value="">系统默认</option>
+              <option
+                v-for="device in audioOutputDevices"
+                :key="device.id"
+                :value="device.id"
+              >
+                {{ device.name }}
+              </option>
+            </select>
+          </div>
         </div>
         <div class="p-4 flex items-center justify-between border-b border-white/30 dark:border-white/5 last:border-0 hover:bg-white/40 dark:hover:bg-white/10 transition-colors">
           <div>
@@ -377,6 +454,29 @@ onScopeDispose(() => {
   box-shadow: 0 0 0 3px rgba(236, 65, 65, 0.08);
 }
 
+.settings-select {
+  max-width: 260px;
+  min-height: 38px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 8px 12px;
+  color: rgb(55 65 81);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.settings-select:focus {
+  border-color: rgba(236, 65, 65, 0.3);
+  box-shadow: 0 0 0 3px rgba(236, 65, 65, 0.08);
+}
+
+.settings-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .settings-action-button {
   min-height: 38px;
   padding: 0 16px;
@@ -450,6 +550,17 @@ onScopeDispose(() => {
 }
 
 :global(.dark) .settings-number-input:focus {
+  border-color: rgba(236, 65, 65, 0.34);
+  box-shadow: 0 0 0 3px rgba(236, 65, 65, 0.12);
+}
+
+:global(.dark) .settings-select {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+:global(.dark) .settings-select:focus {
   border-color: rgba(236, 65, 65, 0.34);
   box-shadow: 0 0 0 3px rgba(236, 65, 65, 0.12);
 }
