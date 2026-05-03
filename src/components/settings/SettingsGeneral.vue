@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onScopeDispose, ref } from 'vue';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { CircleAlert } from 'lucide-vue-next';
 import { useSettings } from '../../features/settings/useSettings';
 import { usePlayer } from '../../composables/player';
 import { useToast } from '../../composables/toast';
@@ -32,6 +33,7 @@ const audioOutputStatus = ref<AudioOutputStatus | null>(null);
 const audioOutputDevices = ref<AudioDevice[]>([]);
 const selectedOutputDeviceId = ref<string>('');
 const isChangingOutputDevice = ref(false);
+const wasapiExclusiveSideEffectTip = '开启后会独占播放设备：其他软件可能无声；设备断开或被占用时会自动回退默认播放。';
 let unlistenAudioOutput: UnlistenFn | null = null;
 const { clearCoverCaches } = useCoverCache();
 
@@ -56,22 +58,6 @@ const lyricsSyncOffsetLabel = computed(() => {
 
 const isWasapiExclusiveEnabled = computed(
   () => settings.value.audio.outputMode === 'wasapiExclusive',
-);
-
-const audioOutputModeLabel = computed(() => {
-  if (!audioOutputStatus.value) {
-    return isWasapiExclusiveEnabled.value ? '独占' : '共享';
-  }
-
-  if (audioOutputStatus.value.active_output_mode === 'wasapiExclusive') {
-    return '独占';
-  }
-
-  return audioOutputStatus.value.fallback_reason ? '共享（已回退）' : '共享';
-});
-
-const activeOutputDeviceLabel = computed(() =>
-  audioOutputStatus.value?.active_device_name || '系统默认',
 );
 
 const loadAudioOutputDevices = async () => {
@@ -262,7 +248,7 @@ onScopeDispose(() => {
         <span class="w-1 h-4 bg-[#EC4141] rounded-full"></span>
         播放设置
       </h2>
-      <div class="flex flex-col rounded-xl overflow-hidden">
+      <div class="settings-playback-group flex flex-col rounded-xl">
         <div class="p-4 flex items-center justify-between border-b border-white/30 dark:border-white/5 last:border-0 hover:bg-white/40 dark:hover:bg-white/10 transition-colors">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">自动播放</div>
@@ -276,7 +262,6 @@ onScopeDispose(() => {
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">播放设备</div>
           </div>
           <div class="flex min-w-0 items-center gap-3">
-            <span class="hidden max-w-[180px] truncate text-xs font-medium text-gray-600 dark:text-gray-300 md:inline">{{ activeOutputDeviceLabel }}</span>
             <select
               v-model="selectedOutputDeviceId"
               :disabled="isChangingOutputDevice"
@@ -299,7 +284,14 @@ onScopeDispose(() => {
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">WASAPI 独占模式</div>
           </div>
           <div class="flex items-center gap-3">
-            <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ audioOutputModeLabel }}</span>
+            <span
+              class="wasapi-tip"
+              :aria-label="wasapiExclusiveSideEffectTip"
+              tabindex="0"
+            >
+              <CircleAlert class="h-4 w-4" aria-hidden="true" />
+              <span class="wasapi-tip-popover" role="tooltip">{{ wasapiExclusiveSideEffectTip }}</span>
+            </span>
             <button @click="toggleWasapiExclusive" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none" :class="isWasapiExclusiveEnabled ? 'bg-[#EC4141]' : 'bg-gray-300 dark:bg-gray-700'">
               <span class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out shadow-sm" :class="isWasapiExclusiveEnabled ? 'translate-x-6' : 'translate-x-1'" />
             </button>
@@ -431,6 +423,51 @@ onScopeDispose(() => {
   padding: 18px 16px 0;
 }
 
+.settings-playback-group {
+  overflow: visible;
+}
+
+.wasapi-tip {
+  position: relative;
+  display: inline-flex;
+  height: 20px;
+  width: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: #f59e0b;
+  outline: none;
+}
+
+.wasapi-tip-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 30;
+  width: min(280px, calc(100vw - 48px));
+  max-width: calc(100vw - 48px);
+  pointer-events: none;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+  color: rgb(31 41 55);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.55;
+  opacity: 0;
+  padding: 10px 12px;
+  transform: translateY(-4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  white-space: normal;
+}
+
+.wasapi-tip:hover .wasapi-tip-popover,
+.wasapi-tip:focus-visible .wasapi-tip-popover {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .settings-slider {
   height: 6px;
   cursor: pointer;
@@ -541,6 +578,17 @@ onScopeDispose(() => {
 
 :global(.dark) .settings-expand-panel {
   border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+:global(.dark) .wasapi-tip {
+  color: #fcd34d;
+}
+
+:global(.dark) .wasapi-tip-popover {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(31, 31, 31, 0.96);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+  color: rgba(255, 255, 255, 0.92);
 }
 
 :global(.dark) .settings-number-input {
