@@ -38,7 +38,7 @@ fn now_millis() -> u64 {
 }
 
 #[derive(Clone)]
-pub(super) struct ScanProgressReporter {
+pub(crate) struct ScanProgressReporter {
     app: AppHandle,
     folder_path: String,
     folder_index: usize,

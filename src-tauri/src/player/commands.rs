@@ -1,5 +1,7 @@
+use crate::database::DbState;
 use crate::player::spectrum::build_frequency_bands;
 use crate::player::types::{AudioCommand, AudioOutputMode, PlayerState, VISUALIZER_BAND_COUNT};
+use crate::remote::cache::{ensure_cached_path, is_remote_uri};
 use souvlaki::{MediaMetadata, MediaPlayback, MediaPosition};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -23,16 +25,22 @@ fn normalize_cover_for_smtc(cover: &str) -> Option<String> {
 }
 
 #[tauri::command]
-pub fn play_audio(
-    path: String,
+pub async fn play_audio(
+    mut path: String,
     title: String,
     artist: String,
     album: String,
     cover: String,
     duration: u32,
     output_mode: AudioOutputMode,
-    state: tauri::State<PlayerState>,
+    app: tauri::AppHandle,
+    db_state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, PlayerState>,
 ) -> Result<(), String> {
+    if is_remote_uri(&path) {
+        path = ensure_cached_path(&app, &db_state, &path).await?;
+    }
+
     let normalized_cover = normalize_cover_for_smtc(&cover);
     let tx = state.tx.lock().map_err(|e| e.to_string())?;
     tx.send(AudioCommand::Play { path, output_mode })

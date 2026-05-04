@@ -92,7 +92,7 @@ pub(super) fn song_identity_missing(song: &Song) -> bool {
             .unwrap_or(true)
 }
 
-pub(super) fn parse_song_from_file(path: &Path, path_str: &str, format: &str) -> Option<Song> {
+pub(crate) fn parse_song_from_file(path: &Path, path_str: &str, format: &str) -> Option<Song> {
     let mut artist = String::from("未知歌手");
     let mut album = String::from("未知专辑");
     let mut album_artist = String::new();

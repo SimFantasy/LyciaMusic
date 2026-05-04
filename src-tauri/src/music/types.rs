@@ -81,6 +81,8 @@ pub struct LibrarySong {
     pub disc_number: Option<String>,
     pub added_at: Option<u64>,
     pub file_modified_at: Option<u64>,
+    pub source_type: String,
+    pub remote_source_id: Option<String>,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]

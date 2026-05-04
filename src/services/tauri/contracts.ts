@@ -6,6 +6,10 @@ import type {
   RecentAlbumCatalogItem,
   RecentPlaylistCatalogItem,
   Playlist,
+  RemoteConnectionResult,
+  RemoteSource,
+  RemoteSourceInput,
+  RemoteSyncResult,
   Song,
   SongDetail,
 } from '../../types';
@@ -149,6 +153,12 @@ export interface TauriCommandMap {
   };
   get_folder_children: { payload: { folderPath: string }; response: FolderNode[] };
   get_library_folders: { payload: undefined; response: LibraryFolder[] };
+  get_remote_sources: { payload: undefined; response: RemoteSource[] };
+  test_remote_source: { payload: { source: RemoteSourceInput }; response: RemoteConnectionResult };
+  add_remote_source: { payload: { source: RemoteSourceInput }; response: RemoteSource };
+  update_remote_source: { payload: { source: RemoteSourceInput }; response: RemoteSource };
+  remove_remote_source: { payload: { sourceId: string }; response: void };
+  sync_remote_source: { payload: { sourceId: string }; response: RemoteSyncResult };
   // Deprecated compat command. Main folder-tree flow must use get_library_hierarchy.
   get_sidebar_hierarchy: { payload: undefined; response: FolderNode[] };
   create_folder: { payload: { parentPath: string; folderName: string }; response: string };

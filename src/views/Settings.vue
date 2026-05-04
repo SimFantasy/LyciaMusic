@@ -4,12 +4,13 @@ import SettingsAbout from "../components/settings/SettingsAbout.vue";
 import SettingsDesktopLyrics from "../components/settings/SettingsDesktopLyrics.vue";
 import SettingsGeneral from "../components/settings/SettingsGeneral.vue";
 import SettingsLibrary from "../components/settings/SettingsLibrary.vue";
+import SettingsRemoteLibrary from "../components/settings/SettingsRemoteLibrary.vue";
 import SettingsShortcuts from "../components/settings/SettingsShortcuts.vue";
 import SettingsSidebar from "../components/settings/SettingsSidebar.vue";
 import SettingsTheme from "../components/settings/SettingsTheme.vue";
 import SettingsToolbox from "../components/settings/SettingsToolbox.vue";
 
-const activeTab = ref<'general' | 'theme' | 'sidebar' | 'desktopLyrics' | 'toolbox' | 'library' | 'shortcuts' | 'about'>('general');
+const activeTab = ref<'general' | 'theme' | 'sidebar' | 'desktopLyrics' | 'toolbox' | 'library' | 'remoteLibrary' | 'shortcuts' | 'about'>('general');
 
 const tabs = [
   { id: 'general', name: '常规' },
@@ -17,7 +18,8 @@ const tabs = [
   { id: 'sidebar', name: '侧边栏管理' },
   { id: 'desktopLyrics', name: '桌面歌词' },
   { id: 'toolbox', name: '工具箱' },
-  { id: 'library', name: '音乐库' },
+  { id: 'library', name: '本地音乐库' },
+  { id: 'remoteLibrary', name: '远程音乐库' },
   { id: 'shortcuts', name: '快捷键' },
   { id: 'about', name: '关于' },
 ];
@@ -51,6 +53,7 @@ const tabs = [
         <SettingsDesktopLyrics v-else-if="activeTab === 'desktopLyrics'" />
         <SettingsToolbox v-else-if="activeTab === 'toolbox'" />
         <SettingsLibrary v-else-if="activeTab === 'library'" />
+        <SettingsRemoteLibrary v-else-if="activeTab === 'remoteLibrary'" />
         <SettingsShortcuts v-else-if="activeTab === 'shortcuts'" />
         <SettingsAbout v-else-if="activeTab === 'about'" />
 

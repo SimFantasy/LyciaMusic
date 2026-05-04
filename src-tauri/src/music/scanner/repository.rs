@@ -322,7 +322,7 @@ fn cleanup_unused_artists(conn: &mut rusqlite::Connection) {
     .ok();
 }
 
-pub(super) fn apply_scan_changes(
+pub(crate) fn apply_scan_changes(
     conn: &mut rusqlite::Connection,
     to_add: &[Song],
     to_update: &[Song],

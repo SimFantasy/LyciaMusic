@@ -46,6 +46,9 @@ amll-lyric = "0.3.0"
 time = { version = "0.3", features = ["formatting", "parsing"] }
 tauri-plugin-global-shortcut = "2.3.1"
 rustfft = "6.4.1"
+quick-xml = "0.39.2"
+uuid = { version = "1.19.0", features = ["v4"] }
+reqwest = { version = "0.12.26", default-features = false, features = ["native-tls"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_UI_Shell", "Win32_UI_Accessibility", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Threading"] }

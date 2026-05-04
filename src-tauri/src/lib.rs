@@ -4,6 +4,7 @@ pub mod error;
 mod foreground_window;
 mod music;
 mod player;
+mod remote;
 mod statistics;
 mod system_fonts;
 mod toolbox;
@@ -31,6 +32,10 @@ use player::{
     get_audio_visualizer_samples, get_current_output_device, get_output_devices,
     get_playback_progress, pause_audio, play_audio, resume_audio, seek_audio,
     set_audio_output_mode, set_output_device, set_volume, update_playback_metadata,
+};
+use remote::{
+    add_remote_source, get_remote_sources, remove_remote_source, sync_remote_source,
+    test_remote_source, update_remote_source,
 };
 use statistics::{
     add_to_history, clear_recent_history, export_statistics_file, get_behavior_stats,
@@ -98,6 +103,12 @@ pub fn run() {
             get_library_song_paths_by_album,
             get_library_song_paths_for_all_view,
             get_library_song_paths_for_folder_view,
+            get_remote_sources,
+            test_remote_source,
+            add_remote_source,
+            update_remote_source,
+            remove_remote_source,
+            sync_remote_source,
             scan_library,
             get_library_hierarchy,
             get_folder_children,

@@ -27,6 +27,8 @@ export interface SongCore {
   disc_number?: string;
   added_at?: number;
   file_modified_at?: number;
+  source_type?: 'local' | 'remote';
+  remote_source_id?: string;
 }
 
 export interface Song extends SongCore {}
@@ -90,6 +92,44 @@ export interface Playlist {
 export interface LibraryFolder {
   path: string;
   song_count: number;
+}
+
+export type RemoteSourceProvider = 'webdav';
+
+export interface RemoteSource {
+  id: string;
+  name: string;
+  provider: RemoteSourceProvider;
+  baseUrl: string;
+  username: string | null;
+  rootPath: string;
+  enabled: boolean;
+  lastSyncAt: number | null;
+  lastSyncError: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface RemoteSourceInput {
+  id?: string;
+  name: string;
+  provider: RemoteSourceProvider;
+  baseUrl: string;
+  username?: string | null;
+  password?: string | null;
+  rootPath?: string | null;
+}
+
+export interface RemoteConnectionResult {
+  ok: boolean;
+  message: string;
+}
+
+export interface RemoteSyncResult {
+  sourceId: string;
+  indexedFiles: number;
+  audioFiles: number;
+  parsedSongs: number;
 }
 
 export interface FolderNode {

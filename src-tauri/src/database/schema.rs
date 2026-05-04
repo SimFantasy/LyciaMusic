@@ -39,7 +39,49 @@ pub(crate) fn ensure_base_schema(conn: &Connection) -> Result<(), String> {
             track_number TEXT,
             disc_number TEXT,
             added_at INTEGER,
-            file_modified_at INTEGER
+            file_modified_at INTEGER,
+            source_type TEXT NOT NULL DEFAULT 'local',
+            remote_source_id TEXT,
+            remote_uri TEXT,
+            remote_etag TEXT,
+            cache_path TEXT
+        )",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS remote_sources (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            base_url TEXT NOT NULL,
+            username TEXT,
+            password TEXT,
+            root_path TEXT NOT NULL DEFAULT '/',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            last_sync_at INTEGER,
+            last_sync_error TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS remote_files (
+            source_id TEXT NOT NULL,
+            remote_path TEXT NOT NULL,
+            remote_uri TEXT NOT NULL,
+            name TEXT NOT NULL,
+            size INTEGER NOT NULL DEFAULT 0,
+            etag TEXT,
+            modified_at TEXT,
+            is_audio INTEGER NOT NULL DEFAULT 0,
+            indexed_at INTEGER NOT NULL,
+            PRIMARY KEY (source_id, remote_path),
+            FOREIGN KEY(source_id) REFERENCES remote_sources(id) ON DELETE CASCADE
         )",
         [],
     )
@@ -244,6 +286,16 @@ pub(crate) fn ensure_base_schema(conn: &Connection) -> Result<(), String> {
     .ok();
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_recent_plays_played_at ON recent_plays(played_at DESC)",
+        [],
+    )
+    .ok();
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_songs_remote_source_id ON songs(remote_source_id)",
+        [],
+    )
+    .ok();
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_remote_files_source_id ON remote_files(source_id)",
         [],
     )
     .ok();

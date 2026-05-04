@@ -21,6 +21,7 @@ pub use orchestrator::{
     get_folder_first_song, parse_audio_files, scan_folder_as_playlists, scan_folder_recursive,
     scan_music_folder, scan_single_directory_internal,
 };
+pub(crate) use repository::apply_scan_changes;
 
 pub(super) const VARIOUS_ARTISTS: &str = "Various Artists";
 pub(super) const VARIOUS_ARTISTS_THRESHOLD: usize = 5;
