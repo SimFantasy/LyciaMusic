@@ -54,9 +54,16 @@ export function useAppShellTheme({
       : 'bg-white/30 dark:bg-black/60'
   ));
 
+  const footerBlurStyle = computed(() => mainBlurStyle.value);
+  const footerContainerClass = computed(() => (
+    showPlayerDetail.value ? 'bg-transparent' : mainContainerClass.value
+  ));
+
   return {
     theme,
     mainBlurStyle,
     mainContainerClass,
+    footerBlurStyle,
+    footerContainerClass,
   };
 }

@@ -24,6 +24,8 @@ const {
   isFooterVisible,
   mainContainerClass,
   mainBlurStyle,
+  footerContainerClass,
+  footerBlurStyle,
   showAddToPlaylistModal,
   playlistAddTargetSongs,
   closeAddToPlaylistDialog,
@@ -125,7 +127,12 @@ useDesktopLyricsWindowBridge();
       </div>
     </div>
 
-    <div v-if="!isMiniMode && isFooterVisible" class="relative z-[60]">
+    <div
+      v-if="!isMiniMode && isFooterVisible"
+      class="relative z-[60] transition-colors duration-500"
+      :class="footerContainerClass"
+      :style="{ backdropFilter: footerBlurStyle }"
+    >
       <PlayerDetail />
 
       <transition name="footer-slide">

@@ -29,7 +29,12 @@ export function useAppShell() {
   } = useAddToPlaylistDialog();
 
   const { hasWindowMaterial, isMicaWindowMaterial } = useAppThemeSync();
-  const { mainBlurStyle, mainContainerClass } = useAppShellTheme({
+  const {
+    mainBlurStyle,
+    mainContainerClass,
+    footerBlurStyle,
+    footerContainerClass,
+  } = useAppShellTheme({
     showPlayerDetail,
     hasWindowMaterial,
     isMicaWindowMaterial,
@@ -103,6 +108,8 @@ export function useAppShell() {
     isFooterVisible,
     mainContainerClass,
     mainBlurStyle,
+    footerContainerClass,
+    footerBlurStyle,
     showAddToPlaylistModal,
     playlistAddTargetSongs,
     closeAddToPlaylistDialog,
