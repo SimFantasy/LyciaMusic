@@ -63,14 +63,35 @@ body:
     validations:
       required: true
 
+  - type: textarea
+    id: device
+    attributes:
+      label: 设备环境
+      description: 请填写设备型号、CPU、内存、显卡、音频设备等与问题相关的信息。
+      placeholder: |
+        例如：
+        设备：台式机 / 笔记本 / 其他
+        CPU：Intel i5-12400
+        内存：16 GB
+        显卡：NVIDIA RTX 3060
+        音频设备：Realtek / 蓝牙耳机 / USB 声卡
+    validations:
+      required: true
+
   - type: input
     id: version
     attributes:
       label: 软件版本
-      description: 请填写你使用的软件版本。
-      placeholder: 例如：v1.3.4
+      description: 请填写你使用的软件版本，可从关于页面或安装包文件名获取。
+      placeholder: 例如：v1.3.5
     validations:
       required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图 / 录屏
+      description: 如果问题涉及界面、播放状态、报错弹窗或歌词显示，请上传截图或录屏。
 
   - type: textarea
     id: logs
@@ -83,4 +104,4 @@ body:
     id: extra
     attributes:
       label: 其他补充
-      description: 可以上传截图、录屏或其他补充信息。
+      description: 可以补充出现频率、是否稳定复现、是否只在特定歌曲或目录中出现。
