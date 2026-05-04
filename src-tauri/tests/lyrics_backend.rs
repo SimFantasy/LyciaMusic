@@ -233,3 +233,64 @@ fn keeps_french_lines_as_main_with_chinese_translation() {
     assert_eq!(second_line.translation, "我们将一起前往那欢乐的圣地");
     assert!(second_line.romaji.is_empty());
 }
+
+#[test]
+fn keeps_latin_main_when_chinese_translation_contains_repeated_latin_words() {
+    let payload = build_structured_lyrics_payload(
+        [
+            "[by:燕如兮]",
+            "[00:19.76]Deine Zeit ist da",
+            "[00:19.76]正是出海的好时候",
+            "[00:21.00]mach dich auf mein Jung",
+            "[00:21.00]出发吧我的少年",
+            "[00:22.21]denn die Segel sind gehisst.",
+            "[00:22.21]船帆已经高悬",
+            "[00:24.58]Seit ich denken kann",
+            "[00:24.58]你是个好孩子",
+            "[00:25.81]willst du mit uns fahr'n",
+            "[00:25.81]来和我们一起航行",
+            "[00:27.02]weit hinaus auf unsrem Schiff.",
+            "[00:27.02]一起乘风破浪",
+            "[00:29.62]Du bist alt genug",
+            "[00:29.62]你已经是男子汉了",
+            "[00:30.68]wenn du willst dann komm",
+            "[00:30.68]你该有自己的选择",
+            "[00:31.92]aber schnell wir laufen aus.",
+            "[00:31.92]决定了就快跳上甲板",
+            "[00:34.36]Junge eile dich",
+            "[00:34.36]年轻人，别磨蹭",
+            "[00:35.56]denn am Himmel ziehn",
+            "[00:35.56]看一眼远方天际",
+            "[00:37.02]dunkle Wolken auf.",
+            "[00:37.02]浓云正在聚集",
+            "[00:38.88]Johnny Boy, Johnny Boy",
+            "[00:38.88]Johnny小子，Johnny小子！",
+            "[00:41.62]we're bound for stormy weather",
+            "[00:41.62]我们本就为风暴而生",
+            "[00:43.66]Johnny Boy, Johnny Boy",
+            "[00:43.66]Johnny小子，Johnny小子！",
+            "[00:46.41]better wish you lads farewell",
+            "[00:46.41]所有的祝福都给你",
+            "[00:48.55]Somewhere out far away",
+            "[00:48.55]在某个遥远海域",
+        ]
+        .join("\n"),
+    );
+
+    let first_refrain = find_display_line_by_time(&payload, 38.88).expect("first refrain line exists");
+    let storm_line = find_display_line_by_time(&payload, 41.62).expect("storm line exists");
+    let second_refrain = find_display_line_by_time(&payload, 43.66).expect("second refrain line exists");
+    let farewell_line = find_display_line_by_time(&payload, 46.41).expect("farewell line exists");
+    let faraway_line = find_display_line_by_time(&payload, 48.55).expect("faraway line exists");
+
+    assert_eq!(first_refrain.text, "Johnny Boy, Johnny Boy");
+    assert_eq!(first_refrain.translation, "Johnny小子，Johnny小子！");
+    assert_eq!(storm_line.text, "we're bound for stormy weather");
+    assert_eq!(storm_line.translation, "我们本就为风暴而生");
+    assert_eq!(second_refrain.text, "Johnny Boy, Johnny Boy");
+    assert_eq!(second_refrain.translation, "Johnny小子，Johnny小子！");
+    assert_eq!(farewell_line.text, "better wish you lads farewell");
+    assert_eq!(farewell_line.translation, "所有的祝福都给你");
+    assert_eq!(faraway_line.text, "Somewhere out far away");
+    assert_eq!(faraway_line.translation, "在某个遥远海域");
+}

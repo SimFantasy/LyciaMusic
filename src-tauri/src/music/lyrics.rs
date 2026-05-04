@@ -1504,6 +1504,11 @@ fn score_script_compatibility(track: &LyricTrack, candidate: &LyricTrackLine) ->
     if track.dominant_script == candidate.script_profile.dominant_script {
         return 4.0;
     }
+    if track.dominant_script == DominantScript::Han
+        && has_han_translation_content(&candidate.script_profile)
+    {
+        return 2.8;
+    }
     if matches!(
         track.dominant_script,
         DominantScript::Mixed | DominantScript::Other
@@ -2148,6 +2153,10 @@ fn is_han_translation_track(track: &LyricTrack) -> bool {
     track.dominant_script == DominantScript::Han && !track_has_japanese_like_lines(track)
 }
 
+fn has_han_translation_content(profile: &LineScriptProfile) -> bool {
+    profile.han_count > 0 && profile.kana_count == 0 && profile.hangul_count == 0
+}
+
 fn looks_like_romanization_track(track: &LyricTrack) -> bool {
     track.dominant_script == DominantScript::Latin
         && score_track_romanization(track) >= (score_track_englishness(track) + 0.05).max(0.34)
@@ -2461,7 +2470,9 @@ fn should_use_line_as_translation(
         return true;
     }
     if main_line.script_profile.dominant_script == DominantScript::Latin {
-        return candidate_line.script_profile.dominant_script != DominantScript::Latin;
+        return candidate_line.script_profile.dominant_script != DominantScript::Latin
+            || (candidate_line.source_index > main_line.source_index
+                && has_han_translation_content(&candidate_line.script_profile));
     }
     if candidate_line.script_profile.dominant_script == DominantScript::Latin {
         return false;
