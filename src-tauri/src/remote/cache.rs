@@ -5,11 +5,12 @@ use crate::database::DbState;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use tauri::{AppHandle, Emitter, Manager};
 
 const MAX_REMOTE_CACHE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
 const REMOTE_DOWNLOAD_PROGRESS_EVENT: &str = "remote-download-progress";
+const REMOTE_DOWNLOAD_ATTEMPTS: usize = 3;
 
 pub(crate) fn is_remote_uri(path: &str) -> bool {
     path.starts_with("remote://")
@@ -113,18 +114,31 @@ pub(crate) async fn cache_remote_file(
     }
 
     let temp_path = cache_path.with_extension("download");
-    if temp_path.is_file() {
-        let _ = fs::remove_file(&temp_path);
+    let mut last_error = None;
+    for attempt in 1..=REMOTE_DOWNLOAD_ATTEMPTS {
+        let result =
+            webdav::download_file_to_path(source, remote_path, &temp_path, |downloaded, total| {
+                emit_download_progress(app, remote_uri, downloaded, total, false, false, None);
+            })
+            .await;
+
+        if result.is_ok() {
+            last_error = None;
+            break;
+        }
+
+        last_error = result.err();
+        if attempt < REMOTE_DOWNLOAD_ATTEMPTS {
+            tokio::time::sleep(Duration::from_millis(250 * attempt as u64)).await;
+        }
     }
 
-    let result =
-        webdav::download_file_to_path(source, remote_path, &temp_path, |downloaded, total| {
-            emit_download_progress(app, remote_uri, downloaded, total, false, false, None);
-        })
-        .await;
-
-    if let Err(error) = result {
-        let _ = fs::remove_file(&temp_path);
+    if let Some(error) = last_error {
+        emit_download_progress(app, remote_uri, 0, None, true, true, Some(error.clone()));
+        return Err(error);
+    }
+    if !temp_path.is_file() {
+        let error = "远程文件下载失败：未生成缓存文件".to_string();
         emit_download_progress(app, remote_uri, 0, None, true, true, Some(error.clone()));
         return Err(error);
     }

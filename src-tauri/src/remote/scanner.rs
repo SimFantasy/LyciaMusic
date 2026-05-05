@@ -4,15 +4,24 @@ use super::types::{
     RemoteFileEntry, RemoteSourceCredentials, RemoteSyncProgress, RemoteSyncResult,
 };
 use super::webdav;
+use crate::music::covers::get_or_create_thumbnail;
 use crate::music::scanner::{apply_scan_changes, parse_song_from_file};
 use crate::music::types::Song;
 use rusqlite::params;
-use std::collections::HashSet;
-use std::path::Path;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 
 const REMOTE_SYNC_PROGRESS_EVENT: &str = "remote-sync-progress";
+
+#[derive(Clone)]
+struct RemoteSongSnapshot {
+    etag: Option<String>,
+    size: u64,
+    modified_at: Option<String>,
+    song: Option<Song>,
+}
 
 fn extension_from_path(path: &str) -> String {
     path.rsplit('.')
@@ -60,6 +69,160 @@ fn song_from_remote_file(source: &RemoteSourceCredentials, file: &RemoteFileEntr
         added_at: None,
         file_modified_at: None,
     }
+}
+
+fn deserialize_string_list(raw: Option<String>) -> Vec<String> {
+    raw.and_then(|value| serde_json::from_str::<Vec<String>>(&value).ok())
+        .unwrap_or_default()
+}
+
+fn i64_to_u64_opt(value: Option<i64>) -> Option<u64> {
+    value.filter(|value| *value >= 0).map(|value| value as u64)
+}
+
+fn i64_to_u32(value: Option<i64>) -> u32 {
+    value.unwrap_or(0).clamp(0, u32::MAX as i64) as u32
+}
+
+fn i64_to_u8_opt(value: Option<i64>) -> Option<u8> {
+    value
+        .filter(|value| *value >= 0 && *value <= u8::MAX as i64)
+        .map(|value| value as u8)
+}
+
+fn i64_to_bool(value: Option<i64>) -> bool {
+    value.unwrap_or(0) != 0
+}
+
+fn remote_file_needs_refresh(
+    snapshot: Option<&RemoteSongSnapshot>,
+    file: &RemoteFileEntry,
+) -> bool {
+    let Some(snapshot) = snapshot else {
+        return true;
+    };
+    if snapshot.song.is_none() {
+        return true;
+    }
+
+    match (snapshot.etag.as_deref(), file.etag.as_deref()) {
+        (Some(previous), Some(current)) if !previous.is_empty() && !current.is_empty() => {
+            previous != current
+        }
+        _ => {
+            snapshot.size != file.size
+                || match (snapshot.modified_at.as_deref(), file.modified_at.as_deref()) {
+                    (Some(previous), Some(current)) => previous != current,
+                    _ => false,
+                }
+        }
+    }
+}
+
+fn load_remote_song_snapshots(
+    conn: &rusqlite::Connection,
+    source_id: &str,
+) -> Result<HashMap<String, RemoteSongSnapshot>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT
+                rf.remote_uri,
+                rf.etag,
+                rf.size,
+                rf.modified_at,
+                s.id,
+                s.path,
+                s.title,
+                s.artist,
+                s.artist_names,
+                s.effective_artist_names,
+                s.album,
+                s.album_artist,
+                s.album_key,
+                s.is_various_artists_album,
+                s.collapse_artist_credits,
+                s.duration,
+                s.cover_thumb_path,
+                s.bitrate,
+                s.sample_rate,
+                s.bit_depth,
+                s.format,
+                s.container,
+                s.codec,
+                s.file_size,
+                s.track_number,
+                s.disc_number,
+                s.added_at,
+                s.file_modified_at
+             FROM remote_files rf
+             LEFT JOIN songs s ON s.path = rf.remote_uri
+             WHERE rf.source_id = ?1 AND rf.is_audio = 1",
+        )
+        .map_err(|error| error.to_string())?;
+
+    let rows = stmt
+        .query_map([source_id], |row| {
+            let remote_uri: String = row.get(0)?;
+            let song_path: Option<String> = row.get(5)?;
+            let song = match song_path {
+                Some(path) => {
+                    let artist_names = deserialize_string_list(row.get::<_, Option<String>>(8)?);
+                    let effective_artist_names =
+                        deserialize_string_list(row.get::<_, Option<String>>(9)?);
+                    let name = Path::new(&path)
+                        .file_name()
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| path.clone());
+
+                    Some(Song {
+                        id: row.get::<_, Option<i64>>(4)?,
+                        name,
+                        path,
+                        title: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
+                        artist: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
+                        artist_names,
+                        effective_artist_names,
+                        album: row.get::<_, Option<String>>(10)?.unwrap_or_default(),
+                        album_artist: row.get::<_, Option<String>>(11)?.unwrap_or_default(),
+                        album_key: row.get::<_, Option<String>>(12)?.unwrap_or_default(),
+                        is_various_artists_album: i64_to_bool(row.get::<_, Option<i64>>(13)?),
+                        collapse_artist_credits: i64_to_bool(row.get::<_, Option<i64>>(14)?),
+                        duration: i64_to_u32(row.get::<_, Option<i64>>(15)?),
+                        cover_thumb_path: row.get::<_, Option<String>>(16)?,
+                        bitrate: i64_to_u32(row.get::<_, Option<i64>>(17)?),
+                        sample_rate: i64_to_u32(row.get::<_, Option<i64>>(18)?),
+                        bit_depth: i64_to_u8_opt(row.get::<_, Option<i64>>(19)?),
+                        format: row.get::<_, Option<String>>(20)?.unwrap_or_default(),
+                        container: row.get::<_, Option<String>>(21)?,
+                        codec: row.get::<_, Option<String>>(22)?,
+                        file_size: row.get::<_, Option<i64>>(23)?.unwrap_or(0).max(0) as u64,
+                        track_number: row.get::<_, Option<String>>(24)?,
+                        disc_number: row.get::<_, Option<String>>(25)?,
+                        added_at: i64_to_u64_opt(row.get::<_, Option<i64>>(26)?),
+                        file_modified_at: i64_to_u64_opt(row.get::<_, Option<i64>>(27)?),
+                    })
+                }
+                None => None,
+            };
+
+            Ok((
+                remote_uri,
+                RemoteSongSnapshot {
+                    etag: row.get::<_, Option<String>>(1)?,
+                    size: row.get::<_, i64>(2)?.max(0) as u64,
+                    modified_at: row.get::<_, Option<String>>(3)?,
+                    song,
+                },
+            ))
+        })
+        .map_err(|error| error.to_string())?;
+
+    let mut snapshots = HashMap::new();
+    for row in rows {
+        let (remote_uri, snapshot) = row.map_err(|error| error.to_string())?;
+        snapshots.insert(remote_uri, snapshot);
+    }
+    Ok(snapshots)
 }
 
 fn emit_sync_progress(
@@ -115,6 +278,16 @@ async fn song_with_remote_metadata(
     song.path = remote_uri;
     if file.size > 0 {
         song.file_size = file.size;
+    }
+    if song.cover_thumb_path.is_none() {
+        let app_clone = app.clone();
+        let cache_path = PathBuf::from(cache_path);
+        song.cover_thumb_path = tauri::async_runtime::spawn_blocking(move || {
+            get_or_create_thumbnail(&cache_path, &app_clone)
+        })
+        .await
+        .ok()
+        .flatten();
     }
     song
 }
@@ -182,6 +355,17 @@ pub(crate) async fn sync_source(
             return Err(error);
         }
     };
+    let snapshots = {
+        let conn = db_conn.lock().map_err(|error| error.to_string())?;
+        match load_remote_song_snapshots(&conn, &source.id) {
+            Ok(snapshots) => snapshots,
+            Err(error) => {
+                let _ = update_sync_status(&conn, &source.id, Some(&error));
+                emit_sync_progress(&app, &source.id, "error", 0, 0, error.clone(), true, true);
+                return Err(error);
+            }
+        }
+    };
 
     let mut songs = Vec::with_capacity(files.len());
     let total = files.len();
@@ -197,6 +381,15 @@ pub(crate) async fn sync_source(
             false,
             false,
         );
+        let remote_uri = file.remote_uri(&source.id);
+        if let Some(snapshot) = snapshots.get(&remote_uri) {
+            if !remote_file_needs_refresh(Some(snapshot), file) {
+                if let Some(song) = snapshot.song.clone() {
+                    songs.push(song);
+                    continue;
+                }
+            }
+        }
         songs.push(song_with_remote_metadata(&app, &source, file).await);
     }
 
@@ -261,4 +454,81 @@ pub(crate) async fn sync_source(
         audio_files: files.len(),
         parsed_songs: songs.len(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn remote_file(etag: Option<&str>, size: u64, modified_at: Option<&str>) -> RemoteFileEntry {
+        RemoteFileEntry {
+            remote_path: "/demo.flac".to_string(),
+            name: "demo.flac".to_string(),
+            size,
+            etag: etag.map(ToOwned::to_owned),
+            modified_at: modified_at.map(ToOwned::to_owned),
+            is_dir: false,
+        }
+    }
+
+    #[test]
+    fn unchanged_remote_file_with_existing_song_does_not_need_refresh() {
+        let snapshot = RemoteSongSnapshot {
+            etag: Some("etag-a".to_string()),
+            size: 1024,
+            modified_at: Some("Mon, 04 May 2026 10:00:00 GMT".to_string()),
+            song: Some(song_from_remote_file(
+                &RemoteSourceCredentials {
+                    id: "source".to_string(),
+                    name: "Source".to_string(),
+                    provider: "webdav".to_string(),
+                    base_url: "https://example.com".to_string(),
+                    username: None,
+                    password: None,
+                    root_path: "/".to_string(),
+                    enabled: true,
+                    last_sync_at: None,
+                    last_sync_error: None,
+                    created_at: 0,
+                    updated_at: 0,
+                },
+                &remote_file(Some("etag-a"), 1024, Some("Mon, 04 May 2026 10:00:00 GMT")),
+            )),
+        };
+
+        assert!(!remote_file_needs_refresh(
+            Some(&snapshot),
+            &remote_file(Some("etag-a"), 2048, Some("changed"))
+        ));
+    }
+
+    #[test]
+    fn changed_remote_file_needs_refresh() {
+        let snapshot = RemoteSongSnapshot {
+            etag: Some("etag-a".to_string()),
+            size: 1024,
+            modified_at: Some("Mon, 04 May 2026 10:00:00 GMT".to_string()),
+            song: None,
+        };
+
+        assert!(remote_file_needs_refresh(
+            Some(&snapshot),
+            &remote_file(Some("etag-b"), 1024, Some("Mon, 04 May 2026 10:00:00 GMT"))
+        ));
+    }
+
+    #[test]
+    fn remote_file_without_existing_song_needs_refresh() {
+        let snapshot = RemoteSongSnapshot {
+            etag: Some("etag-a".to_string()),
+            size: 1024,
+            modified_at: Some("Mon, 04 May 2026 10:00:00 GMT".to_string()),
+            song: None,
+        };
+
+        assert!(remote_file_needs_refresh(
+            Some(&snapshot),
+            &remote_file(Some("etag-a"), 1024, Some("Mon, 04 May 2026 10:00:00 GMT"))
+        ));
+    }
 }

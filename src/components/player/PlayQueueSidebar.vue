@@ -3,6 +3,7 @@ import { nextTick, ref, watch } from 'vue';
 import type { ComponentPublicInstance } from 'vue';
 import { usePlayer } from '../../composables/player';
 import { useThemeSettings } from '../../composables/useThemeSettings';
+import { isRemoteSong } from '../../utils/remoteSong';
 import ModernModal from '../common/ModernModal.vue';
 
 const {
@@ -139,7 +140,13 @@ watch(
             </div>
 
             <div class="flex-1 min-w-0 pr-4 flex flex-col">
-              <span class="text-sm font-medium truncate leading-tight">{{ song.title || song.name.replace(/\.[^/.]+$/, "") }}</span>
+              <div class="flex min-w-0 items-center gap-1.5">
+                <span class="min-w-0 truncate text-sm font-medium leading-tight">{{ song.title || song.name.replace(/\.[^/.]+$/, "") }}</span>
+                <span
+                  v-if="isRemoteSong(song)"
+                  class="shrink-0 rounded-full border border-[#EC4141]/20 bg-[#EC4141]/10 px-1.5 py-[1px] text-[10px] font-bold text-[#EC4141]"
+                >远程</span>
+              </div>
               <span
                 class="text-[11px] truncate mt-1"
                 :class="currentSong?.path === song.path ? 'text-[#EC4141]/70' : 'text-gray-600 dark:text-white/50'"

@@ -1,8 +1,8 @@
 use super::types::{RemoteFileEntry, RemoteSourceCredentials};
 use quick_xml::events::Event;
 use quick_xml::Reader;
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
-use reqwest::{Client, Method};
+use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, RANGE};
+use reqwest::{Client, Method, StatusCode};
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -19,6 +19,50 @@ fn shared_client() -> &'static Client {
             .build()
             .expect("build webdav http client")
     })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum DownloadWriteMode {
+    Fresh,
+    Append,
+}
+
+fn choose_download_write_mode(existing_bytes: u64, status: StatusCode) -> DownloadWriteMode {
+    if existing_bytes > 0 && status == StatusCode::PARTIAL_CONTENT {
+        DownloadWriteMode::Append
+    } else {
+        DownloadWriteMode::Fresh
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reqwest::StatusCode;
+
+    #[test]
+    fn resumes_when_partial_file_gets_partial_content() {
+        assert_eq!(
+            choose_download_write_mode(1024, StatusCode::PARTIAL_CONTENT),
+            DownloadWriteMode::Append
+        );
+    }
+
+    #[test]
+    fn restarts_when_server_ignores_range_request() {
+        assert_eq!(
+            choose_download_write_mode(1024, StatusCode::OK),
+            DownloadWriteMode::Fresh
+        );
+    }
+
+    #[test]
+    fn starts_fresh_without_partial_file() {
+        assert_eq!(
+            choose_download_write_mode(0, StatusCode::OK),
+            DownloadWriteMode::Fresh
+        );
+    }
 }
 
 fn normalize_remote_path(path: &str) -> String {
@@ -265,7 +309,14 @@ pub(crate) async fn download_file_to_path(
     mut on_progress: impl FnMut(u64, Option<u64>) + Send,
 ) -> Result<(), String> {
     let client = shared_client();
-    let request = client.get(build_url(source, remote_path));
+    let existing_bytes = tokio::fs::metadata(target_path)
+        .await
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
+    let mut request = client.get(build_url(source, remote_path));
+    if existing_bytes > 0 {
+        request = request.header(RANGE, format!("bytes={existing_bytes}-"));
+    }
     let mut response = auth_request(request, source)
         .send()
         .await
@@ -274,13 +325,28 @@ pub(crate) async fn download_file_to_path(
         return Err(format!("远程文件下载失败：{}", response.status()));
     }
 
-    let total = response.content_length();
-    let mut downloaded = 0u64;
+    let write_mode = choose_download_write_mode(existing_bytes, response.status());
+    let content_length = response.content_length();
+    let total = match write_mode {
+        DownloadWriteMode::Append => content_length.map(|length| existing_bytes + length),
+        DownloadWriteMode::Fresh => content_length,
+    };
+    let mut downloaded = match write_mode {
+        DownloadWriteMode::Append => existing_bytes,
+        DownloadWriteMode::Fresh => 0,
+    };
     on_progress(downloaded, total);
 
-    let mut file = tokio::fs::File::create(target_path)
-        .await
-        .map_err(|error| error.to_string())?;
+    let mut file = match write_mode {
+        DownloadWriteMode::Append => tokio::fs::OpenOptions::new()
+            .append(true)
+            .open(target_path)
+            .await
+            .map_err(|error| error.to_string())?,
+        DownloadWriteMode::Fresh => tokio::fs::File::create(target_path)
+            .await
+            .map_err(|error| error.to_string())?,
+    };
     while let Some(chunk) = response.chunk().await.map_err(|error| error.to_string())? {
         downloaded = downloaded.saturating_add(chunk.len() as u64);
         file.write_all(&chunk)
