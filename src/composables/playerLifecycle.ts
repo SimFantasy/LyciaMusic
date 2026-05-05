@@ -36,6 +36,8 @@ interface SeekCompletedPayload {
   time: number;
 }
 
+type RemoteLyricsCacheReadyPayload = string;
+
 interface LibraryScanBatchPayload {
   songs: Song[];
   deleted_paths: string[];
@@ -59,6 +61,7 @@ interface CreatePlayerLifecycleDeps {
   restorePathBackedState: () => Promise<void>;
   restoreRecentHistory: () => Promise<void>;
   refreshStateSongReferences: () => void;
+  loadLyrics: () => void | Promise<void>;
   disposePlayerPlayback: () => void;
   disposeLibraryRuntime: () => void;
   disposePlayerPersistence: () => void;
@@ -280,6 +283,7 @@ export const createPlayerLifecycle = ({
   restorePathBackedState,
   restoreRecentHistory,
   refreshStateSongReferences,
+  loadLyrics,
   disposePlayerPlayback,
   disposeLibraryRuntime,
   disposePlayerPersistence,
@@ -369,6 +373,11 @@ export const createPlayerLifecycle = ({
       }),
       listen<SeekCompletedPayload>('seek_completed', event => {
         handleSeekCompleted(event.payload);
+      }),
+      listen<RemoteLyricsCacheReadyPayload>('remote-lyrics-cache-ready', event => {
+        if (currentSong.value?.path === event.payload) {
+          void loadLyrics();
+        }
       }),
     ];
 

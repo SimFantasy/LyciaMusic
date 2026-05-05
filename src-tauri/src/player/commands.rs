@@ -11,6 +11,9 @@ use souvlaki::{MediaMetadata, MediaPlayback, MediaPosition};
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
+use tauri::Emitter;
+
+const REMOTE_LYRICS_CACHE_READY_EVENT: &str = "remote-lyrics-cache-ready";
 
 fn normalize_cover_for_smtc(cover: &str) -> Option<String> {
     let trimmed = cover.trim();
@@ -105,12 +108,12 @@ fn schedule_remote_cache_after_half(
     remote_uri: String,
     duration: u32,
 ) {
-    if duration == 0 {
-        return;
-    }
-
     tauri::async_runtime::spawn(async move {
-        let threshold = duration as f64 * 0.5;
+        let threshold = if duration > 0 {
+            duration as f64 * 0.5
+        } else {
+            30.0
+        };
         loop {
             tokio::time::sleep(Duration::from_secs(2)).await;
             if playback_id.load(Ordering::Relaxed) != expected_playback_id {
@@ -129,6 +132,7 @@ fn schedule_remote_cache_after_half(
                 let db_state = DbState { conn };
                 if let Ok(cache_path) = ensure_cached_path(&app, &db_state, &remote_uri).await {
                     update_cached_remote_audio_metadata(&db_state, &remote_uri, &cache_path);
+                    let _ = app.emit(REMOTE_LYRICS_CACHE_READY_EVENT, remote_uri.clone());
                 }
                 return;
             }

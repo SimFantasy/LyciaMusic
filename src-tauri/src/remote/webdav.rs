@@ -1,4 +1,5 @@
 use super::types::{RemoteFileEntry, RemoteSourceCredentials};
+use encoding_rs::GBK;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, RANGE};
@@ -131,6 +132,21 @@ mod tests {
             DownloadWriteMode::Fresh
         );
     }
+
+    #[test]
+    fn decodes_gbk_lyrics_text() {
+        let (bytes, _, _) = GBK.encode("[00:01.00]中文歌词");
+
+        assert_eq!(decode_text_bytes(&bytes), "[00:01.00]中文歌词");
+    }
+
+    #[test]
+    fn strips_utf8_bom_from_lyrics_text() {
+        assert_eq!(
+            decode_text_bytes(b"\xef\xbb\xbf[00:01.00]hello"),
+            "[00:01.00]hello"
+        );
+    }
 }
 
 fn normalize_remote_path(path: &str) -> String {
@@ -226,6 +242,16 @@ fn propfind_body() -> &'static str {
 fn local_name(name: &[u8]) -> String {
     let raw = String::from_utf8_lossy(name);
     raw.rsplit(':').next().unwrap_or(&raw).to_string()
+}
+
+fn decode_text_bytes(bytes: &[u8]) -> String {
+    match std::str::from_utf8(bytes) {
+        Ok(text) => text.trim_start_matches('\u{feff}').to_string(),
+        Err(_) => {
+            let (decoded, _, _) = GBK.decode(bytes);
+            decoded.trim_start_matches('\u{feff}').to_string()
+        }
+    }
 }
 
 fn href_to_remote_path(href: &str, source: &RemoteSourceCredentials) -> Option<String> {
@@ -404,9 +430,9 @@ pub(crate) async fn read_text_file(
     }
 
     response
-        .text()
+        .bytes()
         .await
-        .map(Some)
+        .map(|bytes| Some(decode_text_bytes(&bytes)))
         .map_err(|error| error.to_string())
 }
 

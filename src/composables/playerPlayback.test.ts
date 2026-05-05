@@ -145,7 +145,7 @@ describe('player playback domain', () => {
   it('does not auto-advance songs with unknown duration', async () => {
     const song = makeSong({ path: 'remote://source/demo.flac', duration: 0 });
     const handleAutoNext = vi.fn();
-    let frameCallback: FrameRequestCallback | null = null;
+    let frameCallback: FrameRequestCallback | undefined;
     vi
       .stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
         frameCallback = callback;
@@ -160,7 +160,8 @@ describe('player playback domain', () => {
     });
 
     await playerPlayback.playSong(song);
-    frameCallback?.(performance.now() + 16);
+    expect(frameCallback).toBeDefined();
+    (frameCallback as FrameRequestCallback)(performance.now() + 16);
 
     expect(handleAutoNext).not.toHaveBeenCalled();
 

@@ -340,6 +340,7 @@ function createPlayerCore() {
     restorePathBackedState,
     restoreRecentHistory,
     refreshStateSongReferences,
+    loadLyrics,
     disposePlayerPlayback: () => playerPlayback.dispose(),
     disposeLibraryRuntime: () => libraryRuntime.dispose(),
     disposePlayerPersistence,

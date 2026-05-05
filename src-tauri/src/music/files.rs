@@ -8,7 +8,11 @@ use super::tags::{
 use super::types::{LyricsStorageSource, SongDetail, SongLyricsForEdit};
 use crate::database::DbState;
 use crate::error::CommandError;
-use crate::remote::{cache::is_remote_uri, repository::get_source_for_remote_uri, webdav};
+use crate::remote::{
+    cache::is_remote_uri,
+    repository::{get_song_cache_path, get_source_for_remote_uri},
+    webdav,
+};
 use lofty::config::WriteOptions;
 use lofty::file::{AudioFile, TaggedFileExt};
 use lofty::tag::{ItemKey, ItemValue, Tag, TagItem};
@@ -214,13 +218,28 @@ fn read_song_lyrics_raw(path: &str) -> String {
 }
 
 async fn read_remote_song_lyrics_raw(path: &str, db_state: &DbState) -> String {
-    let lookup = {
+    let lookup_and_cache = {
         let conn = match db_state.conn.lock() {
             Ok(conn) => conn,
             Err(_) => return String::new(),
         };
-        get_source_for_remote_uri(&conn, path).ok()
+        let lookup = get_source_for_remote_uri(&conn, path).ok();
+        let cache_path = lookup
+            .as_ref()
+            .and_then(|(_, _, _, stored_remote_uri)| {
+                get_song_cache_path(&conn, stored_remote_uri.as_deref().unwrap_or(path)).ok()
+            })
+            .flatten();
+        (lookup, cache_path)
     };
+    let (lookup, cache_path) = lookup_and_cache;
+    if let Some(cache_path) = cache_path.filter(|path| Path::new(path).is_file()) {
+        let lyrics = read_song_lyrics_raw(&cache_path);
+        if !lyrics.trim().is_empty() {
+            return lyrics;
+        }
+    }
+
     let Some((source, remote_path, _etag, _stored_remote_uri)) = lookup else {
         return String::new();
     };
@@ -516,6 +535,10 @@ pub fn create_folder(parent_path: String, folder_name: String) -> Result<String,
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::database::DbState;
+    use rusqlite::Connection;
+    use std::sync::{Arc, Mutex};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn remote_sidecar_lrc_path_uses_remote_song_parent_and_stem() {
@@ -523,6 +546,79 @@ mod tests {
             remote_sidecar_lrc_path("/Artist/Album/Demo.flac").as_deref(),
             Some("/Artist/Album/Demo.lrc")
         );
+    }
+
+    #[tokio::test]
+    async fn remote_lyrics_use_cached_sidecar_before_remote_lrc() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("lycia_remote_lyrics_test_{unique}"));
+        fs::create_dir_all(&dir).unwrap();
+        let cached_audio = dir.join("Demo.flac");
+        let cached_lrc = dir.join("Demo.lrc");
+        fs::write(&cached_audio, b"not real audio").unwrap();
+        fs::write(&cached_lrc, "[00:01.00]cached lyric").unwrap();
+
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE remote_sources (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                base_url TEXT NOT NULL,
+                username TEXT,
+                password TEXT,
+                root_path TEXT NOT NULL,
+                enabled INTEGER NOT NULL,
+                last_sync_at INTEGER,
+                last_sync_error TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE remote_files (
+                source_id TEXT NOT NULL,
+                remote_path TEXT NOT NULL,
+                remote_uri TEXT NOT NULL,
+                etag TEXT
+            );
+            CREATE TABLE songs (
+                path TEXT PRIMARY KEY,
+                cache_path TEXT
+            );",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO remote_sources (
+                id, name, provider, base_url, root_path, enabled, created_at, updated_at
+             ) VALUES ('source', 'Source', 'webdav', 'https://dav.invalid', '/', 1, 0, 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO remote_files (source_id, remote_path, remote_uri)
+             VALUES ('source', '/Artist/Album/Demo.flac', 'remote://source/Artist/Album/Demo.flac')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO songs (path, cache_path) VALUES (?1, ?2)",
+            params![
+                "remote://source/Artist/Album/Demo.flac",
+                cached_audio.to_string_lossy()
+            ],
+        )
+        .unwrap();
+        let db_state = DbState {
+            conn: Arc::new(Mutex::new(conn)),
+        };
+
+        let lyrics =
+            read_remote_song_lyrics_raw("remote://source/Artist/Album/Demo.flac", &db_state).await;
+
+        assert_eq!(lyrics, "[00:01.00]cached lyric");
+        let _ = fs::remove_dir_all(dir);
     }
 }
 
