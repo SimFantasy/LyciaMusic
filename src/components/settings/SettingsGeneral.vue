@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onScopeDispose, ref } from 'vue';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { CircleAlert } from 'lucide-vue-next';
+import { Check, ChevronDown, CircleAlert } from 'lucide-vue-next';
 import { useSettings } from '../../features/settings/useSettings';
 import { usePlayer } from '../../composables/player';
 import { useToast } from '../../composables/toast';
@@ -13,6 +13,10 @@ import { playbackApi } from '../../services/tauri/playbackApi';
 import type { AudioOutputStatus } from '../../services/tauri/contracts';
 import type { AudioDevice } from '../../services/tauri/contracts';
 import { playerStorage, playerStorageKeys } from '../../services/storage/playerStorage';
+import {
+  buildAudioOutputDeviceOptions,
+  getSelectedOutputDeviceLabel,
+} from './audioOutputDeviceLabels';
 import ConfirmModal from '../overlays/ConfirmModal.vue';
 
 const { settings } = useSettings();
@@ -32,6 +36,8 @@ const isClearingCache = ref(false);
 const audioOutputStatus = ref<AudioOutputStatus | null>(null);
 const audioOutputDevices = ref<AudioDevice[]>([]);
 const selectedOutputDeviceId = ref<string>('');
+const outputDeviceSelectRef = ref<HTMLElement | null>(null);
+const isOutputDeviceMenuOpen = ref(false);
 const isChangingOutputDevice = ref(false);
 const wasapiExclusiveSideEffectTip = '开启后会独占播放设备：其他软件可能无声；设备断开或被占用时会自动回退默认播放。';
 let unlistenAudioOutput: UnlistenFn | null = null;
@@ -60,6 +66,16 @@ const isWasapiExclusiveEnabled = computed(
   () => settings.value.audio.outputMode === 'wasapiExclusive',
 );
 
+const outputDeviceOptions = computed(() => buildAudioOutputDeviceOptions(audioOutputDevices.value));
+
+const selectedOutputDeviceLabel = computed(() => (
+  getSelectedOutputDeviceLabel(
+    outputDeviceOptions.value,
+    selectedOutputDeviceId.value,
+    audioOutputStatus.value,
+  )
+));
+
 const loadAudioOutputDevices = async () => {
   const [devices, status] = await Promise.all([
     playbackApi.getOutputDevices(),
@@ -71,12 +87,17 @@ const loadAudioOutputDevices = async () => {
   selectedOutputDeviceId.value = status.selected_device_id ?? '';
 };
 
-const handleOutputDeviceChange = async (event: Event) => {
+const handleOutputDeviceSelect = async (deviceId: string) => {
   if (isChangingOutputDevice.value) {
     return;
   }
 
-  const deviceId = (event.target as HTMLSelectElement).value;
+  isOutputDeviceMenuOpen.value = false;
+
+  if (deviceId === selectedOutputDeviceId.value) {
+    return;
+  }
+
   isChangingOutputDevice.value = true;
 
   try {
@@ -99,6 +120,33 @@ const handleOutputDeviceChange = async (event: Event) => {
     selectedOutputDeviceId.value = audioOutputStatus.value?.selected_device_id ?? '';
   } finally {
     isChangingOutputDevice.value = false;
+  }
+};
+
+const toggleOutputDeviceMenu = () => {
+  if (isChangingOutputDevice.value) {
+    return;
+  }
+
+  isOutputDeviceMenuOpen.value = !isOutputDeviceMenuOpen.value;
+};
+
+const handleDocumentPointerDown = (event: PointerEvent) => {
+  if (!isOutputDeviceMenuOpen.value) {
+    return;
+  }
+
+  const target = event.target as Node | null;
+  if (target && outputDeviceSelectRef.value?.contains(target)) {
+    return;
+  }
+
+  isOutputDeviceMenuOpen.value = false;
+};
+
+const handleDocumentKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    isOutputDeviceMenuOpen.value = false;
   }
 };
 
@@ -177,11 +225,15 @@ onMounted(async () => {
     audioOutputStatus.value = event.payload;
     selectedOutputDeviceId.value = event.payload.selected_device_id ?? '';
   });
+  window.addEventListener('pointerdown', handleDocumentPointerDown);
+  window.addEventListener('keydown', handleDocumentKeydown);
 });
 
 onScopeDispose(() => {
   unlistenAudioOutput?.();
   unlistenAudioOutput = null;
+  window.removeEventListener('pointerdown', handleDocumentPointerDown);
+  window.removeEventListener('keydown', handleDocumentKeydown);
 });
 </script>
 
@@ -261,22 +313,57 @@ onScopeDispose(() => {
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">播放设备</div>
           </div>
-          <div class="flex min-w-0 items-center gap-3">
-            <select
-              v-model="selectedOutputDeviceId"
-              :disabled="isChangingOutputDevice"
-              class="settings-select"
-              @change="handleOutputDeviceChange"
-            >
-              <option value="">系统默认</option>
-              <option
-                v-for="device in audioOutputDevices"
-                :key="device.id"
-                :value="device.id"
+          <div
+            ref="outputDeviceSelectRef"
+            class="settings-device-select-stack"
+          >
+            <div class="settings-device-select">
+              <button
+                type="button"
+                class="settings-device-select__trigger"
+                :class="{
+                  'settings-device-select__trigger--open': isOutputDeviceMenuOpen,
+                  'settings-device-select__trigger--disabled': isChangingOutputDevice,
+                }"
+                :aria-expanded="isOutputDeviceMenuOpen"
+                :disabled="isChangingOutputDevice"
+                aria-haspopup="listbox"
+                @click="toggleOutputDeviceMenu"
               >
-                {{ device.name }}
-              </option>
-            </select>
+                <span class="settings-device-select__label">{{ selectedOutputDeviceLabel }}</span>
+                <ChevronDown
+                  class="settings-device-select__icon"
+                  :class="{ 'settings-device-select__icon--open': isOutputDeviceMenuOpen }"
+                  aria-hidden="true"
+                />
+              </button>
+              <transition name="settings-device-menu">
+                <div
+                  v-if="isOutputDeviceMenuOpen"
+                  class="settings-device-select__menu"
+                  role="listbox"
+                  aria-label="播放设备"
+                >
+                  <button
+                    v-for="device in outputDeviceOptions"
+                    :key="device.id || 'default'"
+                    type="button"
+                    class="settings-device-select__option"
+                    :class="{ 'settings-device-select__option--selected': selectedOutputDeviceId === device.id }"
+                    role="option"
+                    :aria-selected="selectedOutputDeviceId === device.id"
+                    @click="handleOutputDeviceSelect(device.id)"
+                  >
+                    <span class="settings-device-select__option-text">{{ device.name }}</span>
+                    <Check
+                      v-if="selectedOutputDeviceId === device.id"
+                      class="settings-device-select__check"
+                      aria-hidden="true"
+                    />
+                  </button>
+                </div>
+              </transition>
+            </div>
           </div>
         </div>
         <div class="p-4 flex items-center justify-between border-b border-white/30 dark:border-white/5 last:border-0 hover:bg-white/40 dark:hover:bg-white/10 transition-colors">
@@ -491,29 +578,6 @@ onScopeDispose(() => {
   box-shadow: 0 0 0 3px rgba(236, 65, 65, 0.08);
 }
 
-.settings-select {
-  max-width: 260px;
-  min-height: 38px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.72);
-  padding: 8px 12px;
-  color: rgb(55 65 81);
-  font-size: 13px;
-  outline: none;
-  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
-}
-
-.settings-select:focus {
-  border-color: rgba(236, 65, 65, 0.3);
-  box-shadow: 0 0 0 3px rgba(236, 65, 65, 0.08);
-}
-
-.settings-select:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
 .settings-action-button {
   min-height: 38px;
   padding: 0 16px;
@@ -576,6 +640,150 @@ onScopeDispose(() => {
   max-height: 240px;
 }
 
+.settings-device-select-stack {
+  display: flex;
+  min-width: 220px;
+  width: min(360px, 56vw);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.settings-device-select {
+  position: relative;
+  width: 100%;
+}
+
+.settings-device-select__trigger {
+  display: flex;
+  min-height: 40px;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 8px 12px 8px 14px;
+  color: rgb(55 65 81);
+  font-size: 13px;
+  font-weight: 500;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.settings-device-select__trigger:hover:not(:disabled),
+.settings-device-select__trigger--open {
+  border-color: rgba(236, 65, 65, 0.28);
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.settings-device-select__trigger:focus-visible,
+.settings-device-select__trigger--open {
+  box-shadow: 0 0 0 3px rgba(236, 65, 65, 0.08);
+}
+
+.settings-device-select__trigger--disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.settings-device-select__label {
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-device-select__icon {
+  height: 16px;
+  width: 16px;
+  flex: 0 0 auto;
+  color: rgba(55, 65, 81, 0.72);
+  transition: transform 160ms ease;
+}
+
+.settings-device-select__icon--open {
+  transform: rotate(180deg);
+}
+
+.settings-device-select__menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 40;
+  width: min(520px, calc(100vw - 48px));
+  max-height: 252px;
+  overflow-y: auto;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
+  padding: 6px;
+  backdrop-filter: blur(18px);
+}
+
+.settings-device-select__option {
+  display: flex;
+  min-height: 38px;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: rgb(31 41 55);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.settings-device-select__option:hover,
+.settings-device-select__option:focus-visible {
+  background: rgba(236, 65, 65, 0.08);
+  color: #ec4141;
+  outline: none;
+}
+
+.settings-device-select__option--selected {
+  background: rgba(236, 65, 65, 0.12);
+  color: #ec4141;
+}
+
+.settings-device-select__option-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-device-select__check {
+  height: 15px;
+  width: 15px;
+  flex: 0 0 auto;
+}
+
+.settings-device-menu-enter-active,
+.settings-device-menu-leave-active {
+  transition: opacity 160ms ease, transform 160ms ease;
+  transform-origin: top right;
+}
+
+.settings-device-menu-enter-from,
+.settings-device-menu-leave-to {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+}
+
+.settings-device-menu-enter-to,
+.settings-device-menu-leave-from {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
 :global(.dark) .settings-expand-panel {
   border-top-color: rgba(255, 255, 255, 0.08);
 }
@@ -602,15 +810,47 @@ onScopeDispose(() => {
   box-shadow: 0 0 0 3px rgba(236, 65, 65, 0.12);
 }
 
-:global(.dark) .settings-select {
+:global(.dark) .settings-device-select__trigger {
   border-color: rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.05);
   color: rgba(255, 255, 255, 0.92);
 }
 
-:global(.dark) .settings-select:focus {
+:global(.dark) .settings-device-select__trigger:hover:not(:disabled),
+:global(.dark) .settings-device-select__trigger--open {
+  border-color: rgba(236, 65, 65, 0.34);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+:global(.dark) .settings-device-select__trigger:focus-visible,
+:global(.dark) .settings-device-select__trigger--open {
   border-color: rgba(236, 65, 65, 0.34);
   box-shadow: 0 0 0 3px rgba(236, 65, 65, 0.12);
+}
+
+:global(.dark) .settings-device-select__icon {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+:global(.dark) .settings-device-select__menu {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(31, 31, 31, 0.94);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.3);
+}
+
+:global(.dark) .settings-device-select__option {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+:global(.dark) .settings-device-select__option:hover,
+:global(.dark) .settings-device-select__option:focus-visible {
+  background: rgba(236, 65, 65, 0.16);
+  color: rgba(255, 255, 255, 0.96);
+}
+
+:global(.dark) .settings-device-select__option--selected {
+  background: rgba(236, 65, 65, 0.22);
+  color: #fff;
 }
 
 :global(.dark) .settings-action-button--disabled {
