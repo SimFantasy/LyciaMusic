@@ -22,6 +22,7 @@ const browsingSourceId = ref<string | null>(null);
 const browsingPath = ref('/');
 const browserEntries = ref<RemoteFileEntry[]>([]);
 const isBrowsing = ref(false);
+const currentView = ref<'list' | 'form'>('list');
 let unlistenRemoteSync: UnlistenFn | null = null;
 
 const form = reactive({
@@ -40,6 +41,16 @@ const resetForm = () => {
   form.username = '';
   form.password = '';
   form.rootPath = '/';
+};
+
+const openAddForm = () => {
+  resetForm();
+  currentView.value = 'form';
+};
+
+const closeForm = () => {
+  resetForm();
+  currentView.value = 'list';
 };
 
 const buildPayload = () => ({
@@ -158,6 +169,7 @@ const saveSource = async () => {
     resetForm();
     await loadSources();
     showToast('远程音乐库已保存', 'success');
+    currentView.value = 'list';
   } catch (error) {
     console.error('Failed to save remote source:', error);
     showToast('保存远程音乐库失败', 'error');
@@ -173,6 +185,7 @@ const editSource = (source: RemoteSource) => {
   form.username = source.username ?? '';
   form.password = '';
   form.rootPath = source.rootPath || '/';
+  currentView.value = 'form';
 };
 
 const syncSource = async (source: RemoteSource) => {
@@ -232,140 +245,163 @@ onScopeDispose(() => {
 
 <template>
   <div class="w-full space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
-    <section class="space-y-3">
-      <h2 class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200">
-        <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
-        远程音乐库
-      </h2>
-
-      <div>
-        <div class="remote-form-grid">
-          <label class="remote-field">
-            <span>名称</span>
-            <input v-model="form.name" type="text" class="remote-input" placeholder="我的 WebDAV" />
-          </label>
-          <label class="remote-field">
-            <span>服务器地址</span>
-            <input v-model="form.baseUrl" type="url" class="remote-input" placeholder="https://example.com/dav" />
-          </label>
-          <label class="remote-field">
-            <span>用户名</span>
-            <input v-model="form.username" type="text" class="remote-input" autocomplete="username" />
-          </label>
-          <label class="remote-field">
-            <span>密码</span>
-            <input v-model="form.password" type="password" class="remote-input" autocomplete="current-password" />
-          </label>
-          <label class="remote-field">
-            <span>根目录</span>
-            <input v-model="form.rootPath" type="text" class="remote-input" placeholder="/" />
-          </label>
-        </div>
-
-        <div class="mt-4 flex flex-wrap items-center gap-3">
-          <button type="button" class="remote-action remote-action--soft" :disabled="testing" @click="testConnection">
-            {{ testing ? '测试中...' : '测试连接' }}
-          </button>
-          <button type="button" class="remote-action" :disabled="isSaving" @click="saveSource">
-            {{ isSaving ? '保存中...' : form.id ? '保存修改' : '添加远程库' }}
-          </button>
-          <button v-if="form.id" type="button" class="remote-action remote-action--soft" @click="resetForm">
-            取消编辑
-          </button>
-        </div>
-      </div>
-    </section>
-
-    <section class="space-y-3">
-      <h2 class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200">
-        <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
-        远程缓存
-      </h2>
-      <div class="remote-cache-row">
-        <span>{{ cacheUsageText }}</span>
-        <button type="button" class="remote-action remote-action--soft" :disabled="isClearingCache" @click="clearRemoteCache">
-          {{ isClearingCache ? '清理中...' : '清理缓存' }}
+    <template v-if="currentView === 'list'">
+      <section class="space-y-3">
+        <h2 class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200">
+          <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
+          添加远程音乐库
+        </h2>
+        <button
+          type="button"
+          class="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600/50 bg-transparent py-5 text-sm font-bold text-gray-500 dark:text-gray-400 hover:border-[#EC4141] hover:text-[#EC4141] hover:bg-[#EC4141]/5 transition-all duration-200"
+          @click="openAddForm"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          添加 WebDAV 音乐库
         </button>
-      </div>
-    </section>
+      </section>
 
-    <section class="space-y-3">
-      <h2 class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200">
-        <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
-        已添加
-      </h2>
+      <section class="space-y-3">
+        <h2 class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200">
+          <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
+          已添加
+        </h2>
 
-      <div class="remote-source-list">
-        <div v-if="isLoading" class="remote-empty">加载中...</div>
-        <div v-else-if="remoteSources.length === 0" class="remote-empty">还没有远程音乐库</div>
-        <template v-else>
-          <div v-for="source in remoteSources" :key="source.id" class="remote-source-row">
-            <div class="min-w-0 flex-1">
-              <div class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ source.name }}</div>
-              <div class="mt-1 truncate text-xs text-gray-600 dark:text-white/55">{{ source.baseUrl }}{{ source.rootPath }}</div>
-              <div v-if="source.lastSyncError" class="mt-1 text-xs text-[#EC4141]">{{ source.lastSyncError }}</div>
-              <div v-if="syncProgress?.sourceId === source.id && !syncProgress.done" class="remote-progress">
-                <div class="remote-progress__top">
-                  <span>{{ syncProgressText }}</span>
-                  <span v-if="syncProgress.total > 0">{{ syncPercent }}%</span>
-                </div>
-                <div class="remote-progress__track">
-                  <div class="remote-progress__fill" :style="{ width: `${syncPercent}%` }"></div>
+        <div class="remote-source-list">
+          <div v-if="isLoading" class="remote-empty">加载中...</div>
+          <div v-else-if="remoteSources.length === 0" class="remote-empty">还没有远程音乐库</div>
+          <template v-else>
+            <div v-for="source in remoteSources" :key="source.id" class="remote-source-row">
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ source.name }}</div>
+                <div class="mt-1 truncate text-xs text-gray-600 dark:text-white/55">{{ source.baseUrl }}{{ source.rootPath }}</div>
+                <div v-if="source.lastSyncError" class="mt-1 text-xs text-[#EC4141]">{{ source.lastSyncError }}</div>
+                <div v-if="syncProgress?.sourceId === source.id && !syncProgress.done" class="remote-progress">
+                  <div class="remote-progress__top">
+                    <span>{{ syncProgressText }}</span>
+                    <span v-if="syncProgress.total > 0">{{ syncPercent }}%</span>
+                  </div>
+                  <div class="remote-progress__track">
+                    <div class="remote-progress__fill" :style="{ width: `${syncPercent}%` }"></div>
+                  </div>
                 </div>
               </div>
+              <div class="flex shrink-0 items-center gap-2">
+                <button type="button" class="remote-icon-action" title="编辑" @click="editSource(source)">
+                  编辑
+                </button>
+                <button
+                  type="button"
+                  class="remote-icon-action"
+                  :disabled="syncingSourceId === source.id"
+                  title="同步"
+                  @click="syncSource(source)"
+                >
+                  {{ syncingSourceId === source.id ? '同步中' : '同步' }}
+                </button>
+                <button type="button" class="remote-icon-action" title="浏览" @click="browseSource(source)">
+                  浏览
+                </button>
+                <button type="button" class="remote-icon-action remote-icon-action--danger" title="删除" @click="sourceToRemove = source">
+                  删除
+                </button>
+              </div>
             </div>
-            <div class="flex shrink-0 items-center gap-2">
-              <button type="button" class="remote-icon-action" title="编辑" @click="editSource(source)">
-                编辑
-              </button>
-              <button
-                type="button"
-                class="remote-icon-action"
-                :disabled="syncingSourceId === source.id"
-                title="同步"
-                @click="syncSource(source)"
-              >
-                {{ syncingSourceId === source.id ? '同步中' : '同步' }}
-              </button>
-              <button type="button" class="remote-icon-action" title="浏览" @click="browseSource(source)">
-                浏览
-              </button>
-              <button type="button" class="remote-icon-action remote-icon-action--danger" title="删除" @click="sourceToRemove = source">
-                删除
-              </button>
-            </div>
-          </div>
-        </template>
-      </div>
-    </section>
-
-    <section v-if="browsingSourceId" class="space-y-3">
-      <h2 class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200">
-        <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
-        远程目录
-      </h2>
-      <div class="remote-browser">
-        <div class="remote-browser__bar">
-          <button type="button" class="remote-icon-action" :disabled="browsingPath === '/' || isBrowsing" @click="browseParent">上级</button>
-          <span class="truncate">{{ browsingPath }}</span>
+          </template>
         </div>
-        <div v-if="isBrowsing" class="remote-empty">读取中...</div>
-        <div v-else-if="sortedBrowserEntries.length === 0" class="remote-empty">当前目录为空</div>
-        <template v-else>
-          <button
-            v-for="entry in sortedBrowserEntries"
-            :key="entry.remotePath"
-            type="button"
-            class="remote-browser__entry"
-            :disabled="!entry.isDir"
-            @click="entry.isDir && browseSource(remoteSources.find(item => item.id === browsingSourceId)!, entry.remotePath)"
-          >
-            <span>{{ entry.isDir ? '文件夹' : '音频' }}</span>
-            <strong class="truncate">{{ entry.name }}</strong>
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200">
+          <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
+          远程缓存
+        </h2>
+        <div class="remote-cache-row">
+          <span>{{ cacheUsageText }}</span>
+          <button type="button" class="remote-action remote-action--soft" :disabled="isClearingCache" @click="clearRemoteCache">
+            {{ isClearingCache ? '清理中...' : '清理缓存' }}
           </button>
-        </template>
-      </div>
-    </section>
+        </div>
+      </section>
+
+      <section v-if="browsingSourceId" class="space-y-3">
+        <h2 class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200">
+          <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
+          远程目录
+        </h2>
+        <div class="remote-browser">
+          <div class="remote-browser__bar">
+            <button type="button" class="remote-icon-action" :disabled="browsingPath === '/' || isBrowsing" @click="browseParent">上级</button>
+            <span class="truncate">{{ browsingPath }}</span>
+          </div>
+          <div v-if="isBrowsing" class="remote-empty">读取中...</div>
+          <div v-else-if="sortedBrowserEntries.length === 0" class="remote-empty">当前目录为空</div>
+          <template v-else>
+            <button
+              v-for="entry in sortedBrowserEntries"
+              :key="entry.remotePath"
+              type="button"
+              class="remote-browser__entry"
+              :disabled="!entry.isDir"
+              @click="entry.isDir && browseSource(remoteSources.find(item => item.id === browsingSourceId)!, entry.remotePath)"
+            >
+              <span>{{ entry.isDir ? '文件夹' : '音频' }}</span>
+              <strong class="truncate">{{ entry.name }}</strong>
+            </button>
+          </template>
+        </div>
+      </section>
+    </template>
+
+    <template v-else>
+      <section class="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+        <div class="flex items-center gap-3 mb-2">
+          <button type="button" class="p-2 -ml-2 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-full transition-colors" @click="closeForm">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+          </button>
+          <h2 class="text-sm font-bold text-gray-800 dark:text-gray-200">
+            {{ form.id ? '编辑 WebDAV 音乐库' : '添加 WebDAV 音乐库' }}
+          </h2>
+        </div>
+
+        <div class="remote-panel">
+          <div class="remote-form-grid">
+            <label class="remote-field">
+              <span>名称</span>
+              <input v-model="form.name" type="text" class="remote-input" placeholder="我的 WebDAV" />
+            </label>
+            <label class="remote-field">
+              <span>服务器地址</span>
+              <input v-model="form.baseUrl" type="url" class="remote-input" placeholder="https://example.com/dav" />
+            </label>
+            <label class="remote-field">
+              <span>用户名</span>
+              <input v-model="form.username" type="text" class="remote-input" autocomplete="username" />
+            </label>
+            <label class="remote-field">
+              <span>密码</span>
+              <input v-model="form.password" type="password" class="remote-input" autocomplete="current-password" />
+            </label>
+            <label class="remote-field">
+              <span>根目录</span>
+              <input v-model="form.rootPath" type="text" class="remote-input" placeholder="/" />
+            </label>
+          </div>
+
+          <div class="mt-6 flex flex-wrap items-center justify-end gap-3">
+            <button type="button" class="remote-action remote-action--soft" @click="closeForm">
+              取消
+            </button>
+            <button type="button" class="remote-action remote-action--soft" :disabled="testing" @click="testConnection">
+              {{ testing ? '测试中...' : '测试连接' }}
+            </button>
+            <button type="button" class="remote-action" :disabled="isSaving" @click="saveSource">
+              {{ isSaving ? '保存中...' : '保存' }}
+            </button>
+          </div>
+        </div>
+      </section>
+    </template>
 
     <ConfirmModal
       :visible="!!sourceToRemove"
@@ -380,7 +416,8 @@ onScopeDispose(() => {
 <style scoped>
 .remote-source-list,
 .remote-cache-row,
-.remote-browser {
+.remote-browser,
+.remote-panel {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.28);
   padding: 16px;
@@ -555,7 +592,8 @@ onScopeDispose(() => {
 
 :global(.dark) .remote-source-list,
 :global(.dark) .remote-cache-row,
-:global(.dark) .remote-browser {
+:global(.dark) .remote-browser,
+:global(.dark) .remote-panel {
   background: rgba(255, 255, 255, 0.04);
 }
 
