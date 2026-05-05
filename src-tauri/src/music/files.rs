@@ -8,6 +8,7 @@ use super::tags::{
 use super::types::{LyricsStorageSource, SongDetail, SongLyricsForEdit};
 use crate::database::DbState;
 use crate::error::CommandError;
+use crate::remote::{cache::is_remote_uri, repository::get_source_for_remote_uri, webdav};
 use lofty::config::WriteOptions;
 use lofty::file::{AudioFile, TaggedFileExt};
 use lofty::tag::{ItemKey, ItemValue, Tag, TagItem};
@@ -84,6 +85,15 @@ fn get_sidecar_lrc_path(path_obj: &Path) -> Result<PathBuf, String> {
         .ok_or_else(|| "Song parent folder does not exist".to_string())?;
 
     Ok(parent.join(format!("{}.lrc", stem)))
+}
+
+fn remote_sidecar_lrc_path(remote_path: &str) -> Option<String> {
+    let normalized = remote_path.replace('\\', "/");
+    let trimmed = normalized.trim_end_matches('/');
+    let (parent, file_name) = trimmed.rsplit_once('/')?;
+    let stem = file_name.rsplit_once('.').map(|(stem, _)| stem)?;
+    let parent = if parent.is_empty() { "/" } else { parent };
+    Some(format!("{}/{}.lrc", parent.trim_end_matches('/'), stem))
 }
 
 fn write_sidecar_lyrics(
@@ -203,14 +213,49 @@ fn read_song_lyrics_raw(path: &str) -> String {
     String::new()
 }
 
-#[tauri::command]
-pub async fn get_song_lyrics(path: String) -> Result<String, String> {
-    Ok(read_song_lyrics_raw(&path))
+async fn read_remote_song_lyrics_raw(path: &str, db_state: &DbState) -> String {
+    let lookup = {
+        let conn = match db_state.conn.lock() {
+            Ok(conn) => conn,
+            Err(_) => return String::new(),
+        };
+        get_source_for_remote_uri(&conn, path).ok()
+    };
+    let Some((source, remote_path, _etag, _stored_remote_uri)) = lookup else {
+        return String::new();
+    };
+    let Some(lrc_path) = remote_sidecar_lrc_path(&remote_path) else {
+        return String::new();
+    };
+
+    webdav::read_text_file(&source, &lrc_path)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default()
+}
+
+async fn read_song_lyrics_raw_for_path(path: &str, db_state: &DbState) -> String {
+    if is_remote_uri(path) {
+        read_remote_song_lyrics_raw(path, db_state).await
+    } else {
+        read_song_lyrics_raw(path)
+    }
 }
 
 #[tauri::command]
-pub async fn get_song_lyrics_payload(path: String) -> Result<StructuredLyricsPayload, String> {
-    Ok(build_structured_lyrics_payload(read_song_lyrics_raw(&path)))
+pub async fn get_song_lyrics(path: String, db_state: State<'_, DbState>) -> Result<String, String> {
+    Ok(read_song_lyrics_raw_for_path(&path, &db_state).await)
+}
+
+#[tauri::command]
+pub async fn get_song_lyrics_payload(
+    path: String,
+    db_state: State<'_, DbState>,
+) -> Result<StructuredLyricsPayload, String> {
+    Ok(build_structured_lyrics_payload(
+        read_song_lyrics_raw_for_path(&path, &db_state).await,
+    ))
 }
 
 #[tauri::command]
@@ -466,6 +511,19 @@ pub fn create_folder(parent_path: String, folder_name: String) -> Result<String,
     fs::create_dir(&new_folder_path).map_err(|e| e.to_string())?;
 
     Ok(normalize_path(&new_folder_path.to_string_lossy()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn remote_sidecar_lrc_path_uses_remote_song_parent_and_stem() {
+        assert_eq!(
+            remote_sidecar_lrc_path("/Artist/Album/Demo.flac").as_deref(),
+            Some("/Artist/Album/Demo.lrc")
+        );
+    }
 }
 
 #[tauri::command]

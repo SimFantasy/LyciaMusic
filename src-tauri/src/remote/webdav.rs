@@ -386,6 +386,30 @@ pub(crate) async fn test_connection(source: &RemoteSourceCredentials) -> Result<
     Ok(())
 }
 
+pub(crate) async fn read_text_file(
+    source: &RemoteSourceCredentials,
+    path: &str,
+) -> Result<Option<String>, String> {
+    let client = shared_client();
+    let response = auth_request(client.get(build_url(source, path)), source)
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    if response.status() == StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    if !response.status().is_success() {
+        return Err(format!("WebDAV 返回状态码 {}", response.status()));
+    }
+
+    response
+        .text()
+        .await
+        .map(Some)
+        .map_err(|error| error.to_string())
+}
+
 pub(crate) async fn download_file_to_path(
     source: &RemoteSourceCredentials,
     remote_path: &str,

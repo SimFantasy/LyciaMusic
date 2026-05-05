@@ -188,7 +188,7 @@ export const createPlayerPlayback = ({
       const delta = (now - playbackAnchorTime) / 1000.0;
       currentTime.value = playbackStartOffset + delta;
 
-      if (currentTime.value >= currentSong.value.duration) {
+      if (currentSong.value.duration > 0 && currentTime.value >= currentSong.value.duration) {
         handleAutoNext();
         return;
       }

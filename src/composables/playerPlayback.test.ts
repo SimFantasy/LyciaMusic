@@ -142,6 +142,32 @@ describe('player playback domain', () => {
     playerPlayback.dispose();
   });
 
+  it('does not auto-advance songs with unknown duration', async () => {
+    const song = makeSong({ path: 'remote://source/demo.flac', duration: 0 });
+    const handleAutoNext = vi.fn();
+    let frameCallback: FrameRequestCallback | null = null;
+    vi
+      .stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+        frameCallback = callback;
+        return 1;
+      });
+    vi.stubGlobal('cancelAnimationFrame', () => {});
+    const playerPlayback = createPlayerPlayback({
+      getDisplaySongList: () => [song],
+      addToHistory: vi.fn(),
+      loadLyrics: vi.fn(),
+      handleAutoNext,
+    });
+
+    await playerPlayback.playSong(song);
+    frameCallback?.(performance.now() + 16);
+
+    expect(handleAutoNext).not.toHaveBeenCalled();
+
+    playerPlayback.dispose();
+    vi.unstubAllGlobals();
+  });
+
   it('strips the file extension when title metadata is missing', async () => {
     const song = makeSong({ name: 'i-dle - Allergy.flac', title: '   ' });
     const playerPlayback = createPlayerPlayback({

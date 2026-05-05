@@ -34,11 +34,28 @@ fn title_from_name(name: &str) -> String {
         .unwrap_or_else(|| name.to_string())
 }
 
+fn album_from_remote_path(path: &str) -> String {
+    let mut segments = path
+        .trim_matches('/')
+        .split('/')
+        .filter(|segment| !segment.trim().is_empty())
+        .collect::<Vec<_>>();
+    if segments.len() >= 2 {
+        segments.pop();
+        segments
+            .pop()
+            .map(|segment| segment.to_string())
+            .unwrap_or_else(|| "未知专辑".to_string())
+    } else {
+        "未知专辑".to_string()
+    }
+}
+
 fn song_from_remote_file(source: &RemoteSourceCredentials, file: &RemoteFileEntry) -> Song {
     let remote_uri = file.remote_uri(&source.id);
     let title = title_from_name(&file.name);
     let artist = "未知歌手".to_string();
-    let album = "未知专辑".to_string();
+    let album = album_from_remote_path(&file.remote_path);
 
     Song {
         id: None,
@@ -498,6 +515,18 @@ mod tests {
         assert_eq!(song.duration, 0);
         assert_eq!(song.bitrate, 0);
         assert_eq!(song.sample_rate, 0);
+    }
+
+    #[test]
+    fn first_index_song_uses_parent_folder_as_album_fallback() {
+        let source = remote_source();
+        let mut file = remote_file(Some("etag-a"), 12_345, None);
+        file.remote_path = "/Artist/Album/demo.flac".to_string();
+
+        let song = song_for_remote_index(&source, &file);
+
+        assert_eq!(song.album, "Album");
+        assert_eq!(song.album_key, "album::未知歌手");
     }
 
     #[test]
