@@ -4,6 +4,7 @@ use super::tags::{find_embedded_picture, read_tagged_file_from_path};
 use super::types::{FullCoverImageConcurrencyLimit, ThumbnailImageConcurrencyLimit};
 use super::utils::normalize_path;
 use crate::database::DbState;
+use crate::remote::cache::{ensure_cached_path, is_remote_uri};
 use image::{DynamicImage, ImageFormat};
 use lofty::picture::MimeType;
 use sha2::{Digest, Sha256};
@@ -405,8 +406,13 @@ pub async fn get_song_cover_thumbnail(
     db_state: State<'_, DbState>,
 ) -> Result<String, String> {
     let _permit = semaphore.0.acquire().await.map_err(|e| e.to_string())?;
+    let source_path = if is_remote_uri(&path) {
+        ensure_cached_path(&app, &db_state, &path).await?
+    } else {
+        path.clone()
+    };
 
-    let p = Path::new(&path);
+    let p = Path::new(&source_path);
     let app_clone = app.clone();
     let p_buf = p.to_path_buf();
 
@@ -434,10 +440,16 @@ pub async fn get_song_cover(
     path: String,
     app: AppHandle,
     semaphore: State<'_, FullCoverImageConcurrencyLimit>,
+    db_state: State<'_, DbState>,
 ) -> Result<String, String> {
     let _permit = semaphore.0.acquire().await.map_err(|e| e.to_string())?;
+    let source_path = if is_remote_uri(&path) {
+        ensure_cached_path(&app, &db_state, &path).await?
+    } else {
+        path.clone()
+    };
 
-    let p = Path::new(&path);
+    let p = Path::new(&source_path);
     let app_clone = app.clone();
     let p_buf = p.to_path_buf();
 

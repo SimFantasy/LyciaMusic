@@ -63,7 +63,7 @@ const { isFavorite, toggleFavorite } = useLibraryCollections();
 const router = useRouter();
 const route = useRoute();
 const { openHomeArtist } = useHomeNavigation(router);
-const { coverCache, loadCover, touchCoverPaths, preloadPriorityCovers } = useCoverCache();
+const { coverCache, loadCover, touchCoverPaths, preloadPriorityCovers, primeCoverPath } = useCoverCache();
 
 const ROW_HEIGHT = 72;
 const OVERSCAN = 20;
@@ -137,8 +137,8 @@ const restoreViewportCoverSnapshot = (key = tableViewportKey.value) => {
   preloadPriorityCovers(snapshot);
 };
 
-const syncVisibleCoverUrls = (paths: string[]) => {
-  const nextVisiblePaths = new Set(paths.filter(Boolean));
+const syncVisibleCoverUrls = (songs: Song[]) => {
+  const nextVisiblePaths = new Set(songs.map(song => song.path).filter(Boolean));
   visibleCoverPaths = nextVisiblePaths;
 
   for (const path of Array.from(displayedCoverUrls.keys())) {
@@ -150,10 +150,21 @@ const syncVisibleCoverUrls = (paths: string[]) => {
   const visiblePaths = Array.from(nextVisiblePaths);
   touchCoverPaths(visiblePaths);
 
-  visiblePaths.forEach((path) => {
+  songs.forEach((song) => {
+    const path = song.path;
+    if (!path) {
+      return;
+    }
+
     const cachedUrl = coverCache.get(path);
     if (cachedUrl) {
       displayedCoverUrls.set(path, cachedUrl);
+      return;
+    }
+
+    const persistedCoverUrl = primeCoverPath(path, song.cover_thumb_path);
+    if (persistedCoverUrl) {
+      displayedCoverUrls.set(path, persistedCoverUrl);
       return;
     }
 
@@ -168,8 +179,8 @@ const syncVisibleCoverUrls = (paths: string[]) => {
 };
 
 const preloadVirtualViewportCovers = () => {
+  syncVisibleCoverUrls(virtualItems.value);
   const paths = virtualItems.value.map(song => song.path);
-  syncVisibleCoverUrls(paths);
   preloadPriorityCovers(paths);
 };
 
@@ -342,8 +353,8 @@ const {
 watch(
   () => virtualData.value.items,
   (newItems) => {
+    syncVisibleCoverUrls(newItems);
     const paths = newItems.map(song => song.path);
-    syncVisibleCoverUrls(paths);
     preloadPriorityCovers(paths);
   },
   { immediate: true },

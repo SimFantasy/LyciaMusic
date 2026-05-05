@@ -24,6 +24,7 @@ const badgeType = computed(() => {
   const losslessFormats = ['aif', 'aiff', 'flac', 'wav', 'alac', 'ape', 'pcm'];
   const audioType = (props.codec || props.format).toLowerCase();
   const isLossless = losslessFormats.includes(audioType);
+  const hasAudioInfo = Boolean(audioType || props.bitrate || props.sampleRate || props.bitDepth);
   
   // HR: 无损格式 且 (位深 > 16bit 或 采样率 > 44.1kHz) - 只要有一项超越 CD 即视为高解析
   if (isLossless && ((props.bitDepth && props.bitDepth > 16) || props.sampleRate > 44100)) {
@@ -41,7 +42,7 @@ const badgeType = computed(() => {
   if (props.bitrate >= hqThreshold) {
     return 'HQ';
   }
-  return null; // 有损且码率不达标不显示
+  return hasAudioInfo ? 'HQ' : null;
 });
 
 // 1.1 详细标签文本 (仅用于 detailed variant)
