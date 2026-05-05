@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { AudioLines } from 'lucide-vue-next';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useLibraryCollections } from '../../features/collections/useLibraryCollections';
 import { useLyrics } from '../../composables/lyrics';
 import { usePlaybackController } from '../../features/playback/usePlaybackController';
 import AudioVisualizer from '../player/AudioVisualizer.vue';
 import FooterContextMenu from "../overlays/FooterContextMenu.vue";
 import { computed, ref, onMounted, onUnmounted } from 'vue';
+import type { RemoteDownloadProgress } from '../../types';
 
 const { 
   currentSong,
@@ -39,6 +41,8 @@ const toggleLyricsPlayerSettings = () => {
   showLyricsPlayerSettingsPanel.value = !showLyricsPlayerSettingsPanel.value;
 };
 const isVisualizerEnabled = ref(localStorage.getItem('footer_visualizer_enabled') !== 'false');
+const remoteDownloadProgress = ref<RemoteDownloadProgress | null>(null);
+let unlistenRemoteDownload: UnlistenFn | null = null;
 
 const toggleVisualizer = () => {
   isVisualizerEnabled.value = !isVisualizerEnabled.value;
@@ -100,6 +104,18 @@ const updateProgressFromEvent = (e: MouseEvent) => {
 // 计算总时长与当前时间
 const currentTimeStr = computed(() => formatDuration(isDraggingProgress.value ? dragTime.value : currentTime.value));
 const totalTimeStr = computed(() => currentSong.value ? formatDuration(currentSong.value.duration) : '0:00');
+const isCurrentRemoteDownloadActive = computed(() => {
+  const progress = remoteDownloadProgress.value;
+  return !!progress
+    && !progress.done
+    && !!currentSong.value
+    && progress.uri === currentSong.value.path;
+});
+const remoteDownloadText = computed(() => {
+  const progress = remoteDownloadProgress.value;
+  if (!progress || progress.percent === null) return '正在加载远程歌曲';
+  return `正在加载远程歌曲 ${Math.round(progress.percent)}%`;
+});
 
 // --- 音量拖拽逻辑 ---
 const isDraggingVolume = ref(false);
@@ -187,15 +203,20 @@ const handleFooterMouseLeave = () => {
   startIdleTimer();
 };
 
-onMounted(() => { 
+onMounted(async () => { 
   window.addEventListener('mousemove', onGlobalMouseMove); 
   window.addEventListener('mouseup', onGlobalMouseUp); 
   startIdleTimer(); // Start initial idle timer
+  unlistenRemoteDownload = await listen<RemoteDownloadProgress>('remote-download-progress', event => {
+    remoteDownloadProgress.value = event.payload;
+  });
 });
 onUnmounted(() => { 
   window.removeEventListener('mousemove', onGlobalMouseMove); 
   window.removeEventListener('mouseup', onGlobalMouseUp); 
   if (idleTimer) clearTimeout(idleTimer);
+  unlistenRemoteDownload?.();
+  unlistenRemoteDownload = null;
 });
 </script>
 
@@ -283,7 +304,7 @@ onUnmounted(() => {
             </button>
           </div>
           <div class="text-[11px] font-medium mt-0.5 cursor-default truncate text-gray-500 dark:text-gray-400">
-            {{ currentSong ? currentSong.artist : 'My Music' }}
+            {{ isCurrentRemoteDownloadActive ? remoteDownloadText : (currentSong ? currentSong.artist : 'My Music') }}
           </div>
         </div>
 

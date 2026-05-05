@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, onScopeDispose, reactive, ref } from 'vue';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useToast } from '../../composables/toast';
 import { remoteLibraryApi } from '../../services/tauri/remoteLibraryApi';
-import type { RemoteSource } from '../../types';
+import type { RemoteSource, RemoteSyncProgress } from '../../types';
 import ConfirmModal from '../overlays/ConfirmModal.vue';
 
 const { showToast } = useToast();
@@ -12,6 +13,8 @@ const isSaving = ref(false);
 const testing = ref(false);
 const syncingSourceId = ref<string | null>(null);
 const sourceToRemove = ref<RemoteSource | null>(null);
+const syncProgress = ref<RemoteSyncProgress | null>(null);
+let unlistenRemoteSync: UnlistenFn | null = null;
 
 const form = reactive({
   id: '',
@@ -39,6 +42,19 @@ const buildPayload = () => ({
   username: form.username.trim() || null,
   password: form.password || null,
   rootPath: form.rootPath.trim() || '/',
+});
+
+const syncPercent = computed(() => {
+  const progress = syncProgress.value;
+  if (!progress || progress.total <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((progress.current / progress.total) * 100)));
+});
+
+const syncProgressText = computed(() => {
+  const progress = syncProgress.value;
+  if (!progress) return '';
+  if (progress.total <= 0) return progress.message;
+  return `${progress.message} ${progress.current}/${progress.total}`;
 });
 
 const loadSources = async () => {
@@ -101,6 +117,15 @@ const editSource = (source: RemoteSource) => {
 
 const syncSource = async (source: RemoteSource) => {
   syncingSourceId.value = source.id;
+  syncProgress.value = {
+    sourceId: source.id,
+    phase: 'scanning',
+    current: 0,
+    total: 0,
+    message: '正在读取远程目录',
+    done: false,
+    failed: false,
+  };
   try {
     const result = await remoteLibraryApi.syncRemoteSource(source.id);
     await loadSources();
@@ -128,7 +153,20 @@ const confirmRemoveSource = async () => {
   }
 };
 
-onMounted(loadSources);
+onMounted(async () => {
+  await loadSources();
+  unlistenRemoteSync = await listen<RemoteSyncProgress>('remote-sync-progress', event => {
+    syncProgress.value = event.payload;
+    if (event.payload.done) {
+      syncingSourceId.value = null;
+    }
+  });
+});
+
+onScopeDispose(() => {
+  unlistenRemoteSync?.();
+  unlistenRemoteSync = null;
+});
 </script>
 
 <template>
@@ -192,6 +230,15 @@ onMounted(loadSources);
               <div class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ source.name }}</div>
               <div class="mt-1 truncate text-xs text-gray-600 dark:text-white/55">{{ source.baseUrl }}{{ source.rootPath }}</div>
               <div v-if="source.lastSyncError" class="mt-1 text-xs text-[#EC4141]">{{ source.lastSyncError }}</div>
+              <div v-if="syncProgress?.sourceId === source.id && !syncProgress.done" class="remote-progress">
+                <div class="remote-progress__top">
+                  <span>{{ syncProgressText }}</span>
+                  <span v-if="syncProgress.total > 0">{{ syncPercent }}%</span>
+                </div>
+                <div class="remote-progress__track">
+                  <div class="remote-progress__fill" :style="{ width: `${syncPercent}%` }"></div>
+                </div>
+              </div>
             </div>
             <div class="flex shrink-0 items-center gap-2">
               <button type="button" class="remote-icon-action" title="编辑" @click="editSource(source)">
@@ -314,6 +361,35 @@ onMounted(loadSources);
   color: #ec4141;
 }
 
+.remote-progress {
+  margin-top: 10px;
+  max-width: 460px;
+}
+
+.remote-progress__top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgb(75 85 99);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.remote-progress__track {
+  margin-top: 6px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.28);
+}
+
+.remote-progress__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: #ec4141;
+  transition: width 160ms ease;
+}
+
 .remote-empty {
   border-radius: 12px;
   padding: 24px;
@@ -339,5 +415,9 @@ onMounted(loadSources);
 
 :global(.dark) .remote-source-row {
   background: rgba(255, 255, 255, 0.06);
+}
+
+:global(.dark) .remote-progress__top {
+  color: rgba(255, 255, 255, 0.7);
 }
 </style>

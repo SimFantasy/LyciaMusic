@@ -5,7 +5,21 @@ use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use reqwest::{Client, Method};
 use std::collections::VecDeque;
 use std::path::Path;
+use std::sync::OnceLock;
+use std::time::Duration;
 use tokio::io::AsyncWriteExt;
+
+fn shared_client() -> &'static Client {
+    static CLIENT: OnceLock<Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(300))
+            .pool_max_idle_per_host(4)
+            .build()
+            .expect("build webdav http client")
+    })
+}
 
 fn normalize_remote_path(path: &str) -> String {
     let normalized = path.replace('\\', "/");
@@ -221,7 +235,7 @@ pub(crate) async fn list_directory(
 pub(crate) async fn collect_audio_files(
     source: &RemoteSourceCredentials,
 ) -> Result<Vec<RemoteFileEntry>, String> {
-    let client = Client::new();
+    let client = shared_client();
     let mut queue = VecDeque::from([normalize_remote_path(&source.root_path)]);
     let mut files = Vec::new();
 
@@ -239,7 +253,7 @@ pub(crate) async fn collect_audio_files(
 }
 
 pub(crate) async fn test_connection(source: &RemoteSourceCredentials) -> Result<(), String> {
-    let client = Client::new();
+    let client = shared_client();
     list_directory(&client, source, &source.root_path).await?;
     Ok(())
 }
@@ -248,8 +262,9 @@ pub(crate) async fn download_file_to_path(
     source: &RemoteSourceCredentials,
     remote_path: &str,
     target_path: &Path,
+    mut on_progress: impl FnMut(u64, Option<u64>) + Send,
 ) -> Result<(), String> {
-    let client = Client::new();
+    let client = shared_client();
     let request = client.get(build_url(source, remote_path));
     let mut response = auth_request(request, source)
         .send()
@@ -259,13 +274,19 @@ pub(crate) async fn download_file_to_path(
         return Err(format!("远程文件下载失败：{}", response.status()));
     }
 
+    let total = response.content_length();
+    let mut downloaded = 0u64;
+    on_progress(downloaded, total);
+
     let mut file = tokio::fs::File::create(target_path)
         .await
         .map_err(|error| error.to_string())?;
     while let Some(chunk) = response.chunk().await.map_err(|error| error.to_string())? {
+        downloaded = downloaded.saturating_add(chunk.len() as u64);
         file.write_all(&chunk)
             .await
             .map_err(|error| error.to_string())?;
+        on_progress(downloaded, total);
     }
     file.flush().await.map_err(|error| error.to_string())?;
     Ok(())

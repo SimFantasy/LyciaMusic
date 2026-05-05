@@ -78,6 +78,30 @@ pub(crate) struct RemoteSyncResult {
     pub parsed_songs: usize,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RemoteDownloadProgress {
+    pub uri: String,
+    pub downloaded: u64,
+    pub total: Option<u64>,
+    pub percent: Option<f64>,
+    pub done: bool,
+    pub failed: bool,
+    pub message: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RemoteSyncProgress {
+    pub source_id: String,
+    pub phase: String,
+    pub current: usize,
+    pub total: usize,
+    pub message: String,
+    pub done: bool,
+    pub failed: bool,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct RemoteFileEntry {
     pub remote_path: String,

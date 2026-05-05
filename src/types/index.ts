@@ -132,6 +132,28 @@ export interface RemoteSyncResult {
   parsedSongs: number;
 }
 
+export type RemoteSyncPhase = 'scanning' | 'parsing' | 'writing' | 'complete' | 'error';
+
+export interface RemoteSyncProgress {
+  sourceId: string;
+  phase: RemoteSyncPhase;
+  current: number;
+  total: number;
+  message: string;
+  done: boolean;
+  failed: boolean;
+}
+
+export interface RemoteDownloadProgress {
+  uri: string;
+  downloaded: number;
+  total: number | null;
+  percent: number | null;
+  done: boolean;
+  failed: boolean;
+  message: string | null;
+}
+
 export interface FolderNode {
   name: string;
   path: string;

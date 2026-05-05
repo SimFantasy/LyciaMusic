@@ -7,7 +7,7 @@ use super::types::{
 use super::webdav;
 use crate::database::DbState;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 fn now_seconds() -> i64 {
     SystemTime::now()
@@ -91,6 +91,7 @@ pub(crate) async fn remove_remote_source(
 
 #[tauri::command]
 pub(crate) async fn sync_remote_source(
+    app: AppHandle,
     source_id: String,
     db_state: State<'_, DbState>,
 ) -> Result<RemoteSyncResult, String> {
@@ -99,5 +100,5 @@ pub(crate) async fn sync_remote_source(
         get_source(&conn, &source_id)?
     };
 
-    scanner::sync_source(db_state.conn.clone(), source).await
+    scanner::sync_source(app, db_state.conn.clone(), source).await
 }
