@@ -89,7 +89,8 @@ mod tests {
     fn sine_wave(frequency_hz: f32, sample_rate: u32, sample_count: usize) -> Vec<f32> {
         (0..sample_count)
             .map(|index| {
-                let phase = index as f32 * frequency_hz * std::f32::consts::TAU / sample_rate as f32;
+                let phase =
+                    index as f32 * frequency_hz * std::f32::consts::TAU / sample_rate as f32;
                 phase.sin()
             })
             .collect()
@@ -114,7 +115,10 @@ mod tests {
             .map(|(index, _)| index)
             .unwrap();
 
-        assert!((3..=6).contains(&peak_index), "peak_index={peak_index}, bands={bands:?}");
+        assert!(
+            (3..=6).contains(&peak_index),
+            "peak_index={peak_index}, bands={bands:?}"
+        );
         assert!(bands[peak_index] > 0.35, "peak={}", bands[peak_index]);
     }
 }

@@ -1,10 +1,6 @@
 use amll_lyric::{
+    eqrc::decrypt_qrc_hex, eslrc::parse_eslrc, lys::parse_lys, qrc::parse_qrc, yrc::parse_yrc,
     LyricLine as AmlLyricLine,
-    eqrc::decrypt_qrc_hex,
-    eslrc::parse_eslrc,
-    lys::parse_lys,
-    qrc::parse_qrc,
-    yrc::parse_yrc,
 };
 use regex::Regex;
 use serde::Serialize;
@@ -310,7 +306,8 @@ fn average(values: &[f64]) -> f64 {
 }
 
 fn track_word_coverage(track: &LyricTrack) -> f64 {
-    track.lines
+    track
+        .lines
         .iter()
         .filter(|line| {
             line.words
@@ -540,7 +537,8 @@ fn same_script_family(left: &DominantScript, right: &DominantScript) -> bool {
 }
 
 fn track_has_japanese_like_lines(track: &LyricTrack) -> bool {
-    track.lines
+    track
+        .lines
         .iter()
         .any(|line| is_japanese_like(&line.script_profile))
 }
@@ -596,7 +594,12 @@ fn parser_priority(source_format: &ParsedLineSourceFormat) -> i32 {
 fn score_prepared_lines(lines: &[ParsedLine]) -> i32 {
     lines.iter().fold(0, |score, line| {
         score
-            + if line.words.as_ref().map(|words| !words.is_empty()).unwrap_or(false) {
+            + if line
+                .words
+                .as_ref()
+                .map(|words| !words.is_empty())
+                .unwrap_or(false)
+            {
                 2
             } else {
                 0
@@ -681,7 +684,11 @@ fn detect_explicit_role(text: &str) -> (Option<ExplicitLineRole>, String) {
 }
 
 fn to_safe_ms(value: u64, fallback: u32) -> u32 {
-    value.try_into().ok().filter(|value| *value <= 60_039_999).unwrap_or(fallback)
+    value
+        .try_into()
+        .ok()
+        .filter(|value| *value <= 60_039_999)
+        .unwrap_or(fallback)
 }
 
 fn prepare_amll_line(
@@ -692,7 +699,9 @@ fn prepare_amll_line(
     let fallback_start_ms = to_safe_ms(line.start_time, 0);
     let fallback_end_ms = to_safe_ms(
         line.end_time,
-        fallback_start_ms.saturating_add(500).max(fallback_start_ms + 80),
+        fallback_start_ms
+            .saturating_add(500)
+            .max(fallback_start_ms + 80),
     )
     .max(fallback_start_ms);
 
@@ -1775,9 +1784,7 @@ fn looks_like_english_phrase(text: &str) -> bool {
         .filter(|token| english_phrase_words.contains(&token.as_str()))
         .count();
 
-    average_token_length >= 3.0
-        && keyword_hits >= 2
-        && score_romanized_latin_text(text) < 0.42
+    average_token_length >= 3.0 && keyword_hits >= 2 && score_romanized_latin_text(text) < 0.42
 }
 
 fn score_englishness(text: &str) -> f64 {
@@ -2066,10 +2073,12 @@ fn score_main_track(
             && alignments[track_index][other_index].weighted_score >= 0.35
             && track_has_japanese_like_lines(track)
     });
-    let has_any_romanized_latin_track = tracks
+    let has_any_romanized_latin_track = tracks.iter().any(|track| {
+        track.dominant_script == DominantScript::Latin && score_track_romanization(track) >= 0.35
+    });
+    let has_any_japanese_like_track = tracks
         .iter()
-        .any(|track| track.dominant_script == DominantScript::Latin && score_track_romanization(track) >= 0.35);
-    let has_any_japanese_like_track = tracks.iter().any(|track| track_has_japanese_like_lines(track));
+        .any(|track| track_has_japanese_like_lines(track));
 
     let mut attachment_support = 0.0;
     for (other_index, track) in tracks.iter().enumerate() {
@@ -2451,7 +2460,8 @@ fn should_use_line_as_romaji(
     let romanization = score_romanized_latin_text(&candidate_line.text);
 
     romanization >= englishness
-        || (candidate_line.source_index < main_line.source_index && romanization + 0.08 >= englishness)
+        || (candidate_line.source_index < main_line.source_index
+            && romanization + 0.08 >= englishness)
 }
 
 fn should_use_line_as_translation(
@@ -2510,7 +2520,10 @@ fn merge_auxiliary_line_into_semantic(
         return;
     }
 
-    push_secondary_text(&mut semantic_line.secondary_texts, candidate_line.text.clone());
+    push_secondary_text(
+        &mut semantic_line.secondary_texts,
+        candidate_line.text.clone(),
+    );
 }
 
 fn score_cluster_main_candidate(
@@ -2546,7 +2559,11 @@ fn score_cluster_main_candidate(
 
     let mut score = 0.0;
     score += (2.8 - ((candidate_line.source_index - median_source_index).abs() * 2.2)).max(-1.4);
-    score += if candidate_line.explicit_role.is_none() { 1.0 } else { -1.0 };
+    score += if candidate_line.explicit_role.is_none() {
+        1.0
+    } else {
+        -1.0
+    };
     score += if candidate_line
         .words
         .as_ref()
@@ -2573,7 +2590,8 @@ fn score_cluster_main_candidate(
         LyricTrackRole::Background | LyricTrackRole::Metadata => score -= 2.4,
     }
 
-    if track_has_japanese_like_lines(main_track) && is_japanese_like(&candidate_line.script_profile) {
+    if track_has_japanese_like_lines(main_track) && is_japanese_like(&candidate_line.script_profile)
+    {
         score += 2.2;
     }
     if has_japanese_like_peer {
@@ -3051,10 +3069,11 @@ pub fn lyric_document_to_semantic_lines(document: &LyricDocument) -> Vec<Semanti
                 continue;
             }
 
-            orphan_groups
-                .entry(line.cluster_index)
-                .or_default()
-                .push((track_index, line_index, line.clone()));
+            orphan_groups.entry(line.cluster_index).or_default().push((
+                track_index,
+                line_index,
+                line.clone(),
+            ));
         }
     }
 
@@ -3069,9 +3088,7 @@ pub fn lyric_document_to_semantic_lines(document: &LyricDocument) -> Vec<Semanti
                 .tracks
                 .iter()
                 .flat_map(|track| track.lines.iter())
-                .find(|line| {
-                    line.cluster_index == cluster_index && line.text == existing_main_text
-                })
+                .find(|line| line.cluster_index == cluster_index && line.text == existing_main_text)
                 .cloned();
 
             if let Some(existing_main_line) = existing_main_line {
@@ -3192,8 +3209,8 @@ pub fn build_structured_lyrics_payload(raw_lyrics: String) -> StructuredLyricsPa
 #[cfg(test)]
 mod tests {
     use super::{
-        ParsedLineSourceFormat, build_structured_lyrics_payload, parse_raw_lyrics,
-        score_romanized_latin_text,
+        build_structured_lyrics_payload, parse_raw_lyrics, score_romanized_latin_text,
+        ParsedLineSourceFormat,
     };
 
     #[test]
@@ -3234,7 +3251,10 @@ mod tests {
             parsed[0]
                 .words
                 .as_ref()
-                .map(|words| words.iter().map(|word| word.text.as_str()).collect::<Vec<_>>())
+                .map(|words| words
+                    .iter()
+                    .map(|word| word.text.as_str())
+                    .collect::<Vec<_>>())
                 .unwrap_or_default(),
             vec!["如", "果", "当", "时", " ", "-", " ", "许", "嵩"]
         );
@@ -3252,11 +3272,12 @@ mod tests {
             parsed[0]
                 .words
                 .as_ref()
-                .map(|words| words.iter().map(|word| word.text.as_str()).collect::<Vec<_>>())
+                .map(|words| words
+                    .iter()
+                    .map(|word| word.text.as_str())
+                    .collect::<Vec<_>>())
                 .unwrap_or_default(),
-            vec![
-                "You ", "know ", "you ", "love ", "me", " I ", "know ", "you ", "care",
-            ]
+            vec!["You ", "know ", "you ", "love ", "me", " I ", "know ", "you ", "care",]
         );
         assert_eq!(parsed[1].text, "你知道你爱我 我知道你在意");
     }
@@ -3272,7 +3293,10 @@ mod tests {
             parsed[0]
                 .words
                 .as_ref()
-                .map(|words| words.iter().map(|word| word.text.as_str()).collect::<Vec<_>>())
+                .map(|words| words
+                    .iter()
+                    .map(|word| word.text.as_str())
+                    .collect::<Vec<_>>())
                 .unwrap_or_default(),
             vec!["そ", "の日から", "何もかも"]
         );
@@ -3305,6 +3329,8 @@ mod tests {
         let romaji_line = "mo u to kku ni de a't te ta ka ra";
 
         assert!(score_romanized_latin_text(english_phrase) < 0.35);
-        assert!(score_romanized_latin_text(romaji_line) > score_romanized_latin_text(english_phrase));
+        assert!(
+            score_romanized_latin_text(romaji_line) > score_romanized_latin_text(english_phrase)
+        );
     }
 }

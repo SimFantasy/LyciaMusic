@@ -18,8 +18,12 @@ fn platform_is_foreground_fullscreen() -> bool {
     use std::mem::zeroed;
     use windows_sys::Win32::{
         Foundation::RECT,
-        Graphics::Gdi::{GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST},
-        UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible},
+        Graphics::Gdi::{
+            GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+        },
+        UI::WindowsAndMessaging::{
+            GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+        },
     };
 
     unsafe {
@@ -63,8 +67,10 @@ fn platform_is_foreground_fullscreen() -> bool {
         let monitor_rect = monitor_info.rcMonitor;
         let tolerance = 2;
 
-        let width_delta = ((rect.right - rect.left) - (monitor_rect.right - monitor_rect.left)).abs();
-        let height_delta = ((rect.bottom - rect.top) - (monitor_rect.bottom - monitor_rect.top)).abs();
+        let width_delta =
+            ((rect.right - rect.left) - (monitor_rect.right - monitor_rect.left)).abs();
+        let height_delta =
+            ((rect.bottom - rect.top) - (monitor_rect.bottom - monitor_rect.top)).abs();
         let left_delta = (rect.left - monitor_rect.left).abs();
         let top_delta = (rect.top - monitor_rect.top).abs();
 

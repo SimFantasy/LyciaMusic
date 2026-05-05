@@ -15,8 +15,9 @@ fn find_display_line_by_time(
 
 #[test]
 fn parses_yrc_fixture_payload() {
-    let payload =
-        build_structured_lyrics_payload(include_str!("../src/music/fixtures/lyrics/if_back_then.yrc").to_string());
+    let payload = build_structured_lyrics_payload(
+        include_str!("../src/music/fixtures/lyrics/if_back_then.yrc").to_string(),
+    );
 
     assert_eq!(payload.display_lines.len(), 2);
     assert_eq!(payload.display_lines[0].text, "如果当时 - 许嵩");
@@ -24,7 +25,10 @@ fn parses_yrc_fixture_payload() {
         payload.display_lines[0]
             .words
             .as_ref()
-            .map(|words| words.iter().map(|word| word.text.as_str()).collect::<Vec<_>>())
+            .map(|words| words
+                .iter()
+                .map(|word| word.text.as_str())
+                .collect::<Vec<_>>())
             .unwrap_or_default(),
         vec!["如", "果", "当", "时", " ", "-", " ", "许", "嵩"]
     );
@@ -33,18 +37,23 @@ fn parses_yrc_fixture_payload() {
 
 #[test]
 fn parses_qrc_fixture_payload() {
-    let payload =
-        build_structured_lyrics_payload(include_str!("../src/music/fixtures/lyrics/baby.qrc").to_string());
+    let payload = build_structured_lyrics_payload(
+        include_str!("../src/music/fixtures/lyrics/baby.qrc").to_string(),
+    );
 
     assert_eq!(payload.display_lines.len(), 2);
-    assert_eq!(payload.display_lines[0].text, "You know you love me I know you care");
+    assert_eq!(
+        payload.display_lines[0].text,
+        "You know you love me I know you care"
+    );
     assert_eq!(payload.display_lines[1].text, "你知道你爱我 我知道你在意");
 }
 
 #[test]
 fn parses_lys_fixture_payload() {
-    let payload =
-        build_structured_lyrics_payload(include_str!("../src/music/fixtures/lyrics/from_that_day.lys").to_string());
+    let payload = build_structured_lyrics_payload(
+        include_str!("../src/music/fixtures/lyrics/from_that_day.lys").to_string(),
+    );
 
     assert_eq!(payload.display_lines.len(), 2);
     assert_eq!(payload.display_lines[0].text, "その日から何もかも");
@@ -81,7 +90,10 @@ fn keeps_bilingual_english_lines_as_single_display_rows() {
     );
     assert_eq!(payload.display_lines[0].text, "Hey you");
     assert_eq!(payload.display_lines[0].translation, "嘿 亲爱的");
-    assert!(payload.display_lines.iter().all(|line| line.romaji.is_empty()));
+    assert!(payload
+        .display_lines
+        .iter()
+        .all(|line| line.romaji.is_empty()));
 }
 
 #[test]
@@ -169,9 +181,13 @@ fn preserves_inline_english_main_lines_inside_japanese_song() {
     assert_eq!(english_line.translation, "(可以给我最后一个吻吗?)");
     assert!(english_line.romaji.is_empty());
 
-    let projector_line = find_display_line_by_time(&payload, 86.907).expect("projector line exists");
+    let projector_line =
+        find_display_line_by_time(&payload, 86.907).expect("projector line exists");
     assert_eq!(projector_line.text, "私の心のプロジェクター");
-    assert_eq!(projector_line.romaji, "wa ta shi no ko ko ro no pu ro je ku ta");
+    assert_eq!(
+        projector_line.romaji,
+        "wa ta shi no ko ko ro no pu ro je ku ta"
+    );
     assert_eq!(projector_line.translation, "早已将你的身影深深烙印");
 }
 
@@ -192,7 +208,10 @@ fn keeps_mixed_japanese_and_english_lines_as_main_when_no_romaji_track_exists() 
     );
 
     let english_line = find_display_line_by_time(&payload, 43.314).expect("english line exists");
-    assert_eq!(english_line.text, "I don't know what I wanted or you made me do");
+    assert_eq!(
+        english_line.text,
+        "I don't know what I wanted or you made me do"
+    );
     assert_eq!(
         english_line.translation,
         "我不知自己心之所向 亦不知你对我期望怎样"
@@ -228,7 +247,8 @@ fn keeps_french_lines_as_main_with_chinese_translation() {
     assert_eq!(first_line.translation, "当你挣脱内心的牢笼");
     assert!(first_line.romaji.is_empty());
 
-    let second_line = find_display_line_by_time(&payload, 66.009).expect("second french line exists");
+    let second_line =
+        find_display_line_by_time(&payload, 66.009).expect("second french line exists");
     assert_eq!(second_line.text, "On ira a la foire");
     assert_eq!(second_line.translation, "我们将一起前往那欢乐的圣地");
     assert!(second_line.romaji.is_empty());
@@ -277,9 +297,11 @@ fn keeps_latin_main_when_chinese_translation_contains_repeated_latin_words() {
         .join("\n"),
     );
 
-    let first_refrain = find_display_line_by_time(&payload, 38.88).expect("first refrain line exists");
+    let first_refrain =
+        find_display_line_by_time(&payload, 38.88).expect("first refrain line exists");
     let storm_line = find_display_line_by_time(&payload, 41.62).expect("storm line exists");
-    let second_refrain = find_display_line_by_time(&payload, 43.66).expect("second refrain line exists");
+    let second_refrain =
+        find_display_line_by_time(&payload, 43.66).expect("second refrain line exists");
     let farewell_line = find_display_line_by_time(&payload, 46.41).expect("farewell line exists");
     let faraway_line = find_display_line_by_time(&payload, 48.55).expect("faraway line exists");
 

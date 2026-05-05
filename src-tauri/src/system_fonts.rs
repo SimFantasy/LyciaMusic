@@ -38,7 +38,11 @@ mod imp {
         }
     }
 
-    fn collect_fonts_from_key(root: HKEY, path: &str, fonts: &mut BTreeSet<String>) -> Result<(), String> {
+    fn collect_fonts_from_key(
+        root: HKEY,
+        path: &str,
+        fonts: &mut BTreeSet<String>,
+    ) -> Result<(), String> {
         let wide_path = to_wide(path);
         let mut key: HKEY = null_mut();
 
@@ -70,7 +74,9 @@ mod imp {
                 };
 
                 if status == ERROR_MORE_DATA {
-                    let next_len = (name_len as usize).saturating_add(1).max(name_buf.len() * 2);
+                    let next_len = (name_len as usize)
+                        .saturating_add(1)
+                        .max(name_buf.len() * 2);
                     name_buf.resize(next_len, 0);
                     name_len = next_len as u32;
                     continue;

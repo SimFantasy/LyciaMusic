@@ -369,15 +369,20 @@ fn set_statistics_meta(conn: &rusqlite::Connection, key: &str, value: &str) -> R
 }
 
 fn clear_aggregate_statistics(conn: &rusqlite::Connection) -> Result<(), String> {
-    conn.execute("DELETE FROM global_stats", []).map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM song_stats", []).map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM daily_stats", []).map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM hourly_stats", []).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM global_stats", [])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM song_stats", [])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM daily_stats", [])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM hourly_stats", [])
+        .map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM daily_unique_song_entries", [])
         .map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM daily_unique_artist_entries", [])
         .map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM recent_plays", []).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM recent_plays", [])
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -466,7 +471,10 @@ fn upsert_song_stats(
     Ok(())
 }
 
-fn upsert_daily_stats(conn: &rusqlite::Connection, daily: &PortableDailyStats) -> Result<(), String> {
+fn upsert_daily_stats(
+    conn: &rusqlite::Connection,
+    daily: &PortableDailyStats,
+) -> Result<(), String> {
     conn.execute(
         "INSERT INTO daily_stats (date, play_count, play_time_ms, unique_songs, unique_artists)
          VALUES (?1, ?2, ?3, ?4, ?5)
@@ -487,7 +495,10 @@ fn upsert_daily_stats(conn: &rusqlite::Connection, daily: &PortableDailyStats) -
     Ok(())
 }
 
-fn upsert_hourly_stats(conn: &rusqlite::Connection, hourly: &PortableHourlyStats) -> Result<(), String> {
+fn upsert_hourly_stats(
+    conn: &rusqlite::Connection,
+    hourly: &PortableHourlyStats,
+) -> Result<(), String> {
     conn.execute(
         "INSERT INTO hourly_stats (hour, play_count, play_time_ms)
          VALUES (?1, ?2, ?3)
@@ -512,7 +523,10 @@ fn prune_recent_plays(conn: &rusqlite::Connection) -> Result<(), String> {
     Ok(())
 }
 
-fn insert_recent_play(conn: &rusqlite::Connection, entry: &PortableRecentPlay) -> Result<bool, String> {
+fn insert_recent_play(
+    conn: &rusqlite::Connection,
+    entry: &PortableRecentPlay,
+) -> Result<bool, String> {
     let affected = conn
         .execute(
             "INSERT OR IGNORE INTO recent_plays (
@@ -1031,11 +1045,7 @@ fn resolve_album_key(row: &SongCatalogRow) -> String {
         row.album_artist.to_ascii_lowercase()
     };
 
-    format!(
-        "{}::{}",
-        album,
-        artist,
-    )
+    format!("{}::{}", album, artist,)
 }
 
 fn resolve_view_album_key(row: &SongViewRow) -> String {
@@ -1080,7 +1090,9 @@ fn song_matches_query(row: &SongViewRow, query: &str) -> bool {
         return true;
     }
 
-    path_file_name(&row.path).to_lowercase().contains(&lowered_query)
+    path_file_name(&row.path)
+        .to_lowercase()
+        .contains(&lowered_query)
         || row.title.to_lowercase().contains(&lowered_query)
         || row.artist.to_lowercase().contains(&lowered_query)
         || row.album.to_lowercase().contains(&lowered_query)
@@ -1105,27 +1117,47 @@ fn sort_song_view_rows(rows: &mut [SongViewRow], sort_mode: &SongPathSortMode) {
             .artist
             .to_lowercase()
             .cmp(&right.artist.to_lowercase())
-            .then_with(|| song_title_label(left).to_lowercase().cmp(&song_title_label(right).to_lowercase())),
+            .then_with(|| {
+                song_title_label(left)
+                    .to_lowercase()
+                    .cmp(&song_title_label(right).to_lowercase())
+            }),
         SongPathSortMode::AddedAt => right
             .added_at
             .unwrap_or_default()
             .cmp(&left.added_at.unwrap_or_default())
-            .then_with(|| song_title_label(left).to_lowercase().cmp(&song_title_label(right).to_lowercase())),
+            .then_with(|| {
+                song_title_label(left)
+                    .to_lowercase()
+                    .cmp(&song_title_label(right).to_lowercase())
+            }),
         SongPathSortMode::AddedAtAsc => left
             .added_at
             .unwrap_or_default()
             .cmp(&right.added_at.unwrap_or_default())
-            .then_with(|| song_title_label(left).to_lowercase().cmp(&song_title_label(right).to_lowercase())),
+            .then_with(|| {
+                song_title_label(left)
+                    .to_lowercase()
+                    .cmp(&song_title_label(right).to_lowercase())
+            }),
         SongPathSortMode::FileModifiedAt => right
             .file_modified_at
             .unwrap_or_default()
             .cmp(&left.file_modified_at.unwrap_or_default())
-            .then_with(|| song_title_label(left).to_lowercase().cmp(&song_title_label(right).to_lowercase())),
+            .then_with(|| {
+                song_title_label(left)
+                    .to_lowercase()
+                    .cmp(&song_title_label(right).to_lowercase())
+            }),
         SongPathSortMode::FileModifiedAtAsc => left
             .file_modified_at
             .unwrap_or_default()
             .cmp(&right.file_modified_at.unwrap_or_default())
-            .then_with(|| song_title_label(left).to_lowercase().cmp(&song_title_label(right).to_lowercase())),
+            .then_with(|| {
+                song_title_label(left)
+                    .to_lowercase()
+                    .cmp(&song_title_label(right).to_lowercase())
+            }),
     });
 }
 
@@ -1263,7 +1295,9 @@ fn match_song_identity(
     identity: &PortableSongIdentity,
 ) -> Option<LibraryMatchCandidate> {
     select_unique_candidate(&index.strict, &strict_identity_key(identity))
-        .or_else(|| select_unique_candidate(&index.weak_artist, &weak_artist_identity_key(identity)))
+        .or_else(|| {
+            select_unique_candidate(&index.weak_artist, &weak_artist_identity_key(identity))
+        })
         .or_else(|| select_unique_candidate(&index.weak_title, &weak_title_identity_key(identity)))
 }
 
@@ -1339,27 +1373,27 @@ fn load_portable_export(file_path: &str) -> Result<PortableStatisticsExport, Str
 fn query_global_stats(conn: &rusqlite::Connection) -> Result<PortableGlobalStats, String> {
     let stats = conn
         .query_row(
-        "SELECT total_play_count, total_play_time_ms, first_played_at, last_played_at
+            "SELECT total_play_count, total_play_time_ms, first_played_at, last_played_at
          FROM global_stats
          WHERE id = 1",
-        [],
-        |row| {
-            Ok(PortableGlobalStats {
-                total_play_count: row.get::<_, i64>(0)?,
-                total_play_time_ms: row.get::<_, i64>(1)?,
-                first_played_at: row.get::<_, Option<String>>(2)?,
-                last_played_at: row.get::<_, Option<String>>(3)?,
-            })
-        },
-    )
-    .optional()
-    .map_err(|e| e.to_string())?
-    .unwrap_or(PortableGlobalStats {
-        total_play_count: 0,
-        total_play_time_ms: 0,
-        first_played_at: None,
-        last_played_at: None,
-    });
+            [],
+            |row| {
+                Ok(PortableGlobalStats {
+                    total_play_count: row.get::<_, i64>(0)?,
+                    total_play_time_ms: row.get::<_, i64>(1)?,
+                    first_played_at: row.get::<_, Option<String>>(2)?,
+                    last_played_at: row.get::<_, Option<String>>(3)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .unwrap_or(PortableGlobalStats {
+            total_play_count: 0,
+            total_play_time_ms: 0,
+            first_played_at: None,
+            last_played_at: None,
+        });
 
     Ok(stats)
 }
@@ -1498,7 +1532,10 @@ fn aggregate_behavior_stats(conn: &rusqlite::Connection) -> Result<BehaviorStats
 
     let mut top_songs = Vec::new();
     let mut seen_paths = HashSet::new();
-    for entry in song_entries.iter().filter(|entry| entry.song_stats.play_count > 0) {
+    for entry in song_entries
+        .iter()
+        .filter(|entry| entry.song_stats.play_count > 0)
+    {
         let Some(candidate) = match_song_identity(&index, &entry.song_identity) else {
             continue;
         };
@@ -1550,12 +1587,14 @@ fn aggregate_behavior_stats(conn: &rusqlite::Connection) -> Result<BehaviorStats
     let mut album_map = HashMap::<String, i64>::new();
     for entry in &song_entries {
         if !is_invalid_name(&entry.song_identity.artist) {
-            *artist_map.entry(entry.song_identity.artist.clone()).or_default() +=
-                entry.song_stats.play_count;
+            *artist_map
+                .entry(entry.song_identity.artist.clone())
+                .or_default() += entry.song_stats.play_count;
         }
         if !is_invalid_name(&entry.song_identity.album) {
-            *album_map.entry(entry.song_identity.album.clone()).or_default() +=
-                entry.song_stats.play_count;
+            *album_map
+                .entry(entry.song_identity.album.clone())
+                .or_default() += entry.song_stats.play_count;
         }
     }
 
@@ -1624,7 +1663,6 @@ fn aggregate_behavior_stats(conn: &rusqlite::Connection) -> Result<BehaviorStats
         recent_activity,
     })
 }
-
 
 fn insert_history_event(
     conn: &rusqlite::Connection,
@@ -1929,11 +1967,13 @@ pub fn get_favorite_artist_catalog(
 
     let mut result: Vec<crate::music::types::ArtistCatalogItem> = map
         .into_iter()
-        .map(|(name, (count, first_song_path))| crate::music::types::ArtistCatalogItem {
-            name,
-            count,
-            first_song_path,
-        })
+        .map(
+            |(name, (count, first_song_path))| crate::music::types::ArtistCatalogItem {
+                name,
+                count,
+                first_song_path,
+            },
+        )
         .collect();
 
     result.sort_by(|a, b| {
@@ -1968,25 +2008,27 @@ pub fn get_favorite_album_catalog(
         };
 
         let key = resolve_album_key(&row);
-        let existing = map.entry(key.clone()).or_insert(crate::music::types::AlbumCatalogItem {
-            key,
-            name: if row.album.trim().is_empty() {
-                "Unknown".to_string()
-            } else {
-                row.album.clone()
-            },
-            count: 0,
-            artist: if row.album_artist.trim().is_empty() {
-                if row.artist.trim().is_empty() {
+        let existing = map
+            .entry(key.clone())
+            .or_insert(crate::music::types::AlbumCatalogItem {
+                key,
+                name: if row.album.trim().is_empty() {
                     "Unknown".to_string()
                 } else {
-                    row.artist.clone()
-                }
-            } else {
-                row.album_artist.clone()
-            },
-            first_song_path: row.path.clone(),
-        });
+                    row.album.clone()
+                },
+                count: 0,
+                artist: if row.album_artist.trim().is_empty() {
+                    if row.artist.trim().is_empty() {
+                        "Unknown".to_string()
+                    } else {
+                        row.artist.clone()
+                    }
+                } else {
+                    row.album_artist.clone()
+                },
+                first_song_path: row.path.clone(),
+            });
 
         existing.count = existing.count.saturating_add(1);
     }

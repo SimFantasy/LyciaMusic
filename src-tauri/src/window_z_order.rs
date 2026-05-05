@@ -45,16 +45,14 @@ mod platform {
         Foundation::{HWND, LPARAM, WPARAM},
         System::Threading::GetCurrentThreadId,
         UI::{
-            Accessibility::{
-                SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK,
-            },
+            Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK},
             WindowsAndMessaging::{
-                DispatchMessageW, GetAncestor, GetClassNameW, GetMessageW, IsWindow, MSG,
-                PM_NOREMOVE, PeekMessageW, PostThreadMessageW, SetWindowPos,
-                TranslateMessage, GA_ROOT, HWND_NOTOPMOST, HWND_TOPMOST, EVENT_OBJECT_FOCUS,
-                EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MENUSTART, SWP_NOMOVE, SWP_NOACTIVATE,
-                SWP_NOSENDCHANGING, SWP_NOSIZE, SWP_NOOWNERZORDER, WINEVENT_OUTOFCONTEXT,
-                WINEVENT_SKIPOWNPROCESS, WM_APP,
+                DispatchMessageW, GetAncestor, GetClassNameW, GetMessageW, IsWindow, PeekMessageW,
+                PostThreadMessageW, SetWindowPos, TranslateMessage, EVENT_OBJECT_FOCUS,
+                EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MENUSTART, GA_ROOT, HWND_NOTOPMOST,
+                HWND_TOPMOST, MSG, PM_NOREMOVE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER,
+                SWP_NOSENDCHANGING, SWP_NOSIZE, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
+                WM_APP,
             },
         },
     };
@@ -99,11 +97,8 @@ mod platform {
             return;
         }
 
-        let flags = SWP_NOMOVE
-            | SWP_NOSIZE
-            | SWP_NOACTIVATE
-            | SWP_NOOWNERZORDER
-            | SWP_NOSENDCHANGING;
+        let flags =
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOSENDCHANGING;
 
         unsafe {
             if enabled {
@@ -298,7 +293,11 @@ mod platform {
 
         unsafe {
             let root = GetAncestor(hwnd, GA_ROOT);
-            if root.is_null() { hwnd } else { root }
+            if root.is_null() {
+                hwnd
+            } else {
+                root
+            }
         }
     }
 
@@ -338,6 +337,4 @@ mod platform {
 }
 
 #[cfg(target_os = "windows")]
-use platform::{
-    refresh_window_topmost, start_window_topmost_guard, stop_window_topmost_guard,
-};
+use platform::{refresh_window_topmost, start_window_topmost_guard, stop_window_topmost_guard};
