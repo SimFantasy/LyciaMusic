@@ -53,7 +53,10 @@ fn read_tagged_file_from_path_with_cover_mode(
         .options(options)
         .read()
     {
-        Ok(tagged_file) => Ok(tagged_file),
+        Ok(mut tagged_file) => {
+            prefer_leading_id3v2_text(path, &mut tagged_file);
+            Ok(tagged_file)
+        }
         Err(original_err) if is_wav_path(path) => {
             read_salvaged_wav_tags(path, read_cover_art).map_err(|_| original_err)
         }
@@ -445,6 +448,211 @@ where
     Some(bytes)
 }
 
+fn prefer_leading_id3v2_text(path: &Path, tagged_file: &mut TaggedFile) {
+    if tagged_file.file_type() != FileType::Mpeg {
+        return;
+    }
+
+    let Ok(file) = File::open(path) else {
+        return;
+    };
+    let Some(leading_tag) = read_leading_id3v2_text_tag(&mut BufReader::new(file)) else {
+        return;
+    };
+
+    match tagged_file.tag_mut(TagType::Id3v2) {
+        Some(target_tag) => copy_preferred_id3v2_text(target_tag, &leading_tag),
+        None => {
+            let _ = tagged_file.insert_tag(leading_tag);
+        }
+    }
+}
+
+fn read_leading_id3v2_text_tag<R>(reader: &mut R) -> Option<Tag>
+where
+    R: Read + Seek,
+{
+    let mut header = [0u8; 10];
+    reader.read_exact(&mut header).ok()?;
+    if &header[..3] != b"ID3" {
+        return None;
+    }
+
+    let major = header[3];
+    if !(2..=4).contains(&major) {
+        return None;
+    }
+
+    let mut remaining = leading_id3v2_size(&header)?.saturating_sub(10);
+    if header[5] & 0x40 != 0 {
+        remaining = skip_id3v2_extended_header(reader, major, remaining)?;
+    }
+
+    let mut tag = Tag::new(TagType::Id3v2);
+    let frame_header_size = if major == 2 { 6 } else { 10 };
+
+    while remaining >= frame_header_size {
+        let mut frame_header = vec![0u8; frame_header_size];
+        reader.read_exact(&mut frame_header).ok()?;
+        remaining = remaining.saturating_sub(frame_header_size);
+
+        let (frame_id, frame_size) = if major == 2 {
+            let id = std::str::from_utf8(&frame_header[..3]).ok()?.to_string();
+            let size = ((frame_header[3] as usize) << 16)
+                | ((frame_header[4] as usize) << 8)
+                | frame_header[5] as usize;
+            (id, size)
+        } else {
+            let id = std::str::from_utf8(&frame_header[..4]).ok()?.to_string();
+            let size = if major == 4 {
+                syncsafe_u32(&frame_header[4..8])?
+            } else {
+                u32::from_be_bytes(frame_header[4..8].try_into().ok()?) as usize
+            };
+            (id, size)
+        };
+
+        if frame_id.as_bytes().iter().all(|byte| *byte == 0) || frame_size == 0 {
+            break;
+        }
+        if frame_size > remaining {
+            break;
+        }
+
+        if let Some(key) = id3v2_text_frame_key(&frame_id) {
+            let mut data = vec![0u8; frame_size];
+            reader.read_exact(&mut data).ok()?;
+            if let Some(text) = decode_id3v2_text_frame(&data) {
+                let _ = tag.insert_text(key, text);
+            }
+        } else {
+            reader.seek(SeekFrom::Current(frame_size as i64)).ok()?;
+        }
+
+        remaining = remaining.saturating_sub(frame_size);
+
+        if tag.get_string(&ItemKey::TrackTitle).is_some()
+            && tag.get_string(&ItemKey::TrackArtist).is_some()
+            && tag.get_string(&ItemKey::AlbumTitle).is_some()
+            && tag.get_string(&ItemKey::AlbumArtist).is_some()
+        {
+            break;
+        }
+    }
+
+    let has_items = tag.items().next().is_some();
+    has_items.then_some(tag)
+}
+
+fn skip_id3v2_extended_header<R>(reader: &mut R, major: u8, remaining: usize) -> Option<usize>
+where
+    R: Read + Seek,
+{
+    if remaining < 4 {
+        return None;
+    }
+
+    let mut size_bytes = [0u8; 4];
+    reader.read_exact(&mut size_bytes).ok()?;
+
+    let skip_size = if major == 4 {
+        syncsafe_u32(&size_bytes)?.saturating_sub(4)
+    } else {
+        u32::from_be_bytes(size_bytes) as usize
+    };
+    if skip_size > remaining.saturating_sub(4) {
+        return None;
+    }
+
+    reader.seek(SeekFrom::Current(skip_size as i64)).ok()?;
+    Some(remaining.saturating_sub(4 + skip_size))
+}
+
+fn syncsafe_u32(bytes: &[u8]) -> Option<usize> {
+    if bytes.len() != 4 || bytes.iter().any(|byte| byte & 0x80 != 0) {
+        return None;
+    }
+
+    Some(
+        ((bytes[0] as usize) << 21)
+            | ((bytes[1] as usize) << 14)
+            | ((bytes[2] as usize) << 7)
+            | bytes[3] as usize,
+    )
+}
+
+fn id3v2_text_frame_key(frame_id: &str) -> Option<ItemKey> {
+    match frame_id {
+        "TIT2" | "TT2" => Some(ItemKey::TrackTitle),
+        "TPE1" | "TP1" => Some(ItemKey::TrackArtist),
+        "TALB" | "TAL" => Some(ItemKey::AlbumTitle),
+        "TPE2" | "TP2" => Some(ItemKey::AlbumArtist),
+        _ => None,
+    }
+}
+
+fn decode_id3v2_text_frame(data: &[u8]) -> Option<String> {
+    let (encoding, text_bytes) = data.split_first()?;
+    let decoded = match encoding {
+        0 => text_bytes.iter().map(|byte| char::from(*byte)).collect(),
+        1 => decode_utf16_with_bom(text_bytes)?,
+        2 => decode_utf16_be(text_bytes)?,
+        3 => std::str::from_utf8(text_bytes).ok()?.to_string(),
+        _ => return None,
+    };
+
+    clean_text(decoded.trim_matches('\0'))
+}
+
+fn decode_utf16_with_bom(bytes: &[u8]) -> Option<String> {
+    if bytes.starts_with(&[0xFE, 0xFF]) {
+        decode_utf16_be(&bytes[2..])
+    } else if bytes.starts_with(&[0xFF, 0xFE]) {
+        decode_utf16_le(&bytes[2..])
+    } else {
+        decode_utf16_le(bytes)
+    }
+}
+
+fn decode_utf16_le(bytes: &[u8]) -> Option<String> {
+    if bytes.len() % 2 != 0 {
+        return None;
+    }
+
+    let units: Vec<u16> = bytes
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect();
+    String::from_utf16(&units).ok()
+}
+
+fn decode_utf16_be(bytes: &[u8]) -> Option<String> {
+    if bytes.len() % 2 != 0 {
+        return None;
+    }
+
+    let units: Vec<u16> = bytes
+        .chunks_exact(2)
+        .map(|chunk| u16::from_be_bytes([chunk[0], chunk[1]]))
+        .collect();
+    String::from_utf16(&units).ok()
+}
+
+fn copy_preferred_id3v2_text(target_tag: &mut Tag, leading_tag: &Tag) {
+    const KEYS: &[ItemKey] = &[
+        ItemKey::TrackTitle,
+        ItemKey::TrackArtist,
+        ItemKey::AlbumTitle,
+        ItemKey::AlbumArtist,
+    ];
+
+    for key in KEYS {
+        if let Some(value) = leading_tag.get_string(key).and_then(clean_text) {
+            let _ = target_tag.insert_text(key.clone(), value);
+        }
+    }
+}
+
 fn skip_chunk<R>(reader: &mut R, size: u64) -> Result<(), ()>
 where
     R: Seek,
@@ -546,6 +754,7 @@ fn lofty_tag_from_id3(id3_tag: id3::Tag, read_cover_art: bool) -> Tag {
     insert_optional_text(&mut lofty_tag, ItemKey::TrackTitle, id3_tag.title());
     insert_optional_text(&mut lofty_tag, ItemKey::TrackArtist, id3_tag.artist());
     insert_optional_text(&mut lofty_tag, ItemKey::AlbumTitle, id3_tag.album());
+    insert_optional_text(&mut lofty_tag, ItemKey::AlbumArtist, id3_tag.album_artist());
     insert_optional_text(
         &mut lofty_tag,
         ItemKey::RecordingDate,
@@ -778,6 +987,30 @@ mod tests {
         bytes
     }
 
+    fn create_mp3_with_id3v2_and_gbk_id3v1_bytes() -> Vec<u8> {
+        let mut id3_tag = id3::Tag::new();
+        id3_tag.set_title("爱琴海");
+        id3_tag.set_artist("周杰伦");
+        id3_tag.set_album("太阳之子");
+
+        let mut bytes = Vec::new();
+        id3_tag
+            .write_to(&mut bytes, Version::Id3v23)
+            .expect("id3v2 tag should serialize");
+
+        bytes.extend_from_slice(&[0xFF, 0xFB, 0x90, 0x64]);
+        bytes.extend(std::iter::repeat(0).take(413));
+
+        let mut id3v1 = [0u8; 128];
+        id3v1[..3].copy_from_slice(b"TAG");
+        id3v1[3..9].copy_from_slice(&[0xB0, 0xAE, 0xC7, 0xD9, 0xBA, 0xA3]);
+        id3v1[33..39].copy_from_slice(&[0xD6, 0xDC, 0xBD, 0xDC, 0xC2, 0xD7]);
+        id3v1[63..71].copy_from_slice(&[0xCC, 0xAB, 0xD1, 0xF4, 0xD6, 0xAE, 0xD7, 0xD3]);
+        bytes.extend_from_slice(&id3v1);
+
+        bytes
+    }
+
     #[test]
     fn prefers_id3v2_text_over_riff_info() {
         let mut riff = Tag::new(TagType::RiffInfo);
@@ -884,6 +1117,31 @@ mod tests {
         let tagged_file =
             read_tagged_file_from_path(&temp_path).expect("fallback parser should read the wav");
         assert_eq!(tagged_file.file_type(), FileType::Wav);
+
+        let _ = fs::remove_file(temp_path);
+    }
+
+    #[test]
+    fn mp3_text_prefers_id3v2_over_id3v1_tail() {
+        let temp_name = format!(
+            "lycia_id3v2_priority_{}.mp3",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        );
+        let temp_path = std::env::temp_dir().join(temp_name);
+
+        fs::write(&temp_path, create_mp3_with_id3v2_and_gbk_id3v1_bytes())
+            .expect("temp mp3 should be written");
+
+        let tagged_file =
+            read_tagged_file_from_path_for_scan(&temp_path).expect("mp3 tags should be read");
+        let metadata = extract_text_metadata(&tagged_file);
+
+        assert_eq!(metadata.title.as_deref(), Some("爱琴海"));
+        assert_eq!(metadata.artist.as_deref(), Some("周杰伦"));
+        assert_eq!(metadata.album.as_deref(), Some("太阳之子"));
 
         let _ = fs::remove_file(temp_path);
     }
