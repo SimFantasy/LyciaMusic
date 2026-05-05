@@ -1,5 +1,5 @@
 use super::repository::{get_source_for_remote_uri, update_song_cache_path};
-use super::types::{RemoteDownloadProgress, RemoteSourceCredentials};
+use super::types::{RemoteCacheUsage, RemoteDownloadProgress, RemoteSourceCredentials};
 use super::webdav;
 use crate::database::DbState;
 use sha2::{Digest, Sha256};
@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 use tauri::{AppHandle, Emitter, Manager};
 
-const MAX_REMOTE_CACHE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
+pub(crate) const MAX_REMOTE_CACHE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
 const REMOTE_DOWNLOAD_PROGRESS_EVENT: &str = "remote-download-progress";
 const REMOTE_DOWNLOAD_ATTEMPTS: usize = 3;
 
@@ -71,6 +71,40 @@ fn cleanup_cache(root: &PathBuf) {
             total = total.saturating_sub(size);
         }
     }
+}
+
+pub(crate) fn cache_usage(app: &AppHandle) -> Result<RemoteCacheUsage, String> {
+    let root = cache_root(app)?;
+    let mut bytes = 0u64;
+    let mut files = 0usize;
+    for entry in fs::read_dir(root).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let metadata = entry.metadata().map_err(|error| error.to_string())?;
+        if metadata.is_file() {
+            files += 1;
+            bytes = bytes.saturating_add(metadata.len());
+        }
+    }
+    Ok(RemoteCacheUsage {
+        bytes,
+        files,
+        limit_bytes: MAX_REMOTE_CACHE_BYTES,
+    })
+}
+
+pub(crate) fn clear_cache(app: &AppHandle) -> Result<RemoteCacheUsage, String> {
+    let root = cache_root(app)?;
+    for entry in fs::read_dir(&root).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        if entry
+            .metadata()
+            .map_err(|error| error.to_string())?
+            .is_file()
+        {
+            fs::remove_file(entry.path()).map_err(|error| error.to_string())?;
+        }
+    }
+    cache_usage(app)
 }
 
 fn emit_download_progress(

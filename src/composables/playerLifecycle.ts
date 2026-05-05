@@ -22,12 +22,14 @@ import {
   type PlaylistSortMode,
 } from '../services/storage/playerStorage';
 import { playbackApi } from '../services/tauri/playbackApi';
+import { remoteLibraryApi } from '../services/tauri/remoteLibraryApi';
 import { useCollectionsStore } from '../features/collections/store';
 import { useLibraryStore } from '../features/library/store';
 import { usePlaybackStore } from '../features/playback/store';
 import { mergeAppSettings, useSettingsStore } from '../features/settings/store';
 import { defaultDominantColors, useUiStore } from '../shared/stores/ui';
 import type { AppSettings } from '../types';
+import { isRemoteSong } from '../utils/remoteSong';
 
 interface SeekCompletedPayload {
   request_id: number;
@@ -307,10 +309,12 @@ export const createPlayerLifecycle = ({
   const { favoritePaths, playlists, playlistSortMode } = storeToRefs(collectionsStore);
   const {
     currentCover,
+    currentSong,
     currentSongPath,
     currentTime,
     isPlaying,
     playMode,
+    playQueue,
     playQueuePaths,
     volume,
   } = storeToRefs(playbackStore);
@@ -460,6 +464,48 @@ export const createPlayerLifecycle = ({
       void updateDominantColors(nextCover);
     }, { immediate: true });
 
+    let lastPrecachedRemotePath = '';
+    watch([currentSong, currentTime, playQueue], ([song, time, queue]) => {
+      if (!isPlaying.value || !song || song.duration <= 0 || time / song.duration < 0.6) {
+        return;
+      }
+
+      const index = queue.findIndex(item => item.path === song.path);
+      const nextSong = index >= 0 ? queue[index + 1] : null;
+      if (!nextSong || !isRemoteSong(nextSong) || nextSong.path === lastPrecachedRemotePath) {
+        return;
+      }
+
+      lastPrecachedRemotePath = nextSong.path;
+      remoteLibraryApi.precacheRemoteSong(nextSong.path).catch(error => {
+        console.warn('Failed to precache remote song:', error);
+      });
+    });
+
+    const remoteAutoSyncKey = 'lycia_remote_auto_sync_at';
+    const remoteAutoSyncIntervalMs = 24 * 60 * 60 * 1000;
+    let remoteAutoSyncTimer: ReturnType<typeof setInterval> | null = null;
+    let remoteAutoSyncRunning = false;
+    const runRemoteAutoSync = async () => {
+      if (remoteAutoSyncRunning) return;
+      remoteAutoSyncRunning = true;
+      try {
+        const sources = await remoteLibraryApi.getRemoteSources();
+        for (const source of sources) {
+          if (!source.enabled) continue;
+          const key = `${remoteAutoSyncKey}:${source.id}`;
+          const lastSyncAt = Number(localStorage.getItem(key) || '0');
+          if (Date.now() - lastSyncAt < remoteAutoSyncIntervalMs) continue;
+          await remoteLibraryApi.syncRemoteSource(source.id);
+          localStorage.setItem(key, String(Date.now()));
+        }
+      } catch (error) {
+        console.warn('Failed to auto sync remote library:', error);
+      } finally {
+        remoteAutoSyncRunning = false;
+      }
+    };
+
     // 流光参数微调时 debounce 延迟重提取主色，避免拖动滑块时频繁触发层切换闪烁
     let flowTweakTimer: ReturnType<typeof setTimeout> | null = null;
     watch([
@@ -547,11 +593,16 @@ export const createPlayerLifecycle = ({
       }
 
       window.addEventListener('beforeunload', beforeUnloadHandler);
+      window.setTimeout(() => void runRemoteAutoSync(), 30_000);
+      remoteAutoSyncTimer = setInterval(() => void runRemoteAutoSync(), 60 * 60 * 1000);
     });
 
     onScopeDispose(() => {
       if (flowTweakTimer) {
         clearTimeout(flowTweakTimer);
+      }
+      if (remoteAutoSyncTimer) {
+        clearInterval(remoteAutoSyncTimer);
       }
       dominantColorTaskId += 1;
       dominantColorSignature = '';

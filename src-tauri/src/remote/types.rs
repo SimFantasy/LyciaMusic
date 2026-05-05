@@ -102,7 +102,8 @@ pub(crate) struct RemoteSyncProgress {
     pub failed: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RemoteFileEntry {
     pub remote_path: String,
     pub name: String,
@@ -120,4 +121,12 @@ impl RemoteFileEntry {
             self.remote_path.trim_start_matches('/')
         )
     }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RemoteCacheUsage {
+    pub bytes: u64,
+    pub files: usize,
+    pub limit_bytes: u64,
 }

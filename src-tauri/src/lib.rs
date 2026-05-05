@@ -34,7 +34,8 @@ use player::{
     set_audio_output_mode, set_output_device, set_volume, update_playback_metadata,
 };
 use remote::{
-    add_remote_source, get_remote_sources, remove_remote_source, sync_remote_source,
+    add_remote_source, clear_remote_cache, get_remote_cache_usage, get_remote_sources,
+    list_remote_directory, precache_remote_song, remove_remote_source, sync_remote_source,
     test_remote_source, update_remote_source,
 };
 use statistics::{
@@ -109,6 +110,10 @@ pub fn run() {
             update_remote_source,
             remove_remote_source,
             sync_remote_source,
+            precache_remote_song,
+            get_remote_cache_usage,
+            clear_remote_cache,
+            list_remote_directory,
             scan_library,
             get_library_hierarchy,
             get_folder_children,

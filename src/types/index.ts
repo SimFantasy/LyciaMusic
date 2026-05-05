@@ -132,6 +132,21 @@ export interface RemoteSyncResult {
   parsedSongs: number;
 }
 
+export interface RemoteFileEntry {
+  remotePath: string;
+  name: string;
+  size: number;
+  etag: string | null;
+  modifiedAt: string | null;
+  isDir: boolean;
+}
+
+export interface RemoteCacheUsage {
+  bytes: number;
+  files: number;
+  limitBytes: number;
+}
+
 export type RemoteSyncPhase = 'scanning' | 'parsing' | 'writing' | 'complete' | 'error';
 
 export interface RemoteSyncProgress {

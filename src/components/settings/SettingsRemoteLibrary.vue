@@ -3,7 +3,7 @@ import { computed, onMounted, onScopeDispose, reactive, ref } from 'vue';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useToast } from '../../composables/toast';
 import { remoteLibraryApi } from '../../services/tauri/remoteLibraryApi';
-import type { RemoteSource, RemoteSyncProgress } from '../../types';
+import type { RemoteCacheUsage, RemoteFileEntry, RemoteSource, RemoteSyncProgress } from '../../types';
 import ConfirmModal from '../overlays/ConfirmModal.vue';
 
 const { showToast } = useToast();
@@ -14,6 +14,12 @@ const testing = ref(false);
 const syncingSourceId = ref<string | null>(null);
 const sourceToRemove = ref<RemoteSource | null>(null);
 const syncProgress = ref<RemoteSyncProgress | null>(null);
+const cacheUsage = ref<RemoteCacheUsage | null>(null);
+const isClearingCache = ref(false);
+const browsingSourceId = ref<string | null>(null);
+const browsingPath = ref('/');
+const browserEntries = ref<RemoteFileEntry[]>([]);
+const isBrowsing = ref(false);
 let unlistenRemoteSync: UnlistenFn | null = null;
 
 const form = reactive({
@@ -57,6 +63,19 @@ const syncProgressText = computed(() => {
   return `${progress.message} ${progress.current}/${progress.total}`;
 });
 
+const cacheUsageText = computed(() => {
+  const usage = cacheUsage.value;
+  if (!usage) return '0 MB';
+  return `${(usage.bytes / 1024 / 1024).toFixed(1)} MB / ${(usage.limitBytes / 1024 / 1024 / 1024).toFixed(0)} GB`;
+});
+
+const sortedBrowserEntries = computed(() =>
+  [...browserEntries.value].sort((left, right) => {
+    if (left.isDir !== right.isDir) return left.isDir ? -1 : 1;
+    return left.name.localeCompare(right.name, 'zh-Hans-CN');
+  }),
+);
+
 const loadSources = async () => {
   isLoading.value = true;
   try {
@@ -67,6 +86,45 @@ const loadSources = async () => {
   } finally {
     isLoading.value = false;
   }
+};
+
+const loadCacheUsage = async () => {
+  cacheUsage.value = await remoteLibraryApi.getRemoteCacheUsage();
+};
+
+const clearRemoteCache = async () => {
+  isClearingCache.value = true;
+  try {
+    cacheUsage.value = await remoteLibraryApi.clearRemoteCache();
+    showToast('远程缓存已清理', 'success');
+  } catch (error) {
+    console.error('Failed to clear remote cache:', error);
+    showToast('清理远程缓存失败', 'error');
+  } finally {
+    isClearingCache.value = false;
+  }
+};
+
+const browseSource = async (source: RemoteSource, path = source.rootPath || '/') => {
+  browsingSourceId.value = source.id;
+  browsingPath.value = path;
+  isBrowsing.value = true;
+  try {
+    browserEntries.value = await remoteLibraryApi.listRemoteDirectory(source.id, path);
+  } catch (error) {
+    console.error('Failed to browse remote source:', error);
+    browserEntries.value = [];
+    showToast('读取远程目录失败', 'error');
+  } finally {
+    isBrowsing.value = false;
+  }
+};
+
+const browseParent = async () => {
+  const source = remoteSources.value.find(item => item.id === browsingSourceId.value);
+  if (!source) return;
+  const parent = browsingPath.value.replace(/\/+$/, '').replace(/\/[^/]*$/, '') || '/';
+  await browseSource(source, parent);
 };
 
 const testConnection = async () => {
@@ -154,7 +212,7 @@ const confirmRemoveSource = async () => {
 };
 
 onMounted(async () => {
-  await loadSources();
+  await Promise.all([loadSources(), loadCacheUsage()]);
   unlistenRemoteSync = await listen<RemoteSyncProgress>('remote-sync-progress', event => {
     syncProgress.value = event.payload;
     if (event.payload.done) {
@@ -218,6 +276,19 @@ onScopeDispose(() => {
     <section class="space-y-3">
       <h2 class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200">
         <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
+        远程缓存
+      </h2>
+      <div class="remote-cache-row">
+        <span>{{ cacheUsageText }}</span>
+        <button type="button" class="remote-action remote-action--soft" :disabled="isClearingCache" @click="clearRemoteCache">
+          {{ isClearingCache ? '清理中...' : '清理缓存' }}
+        </button>
+      </div>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200">
+        <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
         已添加
       </h2>
 
@@ -253,11 +324,42 @@ onScopeDispose(() => {
               >
                 {{ syncingSourceId === source.id ? '同步中' : '同步' }}
               </button>
+              <button type="button" class="remote-icon-action" title="浏览" @click="browseSource(source)">
+                浏览
+              </button>
               <button type="button" class="remote-icon-action remote-icon-action--danger" title="删除" @click="sourceToRemove = source">
                 删除
               </button>
             </div>
           </div>
+        </template>
+      </div>
+    </section>
+
+    <section v-if="browsingSourceId" class="space-y-3">
+      <h2 class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200">
+        <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
+        远程目录
+      </h2>
+      <div class="remote-browser">
+        <div class="remote-browser__bar">
+          <button type="button" class="remote-icon-action" :disabled="browsingPath === '/' || isBrowsing" @click="browseParent">上级</button>
+          <span class="truncate">{{ browsingPath }}</span>
+        </div>
+        <div v-if="isBrowsing" class="remote-empty">读取中...</div>
+        <div v-else-if="sortedBrowserEntries.length === 0" class="remote-empty">当前目录为空</div>
+        <template v-else>
+          <button
+            v-for="entry in sortedBrowserEntries"
+            :key="entry.remotePath"
+            type="button"
+            class="remote-browser__entry"
+            :disabled="!entry.isDir"
+            @click="entry.isDir && browseSource(remoteSources.find(item => item.id === browsingSourceId)!, entry.remotePath)"
+          >
+            <span>{{ entry.isDir ? '文件夹' : '音频' }}</span>
+            <strong class="truncate">{{ entry.name }}</strong>
+          </button>
         </template>
       </div>
     </section>
@@ -274,10 +376,22 @@ onScopeDispose(() => {
 
 <style scoped>
 .remote-form,
-.remote-source-list {
+.remote-source-list,
+.remote-cache-row,
+.remote-browser {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.28);
   padding: 16px;
+}
+
+.remote-cache-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: rgb(31 41 55);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .remote-form-grid {
@@ -398,8 +512,53 @@ onScopeDispose(() => {
   font-size: 13px;
 }
 
+.remote-browser {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.remote-browser__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: rgb(55 65 81);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.remote-browser__entry {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  border-radius: 10px;
+  padding: 10px 12px;
+  text-align: left;
+  color: rgb(31 41 55);
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.remote-browser__entry:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.remote-browser__entry span {
+  color: #ec4141;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.remote-browser__entry strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
 :global(.dark) .remote-form,
-:global(.dark) .remote-source-list {
+:global(.dark) .remote-source-list,
+:global(.dark) .remote-cache-row,
+:global(.dark) .remote-browser {
   background: rgba(255, 255, 255, 0.04);
 }
 
@@ -414,6 +573,16 @@ onScopeDispose(() => {
 }
 
 :global(.dark) .remote-source-row {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+:global(.dark) .remote-cache-row,
+:global(.dark) .remote-browser__bar,
+:global(.dark) .remote-browser__entry {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+:global(.dark) .remote-browser__entry {
   background: rgba(255, 255, 255, 0.06);
 }
 

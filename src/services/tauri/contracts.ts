@@ -7,6 +7,8 @@ import type {
   RecentPlaylistCatalogItem,
   Playlist,
   RemoteConnectionResult,
+  RemoteCacheUsage,
+  RemoteFileEntry,
   RemoteSource,
   RemoteSourceInput,
   RemoteSyncResult,
@@ -159,6 +161,10 @@ export interface TauriCommandMap {
   update_remote_source: { payload: { source: RemoteSourceInput }; response: RemoteSource };
   remove_remote_source: { payload: { sourceId: string }; response: void };
   sync_remote_source: { payload: { sourceId: string }; response: RemoteSyncResult };
+  precache_remote_song: { payload: { remoteUri: string }; response: void };
+  get_remote_cache_usage: { payload: undefined; response: RemoteCacheUsage };
+  clear_remote_cache: { payload: undefined; response: RemoteCacheUsage };
+  list_remote_directory: { payload: { sourceId: string; path: string }; response: RemoteFileEntry[] };
   // Deprecated compat command. Main folder-tree flow must use get_library_hierarchy.
   get_sidebar_hierarchy: { payload: undefined; response: FolderNode[] };
   create_folder: { payload: { parentPath: string; folderName: string }; response: string };

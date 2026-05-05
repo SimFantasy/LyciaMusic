@@ -3,6 +3,53 @@ use rusqlite::{params, OptionalExtension};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+const REMOTE_KEYRING_SERVICE: &str = "LyciaMusic WebDAV";
+
+fn keyring_entry(source_id: &str) -> Result<keyring::Entry, String> {
+    keyring::Entry::new(REMOTE_KEYRING_SERVICE, source_id).map_err(|error| error.to_string())
+}
+
+fn read_password_from_keyring(source_id: &str) -> Option<String> {
+    keyring_entry(source_id)
+        .ok()
+        .and_then(|entry| entry.get_password().ok())
+        .filter(|password| !password.is_empty())
+}
+
+fn write_password_to_keyring(source_id: &str, password: &str) -> Result<(), String> {
+    if password.is_empty() {
+        return Ok(());
+    }
+    keyring_entry(source_id)?
+        .set_password(password)
+        .map_err(|error| error.to_string())
+}
+
+fn delete_password_from_keyring(source_id: &str) {
+    if let Ok(entry) = keyring_entry(source_id) {
+        let _ = entry.delete_credential();
+    }
+}
+
+fn attach_keyring_password(mut source: RemoteSourceCredentials) -> RemoteSourceCredentials {
+    if source.password.is_none() {
+        source.password = read_password_from_keyring(&source.id);
+    }
+    source
+}
+
+fn migrate_db_password_to_keyring(conn: &rusqlite::Connection, source: &RemoteSourceCredentials) {
+    let Some(password) = source.password.as_deref() else {
+        return;
+    };
+    if write_password_to_keyring(&source.id, password).is_ok() {
+        let _ = conn.execute(
+            "UPDATE remote_sources SET password = NULL WHERE id = ?1",
+            params![&source.id],
+        );
+    }
+}
+
 fn now_seconds() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -67,32 +114,36 @@ pub(crate) fn get_source(
     conn: &rusqlite::Connection,
     source_id: &str,
 ) -> Result<RemoteSourceCredentials, String> {
-    conn.query_row(
-        "SELECT id, name, provider, base_url, username, password, root_path, enabled,
+    let source = conn
+        .query_row(
+            "SELECT id, name, provider, base_url, username, password, root_path, enabled,
                 last_sync_at, last_sync_error, created_at, updated_at
          FROM remote_sources
          WHERE id = ?1",
-        params![source_id],
-        |row| {
-            Ok(RemoteSourceCredentials {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                provider: row.get(2)?,
-                base_url: row.get(3)?,
-                username: row.get(4)?,
-                password: row.get(5)?,
-                root_path: row.get(6)?,
-                enabled: row.get::<_, i64>(7)? != 0,
-                last_sync_at: row.get(8)?,
-                last_sync_error: row.get(9)?,
-                created_at: row.get(10)?,
-                updated_at: row.get(11)?,
-            })
-        },
-    )
-    .optional()
-    .map_err(|error| error.to_string())?
-    .ok_or_else(|| "远程音乐库不存在".to_string())
+            params![source_id],
+            |row| {
+                Ok(RemoteSourceCredentials {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    provider: row.get(2)?,
+                    base_url: row.get(3)?,
+                    username: row.get(4)?,
+                    password: row.get(5)?,
+                    root_path: row.get(6)?,
+                    enabled: row.get::<_, i64>(7)? != 0,
+                    last_sync_at: row.get(8)?,
+                    last_sync_error: row.get(9)?,
+                    created_at: row.get(10)?,
+                    updated_at: row.get(11)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "远程音乐库不存在".to_string())?;
+
+    migrate_db_password_to_keyring(conn, &source);
+    Ok(attach_keyring_password(source))
 }
 
 pub(crate) fn get_source_for_remote_uri(
@@ -145,6 +196,9 @@ pub(crate) fn save_source(
         .password
         .or_else(|| existing.as_ref().and_then(|source| source.password.clone()));
     let created_at = existing.map(|source| source.created_at).unwrap_or(now);
+    if let Some(password) = password.as_deref() {
+        write_password_to_keyring(&id, password)?;
+    }
 
     conn.execute(
         "INSERT INTO remote_sources (
@@ -157,7 +211,7 @@ pub(crate) fn save_source(
             provider = excluded.provider,
             base_url = excluded.base_url,
             username = excluded.username,
-            password = excluded.password,
+            password = NULL,
             root_path = excluded.root_path,
             updated_at = excluded.updated_at",
         params![
@@ -166,7 +220,7 @@ pub(crate) fn save_source(
             "webdav",
             base_url,
             &input.username,
-            &password,
+            Option::<String>::None,
             &root_path,
             created_at,
             now
@@ -186,6 +240,7 @@ pub(crate) fn remove_source(
         .map_err(|error| error.to_string())?;
     tx.execute("DELETE FROM remote_sources WHERE id = ?1", [source_id])
         .map_err(|error| error.to_string())?;
+    delete_password_from_keyring(source_id);
     tx.execute(
         "DELETE FROM artists
          WHERE id NOT IN (SELECT DISTINCT artist_id FROM song_artists)",

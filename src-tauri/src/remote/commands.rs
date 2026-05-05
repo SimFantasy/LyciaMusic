@@ -1,8 +1,9 @@
+use super::cache;
 use super::repository::{get_source, list_sources, remove_source, save_source};
 use super::scanner;
 use super::types::{
-    RemoteConnectionResult, RemoteSource, RemoteSourceCredentials, RemoteSourceInput,
-    RemoteSyncResult,
+    RemoteCacheUsage, RemoteConnectionResult, RemoteFileEntry, RemoteSource,
+    RemoteSourceCredentials, RemoteSourceInput, RemoteSyncResult,
 };
 use super::webdav;
 use crate::database::DbState;
@@ -101,4 +102,41 @@ pub(crate) async fn sync_remote_source(
     };
 
     scanner::sync_source(app, db_state.conn.clone(), source).await
+}
+
+#[tauri::command]
+pub(crate) async fn precache_remote_song(
+    app: AppHandle,
+    remote_uri: String,
+    db_state: State<'_, DbState>,
+) -> Result<(), String> {
+    if !cache::is_remote_uri(&remote_uri) {
+        return Ok(());
+    }
+    cache::ensure_cached_path(&app, &db_state, &remote_uri)
+        .await
+        .map(|_| ())
+}
+
+#[tauri::command]
+pub(crate) async fn get_remote_cache_usage(app: AppHandle) -> Result<RemoteCacheUsage, String> {
+    cache::cache_usage(&app)
+}
+
+#[tauri::command]
+pub(crate) async fn clear_remote_cache(app: AppHandle) -> Result<RemoteCacheUsage, String> {
+    cache::clear_cache(&app)
+}
+
+#[tauri::command]
+pub(crate) async fn list_remote_directory(
+    source_id: String,
+    path: String,
+    db_state: State<'_, DbState>,
+) -> Result<Vec<RemoteFileEntry>, String> {
+    let source = {
+        let conn = db_state.conn.lock().map_err(|error| error.to_string())?;
+        get_source(&conn, &source_id)?
+    };
+    webdav::list_directory(webdav::shared_client(), &source, &path).await
 }
