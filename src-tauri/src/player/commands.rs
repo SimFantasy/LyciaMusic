@@ -1,8 +1,14 @@
 use crate::database::DbState;
+use crate::music::scanner::parse_song_from_file;
 use crate::player::spectrum::build_frequency_bands;
-use crate::player::types::{AudioCommand, AudioOutputMode, PlayerState, VISUALIZER_BAND_COUNT};
-use crate::remote::cache::{ensure_cached_path, is_remote_uri};
+use crate::player::types::{
+    AudioCommand, AudioOutputMode, AudioSource, PlayerState, VISUALIZER_BAND_COUNT,
+};
+use crate::remote::cache::{
+    ensure_cached_path, is_remote_uri, remote_playback_source, RemotePlaybackSource,
+};
 use souvlaki::{MediaMetadata, MediaPlayback, MediaPosition};
+use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -26,7 +32,7 @@ fn normalize_cover_for_smtc(cover: &str) -> Option<String> {
 
 #[tauri::command]
 pub async fn play_audio(
-    mut path: String,
+    path: String,
     title: String,
     artist: String,
     album: String,
@@ -37,14 +43,36 @@ pub async fn play_audio(
     db_state: tauri::State<'_, DbState>,
     state: tauri::State<'_, PlayerState>,
 ) -> Result<(), String> {
-    if is_remote_uri(&path) {
-        path = ensure_cached_path(&app, &db_state, &path).await?;
-    }
+    let playback_id = state.playback_id.fetch_add(1, Ordering::Relaxed) + 1;
+    let mut selected_output_mode = output_mode;
+    let source = if is_remote_uri(&path) {
+        match remote_playback_source(&db_state, &path)? {
+            RemotePlaybackSource::Cached { path } => AudioSource::LocalFile(path),
+            RemotePlaybackSource::Stream(stream) => {
+                selected_output_mode = AudioOutputMode::Shared;
+                schedule_remote_cache_after_half(
+                    app.clone(),
+                    db_state.conn.clone(),
+                    state.progress.clone(),
+                    state.playback_id.clone(),
+                    playback_id,
+                    stream.remote_uri.clone(),
+                    duration,
+                );
+                AudioSource::RemoteWebDav(stream)
+            }
+        }
+    } else {
+        AudioSource::LocalFile(path)
+    };
 
     let normalized_cover = normalize_cover_for_smtc(&cover);
     let tx = state.tx.lock().map_err(|e| e.to_string())?;
-    tx.send(AudioCommand::Play { path, output_mode })
-        .map_err(|e| e.to_string())?;
+    tx.send(AudioCommand::Play {
+        source,
+        output_mode: selected_output_mode,
+    })
+    .map_err(|e| e.to_string())?;
 
     if let Ok(mut controls) = state.controls.lock() {
         if let Some(mc) = controls.as_mut() {
@@ -66,6 +94,82 @@ pub async fn play_audio(
     }
 
     Ok(())
+}
+
+fn schedule_remote_cache_after_half(
+    app: tauri::AppHandle,
+    conn: std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>,
+    progress: std::sync::Arc<crate::player::types::SharedProgress>,
+    playback_id: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    expected_playback_id: u64,
+    remote_uri: String,
+    duration: u32,
+) {
+    if duration == 0 {
+        return;
+    }
+
+    tauri::async_runtime::spawn(async move {
+        let threshold = duration as f64 * 0.5;
+        loop {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            if playback_id.load(Ordering::Relaxed) != expected_playback_id {
+                return;
+            }
+
+            let rate = progress.sample_rate.load(Ordering::Relaxed);
+            let channels = progress.channels.load(Ordering::Relaxed);
+            if rate == 0 || channels == 0 {
+                continue;
+            }
+
+            let samples = progress.samples_played.load(Ordering::Relaxed);
+            let seconds = samples as f64 / (rate as f64 * channels as f64);
+            if seconds >= threshold {
+                let db_state = DbState { conn };
+                if let Ok(cache_path) = ensure_cached_path(&app, &db_state, &remote_uri).await {
+                    update_cached_remote_audio_metadata(&db_state, &remote_uri, &cache_path);
+                }
+                return;
+            }
+        }
+    });
+}
+
+fn update_cached_remote_audio_metadata(db_state: &DbState, remote_uri: &str, cache_path: &str) {
+    let format = remote_uri
+        .rsplit('.')
+        .next()
+        .map(|value| value.to_ascii_lowercase())
+        .unwrap_or_default();
+    let Some(song) = parse_song_from_file(Path::new(cache_path), remote_uri, &format) else {
+        return;
+    };
+    if let Ok(conn) = db_state.conn.lock() {
+        let _ = conn.execute(
+            "UPDATE songs
+             SET duration = ?1,
+                 bitrate = ?2,
+                 sample_rate = ?3,
+                 bit_depth = ?4,
+                 format = ?5,
+                 container = ?6,
+                 codec = ?7,
+                 file_size = ?8
+             WHERE path = ?9",
+            rusqlite::params![
+                song.duration as i64,
+                song.bitrate as i64,
+                song.sample_rate as i64,
+                song.bit_depth.map(|value| value as i64),
+                song.format,
+                song.container,
+                song.codec,
+                song.file_size.min(i64::MAX as u64) as i64,
+                remote_uri,
+            ],
+        );
+    }
 }
 
 #[tauri::command]

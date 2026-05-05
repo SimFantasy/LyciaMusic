@@ -5,14 +5,15 @@ use crate::player::output::shared::{restore_current_playback, SharedOutputBacken
 use crate::player::output::wasapi_exclusive::{ExclusivePlayRequest, WasapiExclusivePlayback};
 use crate::player::output::OutputBackend;
 use crate::player::types::{
-    AudioCommand, AudioOutputMode, AudioOutputStatus, PlayerState, SeekCompletedPayload,
-    SharedProgress, SharedVisualizer, TimedSource,
+    AudioCommand, AudioOutputMode, AudioOutputStatus, AudioSource, PlayerState,
+    SeekCompletedPayload, SharedProgress, SharedVisualizer, TimedSource,
 };
+use crate::remote::cache::RemoteStreamSource;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use rodio::{Decoder, Sink, Source};
 use souvlaki::{MediaControlEvent, MediaControls, PlatformConfig};
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{channel, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
@@ -202,8 +203,198 @@ fn initialize_media_controls(app: &AppHandle) -> Arc<Mutex<Option<MediaControls>
     controls
 }
 
+const REMOTE_STREAM_CHUNK_BYTES: u64 = 1024 * 1024;
+
+struct RemoteRangeReader {
+    client: reqwest::blocking::Client,
+    source: RemoteStreamSource,
+    pos: u64,
+    len: Option<u64>,
+    buffer_start: u64,
+    buffer: Vec<u8>,
+}
+
+impl RemoteRangeReader {
+    fn new(source: RemoteStreamSource) -> Result<Self, String> {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(300))
+            .build()
+            .map_err(|error| error.to_string())?;
+        let len = Self::content_len(&client, &source);
+        Ok(Self {
+            client,
+            source,
+            pos: 0,
+            len,
+            buffer_start: 0,
+            buffer: Vec::new(),
+        })
+    }
+
+    fn auth(
+        request: reqwest::blocking::RequestBuilder,
+        source: &RemoteStreamSource,
+    ) -> reqwest::blocking::RequestBuilder {
+        if let Some(username) = source.username.as_deref().filter(|value| !value.is_empty()) {
+            request.basic_auth(username.to_string(), source.password.clone())
+        } else {
+            request
+        }
+    }
+
+    fn content_len(client: &reqwest::blocking::Client, source: &RemoteStreamSource) -> Option<u64> {
+        if let Ok(response) = Self::auth(client.head(&source.url), source).send() {
+            if response.status().is_success() {
+                if let Some(length) = response.content_length() {
+                    return Some(length);
+                }
+            }
+        }
+
+        let response = Self::auth(
+            client
+                .get(&source.url)
+                .header(reqwest::header::RANGE, "bytes=0-0"),
+            source,
+        )
+        .send()
+        .ok()?;
+        if response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
+            response
+                .headers()
+                .get(reqwest::header::CONTENT_RANGE)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.rsplit('/').next())
+                .and_then(|value| value.parse::<u64>().ok())
+        } else if response.status().is_success() {
+            response.content_length()
+        } else {
+            None
+        }
+    }
+
+    fn fetch_at(&mut self, start: u64) -> std::io::Result<()> {
+        let end = start.saturating_add(REMOTE_STREAM_CHUNK_BYTES - 1);
+        let request = self
+            .client
+            .get(&self.source.url)
+            .header(reqwest::header::RANGE, format!("bytes={start}-{end}"));
+        let mut response = Self::auth(request, &self.source)
+            .send()
+            .map_err(std::io::Error::other)?;
+        if !(response.status().is_success()
+            || response.status() == reqwest::StatusCode::PARTIAL_CONTENT)
+        {
+            return Err(std::io::Error::other(format!(
+                "远程音频播放失败：{}",
+                response.status()
+            )));
+        }
+        if response.status() == reqwest::StatusCode::OK && start > 0 {
+            return Err(std::io::Error::other("WebDAV 服务器不支持 Range 播放"));
+        }
+
+        let mut limited = response.by_ref().take(REMOTE_STREAM_CHUNK_BYTES);
+        let mut bytes = Vec::new();
+        limited.read_to_end(&mut bytes)?;
+        self.buffer_start = start;
+        self.buffer = bytes;
+        Ok(())
+    }
+
+    fn ensure_buffer(&mut self) -> std::io::Result<()> {
+        let buffer_end = self.buffer_start.saturating_add(self.buffer.len() as u64);
+        if self.pos >= self.buffer_start && self.pos < buffer_end {
+            return Ok(());
+        }
+        self.fetch_at(self.pos)
+    }
+}
+
+impl Read for RemoteRangeReader {
+    fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+        if output.is_empty() {
+            return Ok(0);
+        }
+        if self.len.map(|len| self.pos >= len).unwrap_or(false) {
+            return Ok(0);
+        }
+
+        self.ensure_buffer()?;
+        if self.buffer.is_empty() {
+            return Ok(0);
+        }
+
+        let offset = self.pos.saturating_sub(self.buffer_start) as usize;
+        let available = self.buffer.len().saturating_sub(offset);
+        let count = available.min(output.len());
+        output[..count].copy_from_slice(&self.buffer[offset..offset + count]);
+        self.pos = self.pos.saturating_add(count as u64);
+        Ok(count)
+    }
+}
+
+impl Seek for RemoteRangeReader {
+    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+        let next = match pos {
+            SeekFrom::Start(value) => value as i128,
+            SeekFrom::Current(value) => self.pos as i128 + value as i128,
+            SeekFrom::End(value) => {
+                let len = self
+                    .len
+                    .ok_or_else(|| std::io::Error::other("远程音频长度未知，无法跳转"))?;
+                len as i128 + value as i128
+            }
+        };
+        if next < 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "跳转位置不能小于 0",
+            ));
+        }
+        self.pos = next as u64;
+        Ok(self.pos)
+    }
+}
+
+fn append_decoded_source<R>(
+    reader: R,
+    output: &Option<SharedOutputBackend>,
+    current_sink: &mut Option<Sink>,
+    current_volume: f32,
+    progress: &Arc<SharedProgress>,
+) where
+    R: Read + Seek + Send + Sync + 'static,
+{
+    if let Some(output) = output {
+        *current_sink = output.create_sink().ok();
+
+        let reader = BufReader::with_capacity(512 * 1024, reader);
+        if let Ok(source) = Decoder::new(reader) {
+            let rate = source.sample_rate();
+            let channels = source.channels();
+            progress.sample_rate.store(rate, Ordering::Relaxed);
+            progress.channels.store(channels as u32, Ordering::Relaxed);
+            progress.samples_played.store(0, Ordering::Relaxed);
+            progress.visualizer.reset();
+
+            let timed_source = TimedSource::new(
+                source.convert_samples::<f32>(),
+                progress.samples_played.clone(),
+                progress.visualizer.clone(),
+            );
+
+            if let Some(sink) = current_sink {
+                sink.append(timed_source);
+                sink.set_volume(current_volume);
+                sink.play();
+            }
+        }
+    }
+}
+
 fn handle_play(
-    path: String,
+    source: AudioSource,
     output: &Option<SharedOutputBackend>,
     current_sink: &mut Option<Sink>,
     current_path: &mut String,
@@ -211,36 +402,22 @@ fn handle_play(
     is_playing_flag: &mut bool,
     progress: &Arc<SharedProgress>,
 ) {
-    *current_path = path;
+    *current_path = source.display_path();
     *is_playing_flag = true;
 
-    if let Some(output) = output {
-        if let Some(sink) = current_sink {
-            sink.stop();
+    if let Some(sink) = current_sink {
+        sink.stop();
+    }
+
+    match source {
+        AudioSource::LocalFile(path) => {
+            if let Ok(file) = File::open(path) {
+                append_decoded_source(file, output, current_sink, current_volume, progress);
+            }
         }
-        *current_sink = output.create_sink().ok();
-
-        if let Ok(file) = File::open(current_path.as_str()) {
-            let reader = BufReader::with_capacity(512 * 1024, file);
-            if let Ok(source) = Decoder::new(reader) {
-                let rate = source.sample_rate();
-                let channels = source.channels();
-                progress.sample_rate.store(rate, Ordering::Relaxed);
-                progress.channels.store(channels as u32, Ordering::Relaxed);
-                progress.samples_played.store(0, Ordering::Relaxed);
-                progress.visualizer.reset();
-
-                let timed_source = TimedSource::new(
-                    source.convert_samples::<f32>(),
-                    progress.samples_played.clone(),
-                    progress.visualizer.clone(),
-                );
-
-                if let Some(sink) = current_sink {
-                    sink.append(timed_source);
-                    sink.set_volume(current_volume);
-                    sink.play();
-                }
+        AudioSource::RemoteWebDav(stream) => {
+            if let Ok(reader) = RemoteRangeReader::new(stream) {
+                append_decoded_source(reader, output, current_sink, current_volume, progress);
             }
         }
     }
@@ -377,8 +554,13 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
         loop {
             match rx.recv_timeout(PLAYER_POLL_INTERVAL) {
                 Ok(cmd) => match cmd {
-                    AudioCommand::Play { path, output_mode } => {
+                    AudioCommand::Play {
+                        source,
+                        output_mode,
+                    } => {
                         requested_output_mode = output_mode;
+                        let source_is_remote = source.is_remote();
+                        let display_path = source.display_path();
 
                         if let Some(sink) = &current_sink {
                             sink.stop();
@@ -388,9 +570,9 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                         stop_exclusive_playback(&mut exclusive_playback);
 
                         #[cfg(target_os = "windows")]
-                        if output_mode == AudioOutputMode::WasapiExclusive {
+                        if output_mode == AudioOutputMode::WasapiExclusive && !source_is_remote {
                             match start_exclusive_playback(
-                                path.clone(),
+                                display_path.clone(),
                                 selected_device_name.clone(),
                                 current_volume,
                                 true,
@@ -402,7 +584,7 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                                         Some(playback.active_device_name().to_string());
                                     active_output_mode = AudioOutputMode::WasapiExclusive;
                                     fallback_reason = None;
-                                    current_path = path;
+                                    current_path = display_path;
                                     is_playing_flag = true;
                                     exclusive_playback = Some(playback);
                                     current_sink = None;
@@ -424,6 +606,12 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                                     fallback_reason = Some(error);
                                 }
                             }
+                        }
+                        #[cfg(target_os = "windows")]
+                        if output_mode == AudioOutputMode::WasapiExclusive && source_is_remote {
+                            active_output_mode = AudioOutputMode::Shared;
+                            fallback_reason =
+                                Some("远程 WebDAV 音频使用共享模式流式播放".to_string());
                         }
 
                         #[cfg(not(target_os = "windows"))]
@@ -454,7 +642,7 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                         );
 
                         handle_play(
-                            path,
+                            source,
                             &output,
                             &mut current_sink,
                             &mut current_path,
@@ -691,6 +879,7 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
     PlayerState {
         tx: Mutex::new(tx),
         progress: shared_progress,
+        playback_id: Arc::new(AtomicU64::new(0)),
         controls,
         output_status,
     }

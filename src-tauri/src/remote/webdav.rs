@@ -1,7 +1,7 @@
 use super::types::{RemoteFileEntry, RemoteSourceCredentials};
-use quick_xml::Reader;
 use quick_xml::events::Event;
-use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, RANGE};
+use quick_xml::Reader;
+use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, RANGE};
 use reqwest::{Client, Method, StatusCode};
 use std::collections::VecDeque;
 use std::path::Path;
@@ -169,7 +169,7 @@ fn path_for_request(source: &RemoteSourceCredentials, path: &str) -> String {
     }
 }
 
-fn build_url(source: &RemoteSourceCredentials, path: &str) -> String {
+pub(crate) fn build_url(source: &RemoteSourceCredentials, path: &str) -> String {
     let base = source.base_url.trim_end_matches('/');
     let encoded = encode_path(&path_for_request(source, path));
     if encoded.is_empty() {

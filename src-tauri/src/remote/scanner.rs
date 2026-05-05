@@ -1,15 +1,13 @@
-use super::cache;
 use super::repository::{replace_remote_files, update_sync_status};
 use super::types::{
     RemoteFileEntry, RemoteSourceCredentials, RemoteSyncProgress, RemoteSyncResult,
 };
 use super::webdav;
-use crate::music::covers::get_or_create_thumbnail;
-use crate::music::scanner::{apply_scan_changes, parse_song_from_file};
+use crate::music::scanner::apply_scan_changes;
 use crate::music::types::Song;
 use rusqlite::params;
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 
@@ -69,6 +67,10 @@ fn song_from_remote_file(source: &RemoteSourceCredentials, file: &RemoteFileEntr
         added_at: None,
         file_modified_at: None,
     }
+}
+
+fn song_for_remote_index(source: &RemoteSourceCredentials, file: &RemoteFileEntry) -> Song {
+    song_from_remote_file(source, file)
 }
 
 fn deserialize_string_list(raw: Option<String>) -> Vec<String> {
@@ -257,47 +259,6 @@ fn emit_sync_progress(
     );
 }
 
-async fn song_with_remote_metadata(
-    app: &AppHandle,
-    source: &RemoteSourceCredentials,
-    file: &RemoteFileEntry,
-) -> Result<Song, String> {
-    let remote_uri = file.remote_uri(&source.id);
-    let fallback = || song_from_remote_file(source, file);
-    let cache_path = cache::cache_remote_file(
-        app,
-        source,
-        &file.remote_path,
-        &remote_uri,
-        file.etag.as_deref(),
-    )
-    .await
-    .map_err(|error| format!("下载远程歌曲失败：{}：{}", file.name, error))?;
-
-    let mut song = parse_song_from_file(
-        Path::new(&cache_path),
-        &remote_uri,
-        &extension_from_path(&file.remote_path),
-    )
-    .unwrap_or_else(fallback);
-    song.name = file.name.clone();
-    song.path = remote_uri;
-    if file.size > 0 {
-        song.file_size = file.size;
-    }
-    if song.cover_thumb_path.is_none() {
-        let app_clone = app.clone();
-        let cache_path = PathBuf::from(cache_path);
-        song.cover_thumb_path = tauri::async_runtime::spawn_blocking(move || {
-            get_or_create_thumbnail(&cache_path, &app_clone)
-        })
-        .await
-        .ok()
-        .flatten();
-    }
-    Ok(song)
-}
-
 fn existing_remote_song_paths(
     conn: &rusqlite::Connection,
     source_id: &str,
@@ -396,25 +357,7 @@ pub(crate) async fn sync_source(
                 }
             }
         }
-        match song_with_remote_metadata(&app, &source, file).await {
-            Ok(song) => songs.push(song),
-            Err(error) => {
-                if let Ok(conn) = db_conn.lock() {
-                    let _ = update_sync_status(&conn, &source.id, Some(&error));
-                }
-                emit_sync_progress(
-                    &app,
-                    &source.id,
-                    "error",
-                    current,
-                    total,
-                    error.clone(),
-                    true,
-                    true,
-                );
-                return Err(error);
-            }
-        }
+        songs.push(song_for_remote_index(&source, file));
     }
 
     emit_sync_progress(
@@ -536,6 +479,25 @@ mod tests {
             Some(&snapshot),
             &remote_file(Some("etag-a"), 2048, Some("changed"))
         ));
+    }
+
+    #[test]
+    fn first_index_song_uses_remote_file_without_requiring_metadata_download() {
+        let source = remote_source();
+        let file = remote_file(
+            Some("etag-a"),
+            12_345,
+            Some("Mon, 04 May 2026 10:00:00 GMT"),
+        );
+
+        let song = song_for_remote_index(&source, &file);
+
+        assert_eq!(song.path, "remote://source/demo.flac");
+        assert_eq!(song.title, "demo");
+        assert_eq!(song.file_size, 12_345);
+        assert_eq!(song.duration, 0);
+        assert_eq!(song.bitrate, 0);
+        assert_eq!(song.sample_rate, 0);
     }
 
     #[test]

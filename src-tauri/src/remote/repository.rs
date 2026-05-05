@@ -1,5 +1,5 @@
 use super::types::{RemoteFileEntry, RemoteSource, RemoteSourceCredentials, RemoteSourceInput};
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{params, OptionalExtension};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -319,4 +319,18 @@ pub(crate) fn update_song_cache_path(
     )
     .map_err(|error| error.to_string())?;
     Ok(())
+}
+
+pub(crate) fn get_song_cache_path(
+    conn: &rusqlite::Connection,
+    remote_uri: &str,
+) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT cache_path FROM songs WHERE path = ?1",
+        params![remote_uri],
+        |row| row.get::<_, Option<String>>(0),
+    )
+    .optional()
+    .map_err(|error| error.to_string())
+    .map(|value| value.flatten())
 }

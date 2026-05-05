@@ -1,4 +1,4 @@
-use super::repository::{get_source_for_remote_uri, update_song_cache_path};
+use super::repository::{get_song_cache_path, get_source_for_remote_uri, update_song_cache_path};
 use super::types::{RemoteCacheUsage, RemoteDownloadProgress, RemoteSourceCredentials};
 use super::webdav;
 use crate::database::DbState;
@@ -14,6 +14,20 @@ const REMOTE_DOWNLOAD_ATTEMPTS: usize = 3;
 
 pub(crate) fn is_remote_uri(path: &str) -> bool {
     path.starts_with("remote://")
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct RemoteStreamSource {
+    pub remote_uri: String,
+    pub url: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum RemotePlaybackSource {
+    Cached { path: String },
+    Stream(RemoteStreamSource),
 }
 
 fn cache_root(app: &AppHandle) -> Result<PathBuf, String> {
@@ -133,6 +147,51 @@ fn emit_download_progress(
     );
 }
 
+pub(crate) fn choose_remote_playback_source(
+    remote_uri: &str,
+    cached_path: Option<String>,
+    source: RemoteSourceCredentials,
+    remote_path: String,
+) -> RemotePlaybackSource {
+    if let Some(path) = cached_path.filter(|path| !path.trim().is_empty()) {
+        if std::path::Path::new(&path).is_file() {
+            return RemotePlaybackSource::Cached { path };
+        }
+        #[cfg(test)]
+        return RemotePlaybackSource::Cached { path };
+    }
+
+    RemotePlaybackSource::Stream(RemoteStreamSource {
+        remote_uri: remote_uri.to_string(),
+        url: webdav::build_url(&source, &remote_path),
+        username: source.username,
+        password: source.password,
+    })
+}
+
+pub(crate) fn remote_playback_source(
+    db_state: &DbState,
+    remote_uri: &str,
+) -> Result<RemotePlaybackSource, String> {
+    let (source, remote_path, _etag, stored_remote_uri, cached_path) = {
+        let conn = db_state.conn.lock().map_err(|error| error.to_string())?;
+        let (source, remote_path, etag, stored_remote_uri) =
+            get_source_for_remote_uri(&conn, remote_uri)?;
+        let normalized_uri = stored_remote_uri
+            .clone()
+            .unwrap_or_else(|| remote_uri.to_string());
+        let cached_path = get_song_cache_path(&conn, &normalized_uri)?;
+        (source, remote_path, etag, stored_remote_uri, cached_path)
+    };
+    let normalized_uri = stored_remote_uri.unwrap_or_else(|| remote_uri.to_string());
+    Ok(choose_remote_playback_source(
+        &normalized_uri,
+        cached_path,
+        source,
+        remote_path,
+    ))
+}
+
 pub(crate) async fn cache_remote_file(
     app: &AppHandle,
     source: &RemoteSourceCredentials,
@@ -202,4 +261,62 @@ pub(crate) async fn ensure_cached_path(
     }
 
     Ok(cache_path_str)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::remote::types::RemoteSourceCredentials;
+
+    fn remote_source() -> RemoteSourceCredentials {
+        RemoteSourceCredentials {
+            id: "source".to_string(),
+            name: "Source".to_string(),
+            provider: "webdav".to_string(),
+            base_url: "https://dav.example.com".to_string(),
+            username: Some("user".to_string()),
+            password: Some("pass".to_string()),
+            root_path: "/music".to_string(),
+            enabled: true,
+            last_sync_at: None,
+            last_sync_error: None,
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    #[test]
+    fn playback_plan_uses_existing_cache_path_before_remote_stream() {
+        let plan = choose_remote_playback_source(
+            "remote://source/song.flac",
+            Some("C:\\cache\\song.flac".to_string()),
+            remote_source(),
+            "/song.flac".to_string(),
+        );
+
+        assert!(matches!(
+            plan,
+            RemotePlaybackSource::Cached { path } if path == "C:\\cache\\song.flac"
+        ));
+    }
+
+    #[test]
+    fn playback_plan_streams_remote_when_cache_missing() {
+        let plan = choose_remote_playback_source(
+            "remote://source/song.flac",
+            None,
+            remote_source(),
+            "/song.flac".to_string(),
+        );
+
+        match plan {
+            RemotePlaybackSource::Stream(stream) => {
+                assert_eq!(stream.remote_uri, "remote://source/song.flac");
+                assert_eq!(stream.url, "https://dav.example.com/music/song.flac");
+                assert_eq!(stream.username.as_deref(), Some("user"));
+                assert_eq!(stream.password.as_deref(), Some("pass"));
+            }
+            RemotePlaybackSource::Cached { .. } => panic!("missing cache must stream remote file"),
+        }
+    }
 }

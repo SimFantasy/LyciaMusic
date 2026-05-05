@@ -144,7 +144,7 @@ pub struct SharedProgress {
 
 pub enum AudioCommand {
     Play {
-        path: String,
+        source: AudioSource,
         output_mode: AudioOutputMode,
     },
     Pause,
@@ -159,9 +159,29 @@ pub enum AudioCommand {
     SetOutputMode(AudioOutputMode),
 }
 
+#[derive(Clone, Debug)]
+pub enum AudioSource {
+    LocalFile(String),
+    RemoteWebDav(crate::remote::cache::RemoteStreamSource),
+}
+
+impl AudioSource {
+    pub fn display_path(&self) -> String {
+        match self {
+            AudioSource::LocalFile(path) => path.clone(),
+            AudioSource::RemoteWebDav(source) => source.remote_uri.clone(),
+        }
+    }
+
+    pub fn is_remote(&self) -> bool {
+        matches!(self, AudioSource::RemoteWebDav(_))
+    }
+}
+
 pub struct PlayerState {
     pub tx: Mutex<Sender<AudioCommand>>,
     pub progress: Arc<SharedProgress>,
+    pub playback_id: Arc<AtomicU64>,
     pub controls: Arc<Mutex<Option<MediaControls>>>,
     pub output_status: Arc<Mutex<AudioOutputStatus>>,
 }

@@ -48,7 +48,7 @@ tauri-plugin-global-shortcut = "2.3.1"
 rustfft = "6.4.1"
 quick-xml = "0.39.2"
 uuid = { version = "1.19.0", features = ["v4"] }
-reqwest = { version = "0.12.26", default-features = false, features = ["native-tls"] }
+reqwest = { version = "0.12.26", default-features = false, features = ["native-tls", "blocking"] }
 keyring = { version = "3", features = ["windows-native"] }
 
 [target.'cfg(windows)'.dependencies]
