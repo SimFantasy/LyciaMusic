@@ -618,6 +618,7 @@ function createPlayerCore() {
     createFolder,
     toggleFolderNode,
     expandFolderPath: (targetPath: string) => playerFolderTree.expandFolderPath(targetPath),
+    loadLibrarySongsFromCache: () => libraryRuntime.loadLibrarySongsFromCache(),
   };
 
   const sortingDomain = {

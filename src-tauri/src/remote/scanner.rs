@@ -104,6 +104,14 @@ fn remote_file_needs_refresh(
     if snapshot.song.is_none() {
         return true;
     }
+    if snapshot
+        .song
+        .as_ref()
+        .map(|song| song.duration == 0 || song.bitrate == 0 || song.sample_rate == 0)
+        .unwrap_or(true)
+    {
+        return true;
+    }
 
     match (snapshot.etag.as_deref(), file.etag.as_deref()) {
         (Some(previous), Some(current)) if !previous.is_empty() && !current.is_empty() => {
@@ -253,10 +261,10 @@ async fn song_with_remote_metadata(
     app: &AppHandle,
     source: &RemoteSourceCredentials,
     file: &RemoteFileEntry,
-) -> Song {
+) -> Result<Song, String> {
     let remote_uri = file.remote_uri(&source.id);
     let fallback = || song_from_remote_file(source, file);
-    let Ok(cache_path) = cache::cache_remote_file(
+    let cache_path = cache::cache_remote_file(
         app,
         source,
         &file.remote_path,
@@ -264,9 +272,7 @@ async fn song_with_remote_metadata(
         file.etag.as_deref(),
     )
     .await
-    else {
-        return fallback();
-    };
+    .map_err(|error| format!("下载远程歌曲失败：{}：{}", file.name, error))?;
 
     let mut song = parse_song_from_file(
         Path::new(&cache_path),
@@ -289,7 +295,7 @@ async fn song_with_remote_metadata(
         .ok()
         .flatten();
     }
-    song
+    Ok(song)
 }
 
 fn existing_remote_song_paths(
@@ -390,7 +396,25 @@ pub(crate) async fn sync_source(
                 }
             }
         }
-        songs.push(song_with_remote_metadata(&app, &source, file).await);
+        match song_with_remote_metadata(&app, &source, file).await {
+            Ok(song) => songs.push(song),
+            Err(error) => {
+                if let Ok(conn) = db_conn.lock() {
+                    let _ = update_sync_status(&conn, &source.id, Some(&error));
+                }
+                emit_sync_progress(
+                    &app,
+                    &source.id,
+                    "error",
+                    current,
+                    total,
+                    error.clone(),
+                    true,
+                    true,
+                );
+                return Err(error);
+            }
+        }
     }
 
     emit_sync_progress(
@@ -471,34 +495,64 @@ mod tests {
         }
     }
 
+    fn remote_source() -> RemoteSourceCredentials {
+        RemoteSourceCredentials {
+            id: "source".to_string(),
+            name: "Source".to_string(),
+            provider: "webdav".to_string(),
+            base_url: "https://example.com".to_string(),
+            username: None,
+            password: None,
+            root_path: "/".to_string(),
+            enabled: true,
+            last_sync_at: None,
+            last_sync_error: None,
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    fn complete_remote_song() -> Song {
+        let mut song = song_from_remote_file(
+            &remote_source(),
+            &remote_file(Some("etag-a"), 1024, Some("Mon, 04 May 2026 10:00:00 GMT")),
+        );
+        song.duration = 180;
+        song.bitrate = 320;
+        song.sample_rate = 44_100;
+        song
+    }
+
     #[test]
     fn unchanged_remote_file_with_existing_song_does_not_need_refresh() {
         let snapshot = RemoteSongSnapshot {
             etag: Some("etag-a".to_string()),
             size: 1024,
             modified_at: Some("Mon, 04 May 2026 10:00:00 GMT".to_string()),
-            song: Some(song_from_remote_file(
-                &RemoteSourceCredentials {
-                    id: "source".to_string(),
-                    name: "Source".to_string(),
-                    provider: "webdav".to_string(),
-                    base_url: "https://example.com".to_string(),
-                    username: None,
-                    password: None,
-                    root_path: "/".to_string(),
-                    enabled: true,
-                    last_sync_at: None,
-                    last_sync_error: None,
-                    created_at: 0,
-                    updated_at: 0,
-                },
-                &remote_file(Some("etag-a"), 1024, Some("Mon, 04 May 2026 10:00:00 GMT")),
-            )),
+            song: Some(complete_remote_song()),
         };
 
         assert!(!remote_file_needs_refresh(
             Some(&snapshot),
             &remote_file(Some("etag-a"), 2048, Some("changed"))
+        ));
+    }
+
+    #[test]
+    fn incomplete_remote_song_needs_refresh_even_when_etag_matches() {
+        let snapshot = RemoteSongSnapshot {
+            etag: Some("etag-a".to_string()),
+            size: 1024,
+            modified_at: Some("Mon, 04 May 2026 10:00:00 GMT".to_string()),
+            song: Some(song_from_remote_file(
+                &remote_source(),
+                &remote_file(Some("etag-a"), 1024, Some("Mon, 04 May 2026 10:00:00 GMT")),
+            )),
+        };
+
+        assert!(remote_file_needs_refresh(
+            Some(&snapshot),
+            &remote_file(Some("etag-a"), 1024, Some("Mon, 04 May 2026 10:00:00 GMT"))
         ));
     }
 

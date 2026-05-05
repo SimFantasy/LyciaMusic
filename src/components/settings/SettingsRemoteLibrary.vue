@@ -4,9 +4,11 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useToast } from '../../composables/toast';
 import { remoteLibraryApi } from '../../services/tauri/remoteLibraryApi';
 import type { RemoteCacheUsage, RemoteFileEntry, RemoteSource, RemoteSyncProgress } from '../../types';
+import { useLibraryRuntimeActions } from '../../features/library/useLibraryRuntimeActions';
 import ConfirmModal from '../overlays/ConfirmModal.vue';
 
 const { showToast } = useToast();
+const { loadLibrarySongsFromCache } = useLibraryRuntimeActions();
 const remoteSources = ref<RemoteSource[]>([]);
 const isLoading = ref(false);
 const isSaving = ref(false);
@@ -186,6 +188,7 @@ const syncSource = async (source: RemoteSource) => {
   };
   try {
     const result = await remoteLibraryApi.syncRemoteSource(source.id);
+    await loadLibrarySongsFromCache();
     await loadSources();
     showToast(`已同步 ${result.audioFiles} 首远程歌曲`, 'success');
   } catch (error) {

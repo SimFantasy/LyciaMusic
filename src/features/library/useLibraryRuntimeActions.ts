@@ -14,6 +14,7 @@ export function useLibraryRuntimeActions() {
     refreshFolder: libraryDomain.refreshFolder,
     refreshAllFolders: libraryDomain.refreshAllFolders,
     fetchFolderTree: libraryDomain.fetchFolderTree,
+    loadLibrarySongsFromCache: libraryDomain.loadLibrarySongsFromCache,
     ensureFolderChildrenLoaded: libraryDomain.ensureFolderChildrenLoaded,
     createFolder: libraryDomain.createFolder,
     deleteFolder: libraryDomain.deleteFolder,

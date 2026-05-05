@@ -1,7 +1,7 @@
 use super::types::{RemoteFileEntry, RemoteSourceCredentials};
-use quick_xml::events::Event;
 use quick_xml::Reader;
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, RANGE};
+use quick_xml::events::Event;
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, RANGE};
 use reqwest::{Client, Method, StatusCode};
 use std::collections::VecDeque;
 use std::path::Path;
@@ -39,6 +39,74 @@ fn choose_download_write_mode(existing_bytes: u64, status: StatusCode) -> Downlo
 mod tests {
     use super::*;
     use reqwest::StatusCode;
+
+    fn remote_source(base_url: &str, root_path: &str) -> RemoteSourceCredentials {
+        RemoteSourceCredentials {
+            id: "source".to_string(),
+            name: "Source".to_string(),
+            provider: "webdav".to_string(),
+            base_url: base_url.to_string(),
+            username: None,
+            password: None,
+            root_path: root_path.to_string(),
+            enabled: true,
+            last_sync_at: None,
+            last_sync_error: None,
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    #[test]
+    fn build_url_keeps_root_path_for_root_relative_file() {
+        assert_eq!(
+            build_url(
+                &remote_source("https://dav.example.com", "/music"),
+                "/song.wav"
+            ),
+            "https://dav.example.com/music/song.wav"
+        );
+    }
+
+    #[test]
+    fn build_url_does_not_duplicate_root_path() {
+        assert_eq!(
+            build_url(
+                &remote_source("https://dav.example.com", "/music"),
+                "/music/song.wav"
+            ),
+            "https://dav.example.com/music/song.wav"
+        );
+    }
+
+    #[test]
+    fn build_url_combines_base_path_and_root_path() {
+        assert_eq!(
+            build_url(
+                &remote_source("https://dav.example.com/dav", "/music"),
+                "/song.wav"
+            ),
+            "https://dav.example.com/dav/music/song.wav"
+        );
+    }
+
+    #[test]
+    fn href_to_remote_path_strips_source_root_path() {
+        assert_eq!(
+            href_to_remote_path(
+                "/music/song.wav",
+                &remote_source("https://dav.example.com", "/music")
+            ),
+            Some("/song.wav".to_string())
+        );
+        assert_eq!(
+            href_to_remote_path(
+                "/music/",
+                &remote_source("https://dav.example.com", "/music")
+            ),
+            Some("/".to_string())
+        );
+    }
 
     #[test]
     fn resumes_when_partial_file_gets_partial_content() {
@@ -85,9 +153,25 @@ fn encode_path(path: &str) -> String {
         .join("/")
 }
 
+fn path_for_request(source: &RemoteSourceCredentials, path: &str) -> String {
+    let normalized = normalize_remote_path(path);
+    let root = normalize_remote_path(&source.root_path);
+    if root == "/" || normalized == root || normalized.starts_with(&format!("{}/", root)) {
+        normalized
+    } else if normalized == "/" {
+        root
+    } else {
+        format!(
+            "{}/{}",
+            root.trim_end_matches('/'),
+            normalized.trim_start_matches('/')
+        )
+    }
+}
+
 fn build_url(source: &RemoteSourceCredentials, path: &str) -> String {
     let base = source.base_url.trim_end_matches('/');
-    let encoded = encode_path(path);
+    let encoded = encode_path(&path_for_request(source, path));
     if encoded.is_empty() {
         format!("{base}/")
     } else {
@@ -280,7 +364,7 @@ pub(crate) async fn collect_audio_files(
     source: &RemoteSourceCredentials,
 ) -> Result<Vec<RemoteFileEntry>, String> {
     let client = shared_client();
-    let mut queue = VecDeque::from([normalize_remote_path(&source.root_path)]);
+    let mut queue = VecDeque::from(["/".to_string()]);
     let mut files = Vec::new();
 
     while let Some(path) = queue.pop_front() {
@@ -298,7 +382,7 @@ pub(crate) async fn collect_audio_files(
 
 pub(crate) async fn test_connection(source: &RemoteSourceCredentials) -> Result<(), String> {
     let client = shared_client();
-    list_directory(&client, source, &source.root_path).await?;
+    list_directory(&client, source, "/").await?;
     Ok(())
 }
 

@@ -1,5 +1,5 @@
 use super::types::{RemoteFileEntry, RemoteSource, RemoteSourceCredentials, RemoteSourceInput};
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -25,6 +25,11 @@ fn write_password_to_keyring(source_id: &str, password: &str) -> Result<(), Stri
         .map_err(|error| error.to_string())
 }
 
+fn write_password_to_keyring_verified(source_id: &str, password: &str) -> bool {
+    write_password_to_keyring(source_id, password).is_ok()
+        && read_password_from_keyring(source_id).as_deref() == Some(password)
+}
+
 fn delete_password_from_keyring(source_id: &str) {
     if let Ok(entry) = keyring_entry(source_id) {
         let _ = entry.delete_credential();
@@ -42,7 +47,7 @@ fn migrate_db_password_to_keyring(conn: &rusqlite::Connection, source: &RemoteSo
     let Some(password) = source.password.as_deref() else {
         return;
     };
-    if write_password_to_keyring(&source.id, password).is_ok() {
+    if write_password_to_keyring_verified(&source.id, password) {
         let _ = conn.execute(
             "UPDATE remote_sources SET password = NULL WHERE id = ?1",
             params![&source.id],
@@ -196,9 +201,11 @@ pub(crate) fn save_source(
         .password
         .or_else(|| existing.as_ref().and_then(|source| source.password.clone()));
     let created_at = existing.map(|source| source.created_at).unwrap_or(now);
-    if let Some(password) = password.as_deref() {
-        write_password_to_keyring(&id, password)?;
-    }
+    let db_password = match password.as_deref() {
+        Some(password) if write_password_to_keyring_verified(&id, password) => None,
+        Some(password) => Some(password.to_string()),
+        None => None,
+    };
 
     conn.execute(
         "INSERT INTO remote_sources (
@@ -211,7 +218,7 @@ pub(crate) fn save_source(
             provider = excluded.provider,
             base_url = excluded.base_url,
             username = excluded.username,
-            password = NULL,
+            password = excluded.password,
             root_path = excluded.root_path,
             updated_at = excluded.updated_at",
         params![
@@ -220,7 +227,7 @@ pub(crate) fn save_source(
             "webdav",
             base_url,
             &input.username,
-            Option::<String>::None,
+            &db_password,
             &root_path,
             created_at,
             now
