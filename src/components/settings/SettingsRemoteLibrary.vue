@@ -235,7 +235,7 @@ onScopeDispose(() => {
         远程音乐库
       </h2>
 
-      <div class="remote-form">
+      <div>
         <div class="remote-form-grid">
           <label class="remote-field">
             <span>名称</span>
@@ -253,7 +253,7 @@ onScopeDispose(() => {
             <span>密码</span>
             <input v-model="form.password" type="password" class="remote-input" autocomplete="current-password" />
           </label>
-          <label class="remote-field remote-field--wide">
+          <label class="remote-field">
             <span>根目录</span>
             <input v-model="form.rootPath" type="text" class="remote-input" placeholder="/" />
           </label>
@@ -375,7 +375,6 @@ onScopeDispose(() => {
 </template>
 
 <style scoped>
-.remote-form,
 .remote-source-list,
 .remote-cache-row,
 .remote-browser {
@@ -396,7 +395,7 @@ onScopeDispose(() => {
 
 .remote-form-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
 
@@ -410,15 +409,11 @@ onScopeDispose(() => {
   color: rgb(55 65 81);
 }
 
-.remote-field--wide {
-  grid-column: 1 / -1;
-}
-
 .remote-input {
   min-height: 40px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.34);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.36);
   padding: 9px 12px;
   color: rgb(31 41 55);
   font-size: 13px;
@@ -555,7 +550,6 @@ onScopeDispose(() => {
   font-weight: 700;
 }
 
-:global(.dark) .remote-form,
 :global(.dark) .remote-source-list,
 :global(.dark) .remote-cache-row,
 :global(.dark) .remote-browser {
@@ -568,7 +562,7 @@ onScopeDispose(() => {
 
 :global(.dark) .remote-input {
   border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.92);
 }
 
