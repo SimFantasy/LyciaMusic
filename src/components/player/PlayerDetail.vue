@@ -4,6 +4,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useLyrics } from '../../composables/lyrics';
 import { useSongDetailCache } from '../../composables/useSongDetailCache';
 import { usePlaybackController } from '../../features/playback/usePlaybackController';
+import { useSettings } from '../../features/settings/useSettings';
 import { useSharedTransition } from '../../composables/useSharedTransition';
 import type { SongDetail } from '../../types';
 import LyricsView from './LyricsView.vue';
@@ -17,6 +18,8 @@ const {
   currentSong,
   closePlayerDetail,
 } = usePlaybackController();
+
+const { settings } = useSettings();
 
 const { parsedLyrics } = useLyrics();
 const { staggerPhase } = useSharedTransition();
@@ -40,7 +43,13 @@ const toggleMaximize = async () => {
   }
   await appWindow.maximize();
 };
-const closeApp = () => appWindow.close();
+const closeApp = async () => {
+  if (settings.value.closeToTray) {
+    await appWindow.hide();
+  } else {
+    await appWindow.close();
+  }
+};
 
 const clearTopChromeHideTimer = () => {
   if (topChromeHideTimer) {
