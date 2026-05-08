@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AudioLines } from 'lucide-vue-next';
+import { AudioLines, Eye, EyeOff } from 'lucide-vue-next';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useLibraryCollections } from '../../features/collections/useLibraryCollections';
 import { useLyrics } from '../../composables/lyrics';
@@ -8,6 +8,11 @@ import AudioVisualizer from '../player/AudioVisualizer.vue';
 import FooterContextMenu from "../overlays/FooterContextMenu.vue";
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 import type { RemoteDownloadProgress } from '../../types';
+import {
+  FOOTER_PROGRESS_HIDDEN_KEY,
+  getProgressVisualState,
+  readStoredProgressHidden
+} from './playerFooterProgress';
 
 const { 
   currentSong,
@@ -41,12 +46,18 @@ const toggleLyricsPlayerSettings = () => {
   showLyricsPlayerSettingsPanel.value = !showLyricsPlayerSettingsPanel.value;
 };
 const isVisualizerEnabled = ref(localStorage.getItem('footer_visualizer_enabled') !== 'false');
+const isProgressHidden = ref(readStoredProgressHidden(localStorage));
 const remoteDownloadProgress = ref<RemoteDownloadProgress | null>(null);
 let unlistenRemoteDownload: UnlistenFn | null = null;
 
 const toggleVisualizer = () => {
   isVisualizerEnabled.value = !isVisualizerEnabled.value;
   localStorage.setItem('footer_visualizer_enabled', isVisualizerEnabled.value.toString());
+};
+
+const toggleProgressVisibility = () => {
+  isProgressHidden.value = !isProgressHidden.value;
+  localStorage.setItem(FOOTER_PROGRESS_HIDDEN_KEY, isProgressHidden.value.toString());
 };
 
 // 不再使用单独的模糊样式 -> 全透明
@@ -79,6 +90,8 @@ const progressThumbClass = computed(() => (
     ? 'border-white/45 bg-white'
     : 'border-white/55 bg-white'
 ));
+
+const progressVisualState = computed(() => getProgressVisualState(isProgressHidden.value, isDraggingProgress.value));
 
 const startProgressDrag = (e: MouseEvent) => { 
   if (!currentSong.value || currentSong.value.duration <= 0) return;
@@ -252,13 +265,13 @@ onUnmounted(() => {
         >
           <div class="absolute inset-0 rounded-full transition-colors duration-200" :class="progressTrackClass"></div>
           <div
-            class="absolute inset-y-0 left-0 rounded-full transition-colors duration-200"
-            :class="progressFillClass"
+            class="absolute inset-y-0 left-0 rounded-full transition-[background-color,opacity] duration-200"
+            :class="[progressFillClass, progressVisualState.trackClass]"
             :style="{ width: displayProgress + '%' }"
           >
             <div
               class="absolute right-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2 translate-x-1/2 rounded-full transition-all duration-150"
-              :class="[progressThumbClass, isDraggingProgress ? 'opacity-100 scale-100' : 'opacity-0 scale-75 group-hover/progress:opacity-100 group-hover/progress:scale-100']"
+              :class="[progressThumbClass, isDraggingProgress && !isProgressHidden ? 'opacity-100 scale-100' : progressVisualState.thumbClass]"
             ></div>
           </div>
         </div>
@@ -424,6 +437,16 @@ onUnmounted(() => {
           <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
         </button>
       </div>
+
+      <button
+        v-if="showPlayerDetail"
+        @click="toggleProgressVisibility"
+        :class="['transition-colors w-8 h-8 flex items-center justify-center rounded-full', isProgressHidden ? 'text-[#EC4141] bg-[#EC4141]/10' : 'text-white/60 hover:text-white hover:bg-white/10']"
+        :title="isProgressHidden ? '显示进度条' : '隐藏进度条'"
+      >
+        <EyeOff v-if="isProgressHidden" class="h-4 w-4" :stroke-width="2.2" />
+        <Eye v-else class="h-4 w-4" :stroke-width="2.2" />
+      </button>
 
       <button
         v-if="showPlayerDetail"
