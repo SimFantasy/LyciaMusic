@@ -36,7 +36,10 @@ interface SeekCompletedPayload {
   time: number;
 }
 
-type RemoteLyricsCacheReadyPayload = string;
+type RemoteLyricsCacheReadyPayload = string | {
+  uri: string;
+  song?: Song | null;
+};
 
 interface LibraryScanBatchPayload {
   songs: Song[];
@@ -375,7 +378,13 @@ export const createPlayerLifecycle = ({
         handleSeekCompleted(event.payload);
       }),
       listen<RemoteLyricsCacheReadyPayload>('remote-lyrics-cache-ready', event => {
-        if (currentSong.value?.path === event.payload) {
+        const payload = event.payload;
+        const uri = typeof payload === 'string' ? payload : payload.uri;
+        const song = typeof payload === 'string' ? null : payload.song;
+        if (song?.path) {
+          libraryStore.setSongRecord(song);
+        }
+        if (currentSong.value?.path === uri) {
           void loadLyrics();
         }
       }),

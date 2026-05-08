@@ -1,5 +1,6 @@
 use crate::database::DbState;
-use crate::music::scanner::parse_song_from_file;
+use crate::music::scanner::apply_scan_changes;
+use crate::music::types::Song;
 use crate::player::spectrum::build_frequency_bands;
 use crate::player::types::{
     AudioCommand, AudioOutputMode, AudioSource, PlayerState, VISUALIZER_BAND_COUNT,
@@ -7,6 +8,9 @@ use crate::player::types::{
 use crate::remote::cache::{
     ensure_cached_path, is_remote_uri, remote_playback_source, RemotePlaybackSource,
 };
+use crate::remote::repository::get_source_for_remote_uri;
+use crate::remote::scanner::song_from_cached_remote_file;
+use crate::remote::types::RemoteFileEntry;
 use souvlaki::{MediaMetadata, MediaPlayback, MediaPosition};
 use std::path::Path;
 use std::sync::atomic::Ordering;
@@ -14,6 +18,13 @@ use std::time::Duration;
 use tauri::Emitter;
 
 const REMOTE_LYRICS_CACHE_READY_EVENT: &str = "remote-lyrics-cache-ready";
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct RemoteLyricsCacheReadyPayload {
+    uri: String,
+    song: Option<Song>,
+}
 
 fn normalize_cover_for_smtc(cover: &str) -> Option<String> {
     let trimmed = cover.trim();
@@ -131,8 +142,15 @@ fn schedule_remote_cache_after_half(
             if seconds >= threshold {
                 let db_state = DbState { conn };
                 if let Ok(cache_path) = ensure_cached_path(&app, &db_state, &remote_uri).await {
-                    update_cached_remote_audio_metadata(&db_state, &remote_uri, &cache_path);
-                    let _ = app.emit(REMOTE_LYRICS_CACHE_READY_EVENT, remote_uri.clone());
+                    let song =
+                        update_cached_remote_audio_metadata(&db_state, &remote_uri, &cache_path);
+                    let _ = app.emit(
+                        REMOTE_LYRICS_CACHE_READY_EVENT,
+                        RemoteLyricsCacheReadyPayload {
+                            uri: remote_uri.clone(),
+                            song,
+                        },
+                    );
                 }
                 return;
             }
@@ -140,40 +158,45 @@ fn schedule_remote_cache_after_half(
     });
 }
 
-fn update_cached_remote_audio_metadata(db_state: &DbState, remote_uri: &str, cache_path: &str) {
-    let format = remote_uri
-        .rsplit('.')
-        .next()
-        .map(|value| value.to_ascii_lowercase())
-        .unwrap_or_default();
-    let Some(song) = parse_song_from_file(Path::new(cache_path), remote_uri, &format) else {
-        return;
+fn update_cached_remote_audio_metadata(
+    db_state: &DbState,
+    remote_uri: &str,
+    cache_path: &str,
+) -> Option<Song> {
+    let (source, remote_path, etag, stored_remote_uri) = {
+        let conn = db_state.conn.lock().ok()?;
+        get_source_for_remote_uri(&conn, remote_uri).ok()?
     };
-    if let Ok(conn) = db_state.conn.lock() {
-        let _ = conn.execute(
-            "UPDATE songs
-             SET duration = ?1,
-                 bitrate = ?2,
-                 sample_rate = ?3,
-                 bit_depth = ?4,
-                 format = ?5,
-                 container = ?6,
-                 codec = ?7,
-                 file_size = ?8
-             WHERE path = ?9",
-            rusqlite::params![
-                song.duration as i64,
-                song.bitrate as i64,
-                song.sample_rate as i64,
-                song.bit_depth.map(|value| value as i64),
-                song.format,
-                song.container,
-                song.codec,
-                song.file_size.min(i64::MAX as u64) as i64,
-                remote_uri,
-            ],
-        );
+    let normalized_uri = stored_remote_uri.unwrap_or_else(|| remote_uri.to_string());
+    let file_size = std::fs::metadata(cache_path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
+    let file_name = remote_path
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&remote_path)
+        .to_string();
+    let remote_file = RemoteFileEntry {
+        remote_path,
+        name: file_name,
+        size: file_size,
+        etag,
+        modified_at: None,
+        is_dir: false,
+    };
+    let Some(song) = song_from_cached_remote_file(&source, &remote_file, Path::new(cache_path))
+    else {
+        return None;
+    };
+    if song.path != normalized_uri {
+        return None;
     }
+    if let Ok(mut conn) = db_state.conn.lock() {
+        let _ = apply_scan_changes(&mut conn, &[], std::slice::from_ref(&song), &[], None);
+    }
+    Some(song)
 }
 
 #[tauri::command]

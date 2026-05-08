@@ -1,9 +1,10 @@
-use super::repository::{replace_remote_files, update_sync_status};
+use super::cache;
+use super::repository::{replace_remote_files, update_song_cache_path, update_sync_status};
 use super::types::{
     RemoteFileEntry, RemoteSourceCredentials, RemoteSyncProgress, RemoteSyncResult,
 };
 use super::webdav;
-use crate::music::scanner::apply_scan_changes;
+use crate::music::scanner::{apply_scan_changes, parse_song_from_file};
 use crate::music::types::Song;
 use rusqlite::params;
 use std::collections::{HashMap, HashSet};
@@ -51,13 +52,66 @@ fn album_from_remote_path(path: &str) -> String {
     }
 }
 
+fn is_unknown_text(value: &str, unknown: &str) -> bool {
+    let trimmed = value.trim();
+    trimmed.is_empty() || trimmed == unknown
+}
+
+fn split_filename_title_artist(name: &str) -> Option<(String, String)> {
+    let stem = title_from_name(name);
+    let separators = [" - ", "-", " – ", "–", " — ", "—"];
+    for separator in separators {
+        let Some((left, right)) = stem.rsplit_once(separator) else {
+            continue;
+        };
+        let title = left.trim();
+        let artist = right.trim();
+        if !title.is_empty() && !artist.is_empty() {
+            return Some((title.to_string(), artist.to_string()));
+        }
+    }
+    None
+}
+
+fn refresh_artist_fields(song: &mut Song, artist: String) {
+    song.artist = artist.clone();
+    song.artist_names = vec![artist.clone()];
+    song.effective_artist_names = vec![artist.clone()];
+    song.album_artist = artist;
+    song.album_key = format!(
+        "{}::{}",
+        song.album.to_lowercase(),
+        song.album_artist.to_lowercase()
+    );
+}
+
+fn apply_filename_metadata_fallback(song: &mut Song, file: &RemoteFileEntry) {
+    let needs_artist = is_unknown_text(&song.artist, "未知歌手");
+    let needs_title = song.title.trim().is_empty() || song.title == title_from_name(&file.name);
+
+    if !(needs_artist || needs_title) {
+        return;
+    }
+
+    let Some((title, artist)) = split_filename_title_artist(&file.name) else {
+        return;
+    };
+
+    if needs_title {
+        song.title = title;
+    }
+    if needs_artist {
+        refresh_artist_fields(song, artist);
+    }
+}
+
 fn song_from_remote_file(source: &RemoteSourceCredentials, file: &RemoteFileEntry) -> Song {
     let remote_uri = file.remote_uri(&source.id);
     let title = title_from_name(&file.name);
     let artist = "未知歌手".to_string();
     let album = album_from_remote_path(&file.remote_path);
 
-    Song {
+    let mut song = Song {
         id: None,
         name: file.name.clone(),
         title,
@@ -83,11 +137,96 @@ fn song_from_remote_file(source: &RemoteSourceCredentials, file: &RemoteFileEntr
         disc_number: None,
         added_at: None,
         file_modified_at: None,
-    }
+    };
+    apply_filename_metadata_fallback(&mut song, file);
+    song
 }
 
 fn song_for_remote_index(source: &RemoteSourceCredentials, file: &RemoteFileEntry) -> Song {
     song_from_remote_file(source, file)
+}
+
+pub(crate) fn song_from_cached_remote_file(
+    source: &RemoteSourceCredentials,
+    file: &RemoteFileEntry,
+    cache_path: &Path,
+) -> Option<Song> {
+    let remote_uri = file.remote_uri(&source.id);
+    let format = extension_from_path(&file.remote_path);
+    let mut parsed = parse_song_from_file(cache_path, &remote_uri, &format)?;
+    let fallback = song_from_remote_file(source, file);
+
+    parsed.name = file.name.clone();
+    parsed.format = if parsed.format.trim().is_empty() {
+        fallback.format
+    } else {
+        parsed.format
+    };
+    parsed.file_size = if file.size > 0 {
+        file.size
+    } else {
+        parsed.file_size
+    };
+    parsed.added_at = None;
+    parsed.file_modified_at = None;
+
+    let cache_stem = cache_path
+        .file_stem()
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_default();
+    if parsed.title.trim().is_empty() || (!cache_stem.is_empty() && parsed.title == cache_stem) {
+        parsed.title = fallback.title;
+    }
+    if is_unknown_text(&parsed.artist, "未知歌手") {
+        parsed.artist = fallback.artist;
+    }
+    if parsed.artist_names.is_empty() {
+        parsed.artist_names = fallback.artist_names;
+    }
+    if parsed.effective_artist_names.is_empty() {
+        parsed.effective_artist_names = parsed.artist_names.clone();
+    }
+    if is_unknown_text(&parsed.album, "未知专辑") {
+        parsed.album = fallback.album;
+    }
+    if parsed.album_artist.trim().is_empty() {
+        parsed.album_artist = parsed.artist.clone();
+    }
+    if parsed.album_key.trim().is_empty() {
+        parsed.album_key = format!(
+            "{}::{}",
+            parsed.album.to_lowercase(),
+            parsed.album_artist.to_lowercase()
+        );
+    }
+    apply_filename_metadata_fallback(&mut parsed, file);
+
+    Some(parsed)
+}
+
+async fn cache_and_parse_remote_song(
+    app: &AppHandle,
+    source: &RemoteSourceCredentials,
+    file: &RemoteFileEntry,
+) -> (Song, Option<String>) {
+    let remote_uri = file.remote_uri(&source.id);
+    let cache_path = cache::cache_remote_file(
+        app,
+        source,
+        &file.remote_path,
+        &remote_uri,
+        file.etag.as_deref(),
+    )
+    .await;
+
+    match cache_path {
+        Ok(cache_path) => {
+            let parsed = song_from_cached_remote_file(source, file, Path::new(&cache_path))
+                .unwrap_or_else(|| song_for_remote_index(source, file));
+            (parsed, Some(cache_path))
+        }
+        Err(_) => (song_for_remote_index(source, file), None),
+    }
 }
 
 fn deserialize_string_list(raw: Option<String>) -> Vec<String> {
@@ -352,6 +491,7 @@ pub(crate) async fn sync_source(
     };
 
     let mut songs = Vec::with_capacity(files.len());
+    let mut cache_updates = Vec::new();
     let total = files.len();
     for (index, file) in files.iter().enumerate() {
         let current = index + 1;
@@ -374,7 +514,11 @@ pub(crate) async fn sync_source(
                 }
             }
         }
-        songs.push(song_for_remote_index(&source, file));
+        let (song, cache_path) = cache_and_parse_remote_song(&app, &source, file).await;
+        if let Some(cache_path) = cache_path {
+            cache_updates.push((remote_uri, cache_path));
+        }
+        songs.push(song);
     }
 
     emit_sync_progress(
@@ -401,6 +545,9 @@ pub(crate) async fn sync_source(
         replace_remote_files(&mut conn, &source.id, &files)?;
         apply_scan_changes(&mut conn, &songs, &[], &to_delete, None)?;
         mark_remote_songs(&conn, &source, &files)?;
+        for (remote_uri, cache_path) in &cache_updates {
+            update_song_cache_path(&conn, remote_uri, cache_path)?;
+        }
         update_sync_status(&conn, &source.id, None)?;
         Ok(())
     })();
@@ -443,6 +590,10 @@ pub(crate) async fn sync_source(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use id3::TagLike;
+    use id3::Version;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn remote_file(etag: Option<&str>, size: u64, modified_at: Option<&str>) -> RemoteFileEntry {
         RemoteFileEntry {
@@ -481,6 +632,30 @@ mod tests {
         song.bitrate = 320;
         song.sample_rate = 44_100;
         song
+    }
+
+    fn temp_audio_path(ext: &str) -> std::path::PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!("lycia_remote_scan_{unique}.{ext}"))
+    }
+
+    fn write_tagged_mp3(path: &std::path::Path) {
+        let mut tag = id3::Tag::new();
+        tag.set_title("Remote Title");
+        tag.set_artist("Remote Artist");
+        tag.set_album("Remote Album");
+        tag.set_album_artist("Remote Album Artist");
+
+        let mut bytes = Vec::new();
+        tag.write_to(&mut bytes, Version::Id3v23)
+            .expect("id3 tag should serialize");
+        bytes.extend_from_slice(&[0xFF, 0xFB, 0x90, 0x64]);
+        bytes.extend(std::iter::repeat(0).take(413));
+
+        fs::write(path, bytes).expect("temp mp3 should be written");
     }
 
     #[test]
@@ -527,6 +702,49 @@ mod tests {
 
         assert_eq!(song.album, "Album");
         assert_eq!(song.album_key, "album::未知歌手");
+    }
+
+    #[test]
+    fn filename_metadata_fallback_splits_title_and_artist() {
+        let source = remote_source();
+        let mut file = remote_file(Some("etag-a"), 12_345, None);
+        file.remote_path = "/Album/爱琴海-周杰伦.mp3".to_string();
+        file.name = "爱琴海-周杰伦.mp3".to_string();
+        let mut song = song_from_remote_file(&source, &file);
+
+        apply_filename_metadata_fallback(&mut song, &file);
+
+        assert_eq!(song.title, "爱琴海");
+        assert_eq!(song.artist, "周杰伦");
+        assert_eq!(song.artist_names, vec!["周杰伦".to_string()]);
+        assert_eq!(song.album, "Album");
+        assert_eq!(song.album_artist, "周杰伦");
+        assert_eq!(song.album_key, "album::周杰伦");
+    }
+
+    #[test]
+    fn cached_remote_file_uses_embedded_metadata_for_index_song() {
+        let source = remote_source();
+        let mut file = remote_file(Some("etag-a"), 12_345, None);
+        file.remote_path = "/remote/demo.mp3".to_string();
+        file.name = "demo.mp3".to_string();
+        let temp_path = temp_audio_path("mp3");
+        write_tagged_mp3(&temp_path);
+
+        let song = song_from_cached_remote_file(&source, &file, &temp_path)
+            .expect("cached file should parse");
+
+        assert_eq!(song.path, "remote://source/remote/demo.mp3");
+        assert_eq!(song.title, "Remote Title");
+        assert_eq!(song.artist, "Remote Artist");
+        assert_eq!(song.artist_names, vec!["Remote Artist".to_string()]);
+        assert_eq!(song.album, "Remote Album");
+        assert_eq!(song.album_artist, "Remote Album Artist");
+        assert_eq!(song.album_key, "remote album::remote album artist");
+        assert_eq!(song.format, "mp3");
+        assert!(song.file_size > 0);
+
+        let _ = fs::remove_file(temp_path);
     }
 
     #[test]
