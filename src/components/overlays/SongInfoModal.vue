@@ -4,6 +4,7 @@ import type { Song, SongDetail } from '../../types';
 import { useCoverCache } from '../../composables/useCoverCache';
 import { usePlayer } from '../../composables/player';
 import { useSongDetailCache } from '../../composables/useSongDetailCache';
+import { useThemeSettings } from '../../composables/useThemeSettings';
 import type { LyricsStorageSource } from '../../services/tauri/contracts';
 import { tauriInvoke } from '../../services/tauri/invoke';
 
@@ -17,6 +18,7 @@ const emit = defineEmits(['close']);
 const { loadCover } = useCoverCache();
 const { loadSongDetail } = useSongDetailCache();
 const { openInFinder } = usePlayer();
+const { isDarkTheme } = useThemeSettings();
 
 const coverUrl = ref('');
 const isClosing = ref(false);
@@ -260,6 +262,7 @@ const formatTime = (timestampSeconds?: number) => {
         class="song-info-stage"
         :class="[
           isClosing ? 'scale-95 opacity-0 translate-y-4' : 'scale-100 opacity-100 translate-y-0',
+          isDarkTheme ? 'song-info-stage--dark' : '',
           isLyricsEditorExpanded ? 'song-info-stage--lyrics-expanded' : '',
           pendingLyricsExpanded === true ? 'song-info-stage--lyrics-expanding' : '',
           pendingLyricsExpanded === false ? 'song-info-stage--lyrics-collapsing' : '',
@@ -477,6 +480,22 @@ const formatTime = (timestampSeconds?: number) => {
   --song-info-viewport-y: clamp(200px, 24vh, 300px);
   --lyrics-panel-width: clamp(340px, 32vw, 460px);
   --song-info-main-width: min(680px, calc(100% - var(--lyrics-panel-width) - var(--song-info-page-gap)));
+  --lyrics-editor-panel-bg: rgba(255, 255, 255, 0.82);
+  --lyrics-editor-panel-border: rgba(255, 255, 255, 0.38);
+  --lyrics-editor-panel-shadow: 0 24px 70px rgba(15, 23, 42, 0.2);
+  --lyrics-editor-header-bg: rgba(255, 255, 255, 0.08);
+  --lyrics-editor-header-border: rgba(148, 163, 184, 0.18);
+  --lyrics-editor-title-color: rgb(17 24 39);
+  --lyrics-editor-text-color: rgb(31 41 55);
+  --lyrics-editor-placeholder-color: rgb(156 163 175);
+  --lyrics-editor-actions-bg: rgba(243, 244, 246, 0.96);
+  --lyrics-editor-button-bg: rgba(255, 255, 255, 0.72);
+  --lyrics-editor-button-border: rgba(148, 163, 184, 0.26);
+  --lyrics-editor-button-color: rgb(55 65 81);
+  --lyrics-editor-button-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --lyrics-editor-expand-bg: rgba(255, 255, 255, 0.68);
+  --lyrics-editor-expand-border: rgba(148, 163, 184, 0.22);
+  --lyrics-editor-expand-color: rgb(75 85 99);
   position: relative;
   z-index: 2;
   display: flex;
@@ -489,6 +508,25 @@ const formatTime = (timestampSeconds?: number) => {
     gap 360ms cubic-bezier(0.4, 0, 0.2, 1),
     opacity 300ms ease,
     transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.song-info-stage--dark {
+  --lyrics-editor-panel-bg: rgba(15, 23, 42, 0.92);
+  --lyrics-editor-panel-border: rgba(255, 255, 255, 0.1);
+  --lyrics-editor-panel-shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
+  --lyrics-editor-header-bg: rgba(15, 23, 42, 0.24);
+  --lyrics-editor-header-border: rgba(255, 255, 255, 0.08);
+  --lyrics-editor-title-color: rgb(248 250 252);
+  --lyrics-editor-text-color: rgba(255, 255, 255, 0.86);
+  --lyrics-editor-placeholder-color: rgba(148, 163, 184, 0.72);
+  --lyrics-editor-actions-bg: rgba(15, 23, 42, 0.96);
+  --lyrics-editor-button-bg: rgba(255, 255, 255, 0.06);
+  --lyrics-editor-button-border: rgba(255, 255, 255, 0.1);
+  --lyrics-editor-button-color: rgba(255, 255, 255, 0.82);
+  --lyrics-editor-button-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  --lyrics-editor-expand-bg: rgba(255, 255, 255, 0.06);
+  --lyrics-editor-expand-border: rgba(255, 255, 255, 0.1);
+  --lyrics-editor-expand-color: rgba(255, 255, 255, 0.68);
 }
 
 .song-info-window-drag-strip {
@@ -611,10 +649,10 @@ const formatTime = (timestampSeconds?: number) => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.38);
+  border: 1px solid var(--lyrics-editor-panel-border);
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.2);
+  background: var(--lyrics-editor-panel-bg);
+  box-shadow: var(--lyrics-editor-panel-shadow);
   backdrop-filter: blur(24px) saturate(150%);
   -webkit-backdrop-filter: blur(24px) saturate(150%);
   transform: translateX(0) scale(1);
@@ -631,11 +669,6 @@ const formatTime = (timestampSeconds?: number) => {
   transform: translateX(0) scale(1);
 }
 
-:global(.dark) .lyrics-editor-panel {
-  border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(17, 24, 39, 0.9);
-}
-
 .lyrics-editor-header {
   display: flex;
   align-items: center;
@@ -643,7 +676,8 @@ const formatTime = (timestampSeconds?: number) => {
   gap: 12px;
   min-height: 72px;
   padding: 12px 72px 12px 18px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  border-bottom: 1px solid var(--lyrics-editor-header-border);
+  background: var(--lyrics-editor-header-bg);
 }
 
 .lyrics-editor-heading {
@@ -664,10 +698,10 @@ const formatTime = (timestampSeconds?: number) => {
   width: 34px;
   height: 34px;
   flex-shrink: 0;
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  border: 1px solid var(--lyrics-editor-expand-border);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.68);
-  color: rgb(75 85 99);
+  background: var(--lyrics-editor-expand-bg);
+  color: var(--lyrics-editor-expand-color);
   transition:
     border-color 160ms ease,
     background-color 160ms ease,
@@ -680,31 +714,17 @@ const formatTime = (timestampSeconds?: number) => {
   color: #ec4141;
 }
 
-:global(.dark) .lyrics-editor-expand-button {
-  border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.68);
-}
-
-:global(.dark) .lyrics-editor-expand-button:hover {
+.song-info-stage--dark .lyrics-editor-expand-button:hover {
   border-color: rgba(236, 65, 65, 0.4);
   color: #ff8b8b;
 }
 
-:global(.dark) .lyrics-editor-header {
-  border-bottom-color: rgba(255, 255, 255, 0.08);
-}
-
 .lyrics-editor-title {
   flex-shrink: 0;
-  color: rgb(17 24 39);
+  color: var(--lyrics-editor-title-color);
   font-size: 18px;
   font-weight: 800;
   line-height: 1.2;
-}
-
-:global(.dark) .lyrics-editor-title {
-  color: rgb(255 255 255);
 }
 
 .lyrics-editor-inline-song {
@@ -746,7 +766,7 @@ const formatTime = (timestampSeconds?: number) => {
   border: 0;
   background: transparent;
   padding: 18px;
-  color: rgb(31 41 55);
+  color: var(--lyrics-editor-text-color);
   font-family: "Sarasa Gothic SC", "Sarasa Mono SC", "Sarasa Gothic", "Sarasa Mono", sans-serif;
   font-size: 13px;
   line-height: 1.7;
@@ -767,12 +787,12 @@ const formatTime = (timestampSeconds?: number) => {
   justify-content: center;
   min-width: 88px;
   height: 44px;
-  border: 1px solid rgba(148, 163, 184, 0.26);
+  border: 1px solid var(--lyrics-editor-button-border);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  background: var(--lyrics-editor-button-bg);
+  box-shadow: var(--lyrics-editor-button-shadow);
   padding: 0 16px;
-  color: rgb(55 65 81);
+  color: var(--lyrics-editor-button-color);
   font-size: 14px;
   font-weight: 700;
   line-height: 1;
@@ -807,12 +827,8 @@ const formatTime = (timestampSeconds?: number) => {
   }
 }
 
-:global(.dark) .lyrics-editor-textarea {
-  color: rgba(255, 255, 255, 0.86);
-}
-
 .lyrics-editor-textarea::placeholder {
-  color: rgb(156 163 175);
+  color: var(--lyrics-editor-placeholder-color);
 }
 
 .lyrics-editor-error {
@@ -833,11 +849,7 @@ const formatTime = (timestampSeconds?: number) => {
   gap: 10px;
   min-height: var(--song-info-footer-height);
   padding: 0 18px;
-  background: rgb(243 244 246);
-}
-
-:global(.dark) .lyrics-editor-actions {
-  background: rgb(17 24 39);
+  background: var(--lyrics-editor-actions-bg);
 }
 
 .modal-action-button--wide {
@@ -860,13 +872,7 @@ const formatTime = (timestampSeconds?: number) => {
   color: #fff;
 }
 
-:global(.dark) .modal-action-button {
-  border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.82);
-}
-
-:global(.dark) .modal-action-button--primary {
+.song-info-stage--dark .modal-action-button--primary {
   background: #ec4141;
   color: #fff;
 }
