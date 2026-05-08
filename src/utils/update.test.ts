@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { compareVersions, extractVersion } from "./update";
+import {
+  OFFICIAL_LATEST_RELEASE_URL,
+  compareVersions,
+  extractVersion,
+  fetchOfficialLatestRelease
+} from "./update";
 
 describe("extractVersion", () => {
   it("extracts a semantic version from release labels", () => {
@@ -21,5 +26,49 @@ describe("compareVersions", () => {
 
   it("treats missing trailing parts as zero", () => {
     expect(compareVersions("1.2", "1.2.0")).toBe(0);
+  });
+});
+
+describe("fetchOfficialLatestRelease", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("fetches the official latest.json and resolves relative download URLs", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        version: "1.4.0",
+        date: "2026-05-08",
+        downloadUrl: "/download/LyciaPlayer_Latest_x64_Setup.exe",
+        changelogUrl: "/changelog.html",
+        changelog: ["新增官网更新通道"]
+      }))
+    );
+
+    await expect(fetchOfficialLatestRelease()).resolves.toEqual({
+      version: "1.4.0",
+      url: "https://lycia.prettyboy.fun/download/LyciaPlayer_Latest_x64_Setup.exe",
+      downloadUrl: "https://lycia.prettyboy.fun/download/LyciaPlayer_Latest_x64_Setup.exe",
+      changelogUrl: "https://lycia.prettyboy.fun/changelog.html",
+      publishedAt: "2026-05-08",
+      notes: "新增官网更新通道",
+      source: "official"
+    });
+    expect(fetchMock).toHaveBeenCalledWith(OFFICIAL_LATEST_RELEASE_URL, {
+      headers: {
+        Accept: "application/json"
+      }
+    });
+  });
+
+  it("rejects invalid official release metadata", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        date: "2026-05-08",
+        downloadUrl: "/download/LyciaPlayer_Latest_x64_Setup.exe"
+      }))
+    );
+
+    await expect(fetchOfficialLatestRelease()).rejects.toThrow("Official latest release version is missing");
   });
 });

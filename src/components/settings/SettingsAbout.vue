@@ -3,12 +3,13 @@ import { onMounted, ref } from 'vue';
 import { getVersion } from '@tauri-apps/api/app';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import ModernModal from '../common/ModernModal.vue';
-import { compareVersions, fetchLatestRelease } from '../../utils/update';
+import { compareVersions, fetchLatestRelease, fetchOfficialLatestRelease } from '../../utils/update';
 
 const REPO_OWNER = 'Billy636';
 const REPO_NAME = 'LyciaMusic';
 const REPO_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}`;
 const RELEASES_URL = `${REPO_URL}/releases`;
+const GITHUB_LATEST_RELEASE_URL = `${RELEASES_URL}/latest`;
 
 const appVersion = ref('');
 const isCheckingUpdate = ref(false);
@@ -20,6 +21,11 @@ const dialogConfirmText = ref('确定');
 const dialogCancelText = ref('取消');
 const dialogAction = ref<'close' | 'open-release'>('close');
 const dialogOpenUrl = ref(RELEASES_URL);
+const updateChoiceVisible = ref(false);
+const updateChoiceTitle = ref('');
+const updateChoiceContent = ref('');
+const updateOfficialUrl = ref('');
+const updateGithubUrl = ref(GITHUB_LATEST_RELEASE_URL);
 
 async function loadAppVersion() {
   try {
@@ -64,6 +70,19 @@ function formatPublishedDate(value?: string) {
   }).format(date);
 }
 
+function showUpdateChoice(options: {
+  title: string;
+  content: string;
+  officialUrl: string;
+  githubUrl?: string;
+}) {
+  updateChoiceTitle.value = options.title;
+  updateChoiceContent.value = options.content;
+  updateOfficialUrl.value = options.officialUrl;
+  updateGithubUrl.value = options.githubUrl ?? GITHUB_LATEST_RELEASE_URL;
+  updateChoiceVisible.value = true;
+}
+
 async function handleCheckUpdate() {
   if (isCheckingUpdate.value) {
     return;
@@ -76,15 +95,35 @@ async function handleCheckUpdate() {
       await loadAppVersion();
     }
 
-    const latestRelease = await fetchLatestRelease(REPO_OWNER, REPO_NAME);
+    let latestRelease;
+
+    try {
+      latestRelease = await fetchOfficialLatestRelease();
+    } catch (officialError) {
+      console.warn('Failed to fetch official latest release:', officialError);
+      latestRelease = await fetchLatestRelease(REPO_OWNER, REPO_NAME);
+    }
+
     const comparison = compareVersions(latestRelease.version, appVersion.value);
     const publishedDate = formatPublishedDate(latestRelease.publishedAt);
+    const latestSourceText = latestRelease.source === 'official' ? '官网' : 'GitHub';
 
     if (comparison > 0) {
       const publishedText = publishedDate ? `；发布时间：${publishedDate}` : '';
+
+      if (latestRelease.source === 'official') {
+        showUpdateChoice({
+          title: '发现新版本',
+          content: `当前版本：v${appVersion.value}；官网最新版本：v${latestRelease.version}${publishedText}。请选择下载来源。`,
+          officialUrl: latestRelease.downloadUrl ?? latestRelease.url,
+          githubUrl: GITHUB_LATEST_RELEASE_URL
+        });
+        return;
+      }
+
       showDialog({
         title: '发现新版本',
-        content: `当前版本：v${appVersion.value}；最新版本：v${latestRelease.version}${publishedText}。是否前往下载页面？`,
+        content: `当前版本：v${appVersion.value}；GitHub 最新版本：v${latestRelease.version}${publishedText}。是否前往下载页面？`,
         confirmText: '前往下载',
         cancelText: '稍后',
         action: 'open-release'
@@ -96,7 +135,7 @@ async function handleCheckUpdate() {
     if (comparison < 0) {
       showDialog({
         title: '当前版本较新',
-        content: `当前版本 v${appVersion.value} 高于 GitHub 最新发布版本 v${latestRelease.version}。你现在大概率运行的是测试版或未发布版本。`,
+        content: `当前版本 v${appVersion.value} 高于${latestSourceText}最新发布版本 v${latestRelease.version}。你现在大概率运行的是测试版或未发布版本。`,
         confirmText: '知道了',
         cancelText: '关闭'
       });
@@ -105,7 +144,7 @@ async function handleCheckUpdate() {
 
     showDialog({
       title: '已是最新版本',
-      content: `当前版本 v${appVersion.value} 已是最新版本。`,
+      content: `当前版本 v${appVersion.value} 已是${latestSourceText}最新版本。`,
       confirmText: '知道了',
       cancelText: '关闭'
     });
@@ -113,7 +152,7 @@ async function handleCheckUpdate() {
     console.error('Failed to check updates:', error);
     showDialog({
       title: '检查更新失败',
-      content: '无法连接到 GitHub Releases。请确认网络可用，或稍后再试。',
+      content: '无法连接到官网更新接口或 GitHub Releases。请确认网络可用，或稍后再试。',
       confirmText: '知道了',
       cancelText: '关闭'
     });
@@ -127,6 +166,15 @@ async function handleDialogConfirm() {
 
   if (dialogAction.value === 'open-release') {
     await openUrl(dialogOpenUrl.value);
+  }
+}
+
+async function handleDownloadChoice(target: 'official' | 'github') {
+  updateChoiceVisible.value = false;
+  const targetUrl = target === 'official' ? updateOfficialUrl.value : updateGithubUrl.value;
+
+  if (targetUrl) {
+    await openUrl(targetUrl);
   }
 }
 
@@ -206,5 +254,46 @@ onMounted(() => {
       :cancel-text="dialogCancelText"
       @confirm="handleDialogConfirm"
     />
+
+    <Teleport to="body">
+      <div
+        v-if="updateChoiceVisible"
+        class="fixed inset-0 z-[10000] flex items-center justify-center p-4"
+      >
+        <button
+          type="button"
+          class="absolute inset-0 bg-black/40 backdrop-blur-sm"
+          aria-label="关闭下载选择"
+          @click="updateChoiceVisible = false"
+        ></button>
+
+        <div class="relative w-full max-w-sm overflow-hidden rounded-2xl border border-white/20 bg-white/85 shadow-2xl ring-1 ring-black/5 backdrop-blur-md dark:bg-gray-900/90">
+          <div class="px-6 pt-6 pb-2 text-center">
+            <h3 class="text-lg font-bold leading-6 text-gray-900 dark:text-white">{{ updateChoiceTitle }}</h3>
+          </div>
+
+          <div class="px-6 pb-6 text-center">
+            <p class="text-sm leading-relaxed text-gray-500 dark:text-gray-300">{{ updateChoiceContent }}</p>
+          </div>
+
+          <div class="grid grid-cols-1 gap-3 bg-gray-50/50 px-4 py-3 dark:bg-white/5 sm:grid-cols-2">
+            <button
+              type="button"
+              class="inline-flex w-full justify-center rounded-xl border border-transparent bg-blue-600 px-4 py-2 text-base font-medium text-white shadow-sm transition-all duration-200 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 sm:text-sm"
+              @click="handleDownloadChoice('official')"
+            >
+              从官网下载
+            </button>
+            <button
+              type="button"
+              class="inline-flex w-full justify-center rounded-xl border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 shadow-sm transition-all duration-200 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 sm:text-sm"
+              @click="handleDownloadChoice('github')"
+            >
+              从 GitHub 下载
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
