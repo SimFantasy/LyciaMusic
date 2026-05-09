@@ -35,6 +35,11 @@ fn progress_duration(progress: &Arc<SharedProgress>) -> Duration {
     ))
 }
 
+fn reset_playback_progress(progress: &Arc<SharedProgress>) {
+    progress.samples_played.store(0, Ordering::Relaxed);
+    progress.visualizer.reset();
+}
+
 #[cfg(target_os = "windows")]
 fn stop_exclusive_playback(exclusive_playback: &mut Option<WasapiExclusivePlayback>) {
     if let Some(mut playback) = exclusive_playback.take() {
@@ -404,6 +409,7 @@ fn handle_play(
 ) {
     *current_path = source.display_path();
     *is_playing_flag = true;
+    reset_playback_progress(progress);
 
     if let Some(sink) = current_sink {
         sink.stop();
@@ -882,5 +888,43 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
         playback_id: Arc::new(AtomicU64::new(0)),
         controls,
         output_status,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_progress_at(seconds: f64) -> Arc<SharedProgress> {
+        let sample_rate = 44_100_u32;
+        let channels = 2_u32;
+        let samples = (seconds * sample_rate as f64 * channels as f64).round() as u64;
+
+        Arc::new(SharedProgress {
+            samples_played: Arc::new(AtomicU64::new(samples)),
+            sample_rate: Arc::new(AtomicU32::new(sample_rate)),
+            channels: Arc::new(AtomicU32::new(channels)),
+            visualizer: Arc::new(SharedVisualizer::new()),
+        })
+    }
+
+    #[test]
+    fn handle_play_resets_progress_even_when_new_source_cannot_open() {
+        let progress = test_progress_at(206.0);
+        let mut current_sink = None;
+        let mut current_path = String::new();
+        let mut is_playing_flag = false;
+
+        handle_play(
+            AudioSource::LocalFile("Z:\\missing\\song.flac".to_string()),
+            &None,
+            &mut current_sink,
+            &mut current_path,
+            1.0,
+            &mut is_playing_flag,
+            &progress,
+        );
+
+        assert_eq!(progress.samples_played.load(Ordering::Relaxed), 0);
     }
 }
