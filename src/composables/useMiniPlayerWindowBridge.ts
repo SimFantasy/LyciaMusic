@@ -7,6 +7,7 @@ import { onMounted, onUnmounted, ref, watch, type Ref } from 'vue';
 import { useCoverCache } from './useCoverCache';
 import { useLyrics } from './lyrics';
 import { usePlayer } from './player';
+import { useThemeSettings } from './useThemeSettings';
 import {
   MINI_PLAYER_ACTION_EVENT,
   MINI_PLAYER_BOUNDS_EVENT,
@@ -245,6 +246,7 @@ export function useMiniPlayerWindowBridge() {
   } = usePlayer();
   const { currentLyricLine } = useLyrics();
   const { loadCover } = useCoverCache();
+  const { isDarkTheme } = useThemeSettings();
 
   let isMainWindowClosing = false;
   let keepMiniPlayerVisibleOnMiniModeExit = false;
@@ -259,6 +261,7 @@ export function useMiniPlayerWindowBridge() {
       currentSong: song,
       coverUrl: coverUrl || '',
       isPlaying: isPlaying.value,
+      isDarkTheme: isDarkTheme.value,
       volume: volume.value,
       queue: playQueue.value.length > 0 ? playQueue.value : songList.value,
       lyricText: currentLyricLine.value?.text ?? '',
@@ -445,6 +448,7 @@ export function useMiniPlayerWindowBridge() {
       volume,
       playQueue,
       songList,
+      isDarkTheme,
       () => currentLyricLine.value?.text,
     ],
     () => {

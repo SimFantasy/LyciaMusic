@@ -24,6 +24,7 @@ import type { Song } from '../../types';
 const appWindow = getCurrentWindow();
 const currentSong = ref<Song | null>(null);
 const isPlaying = ref(false);
+const isDarkTheme = ref(false);
 const volume = ref(100);
 const queue = ref<Song[]>([]);
 const lyricText = ref('');
@@ -220,6 +221,7 @@ onMounted(async () => {
     currentSong.value = event.payload.currentSong;
     localCoverUrl.value = event.payload.coverUrl;
     isPlaying.value = event.payload.isPlaying;
+    isDarkTheme.value = event.payload.isDarkTheme;
     volume.value = event.payload.volume;
     queue.value = event.payload.queue;
     lyricText.value = event.payload.lyricText;
@@ -279,9 +281,17 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="w-[300px] h-full relative select-none overflow-hidden bg-transparent !border-none !outline-none !ring-0 !shadow-none" @mouseenter="onMouseEnter" @mouseleave="onMouseLeave">
+  <div
+    class="w-[300px] h-full relative select-none overflow-hidden bg-transparent !border-none !outline-none !ring-0 !shadow-none"
+    @mouseenter="onMouseEnter"
+    @mouseleave="onMouseLeave"
+  >
     <div class="h-[75px] shrink-0 relative overflow-hidden border-0 border-transparent">
-      <div class="h-[45px] w-full bg-white dark:bg-gray-900 flex relative border-0" data-tauri-drag-region>
+      <div
+        class="h-[45px] w-full bg-white dark:bg-gray-900 flex relative border-0"
+        :class="[isDarkTheme ? 'dark !bg-gray-900' : '!bg-white']"
+        data-tauri-drag-region
+      >
         <div class="w-[45px] h-[45px] shrink-0 relative overflow-hidden" @mouseenter="isCoverHovering = true" @mouseleave="isCoverHovering = false" data-tauri-drag-region>
           <img v-if="localCoverUrl" :src="localCoverUrl" class="w-full h-full object-cover pointer-events-none" />
           <div v-else class="w-full h-full bg-gray-200 dark:bg-gray-800 flex items-center justify-center text-gray-400 pointer-events-none">
@@ -325,6 +335,7 @@ onUnmounted(() => {
                 v-if="showVolumePopover || isDraggingVolume"
                 ref="volumePopoverRef"
                 class="fixed z-[200] w-40 h-[46px] bg-white/95 dark:bg-gray-800/95 backdrop-blur shadow-xl rounded-xl border border-gray-200 dark:border-white/10 px-2.5 py-2 flex items-center gap-2"
+                :class="[isDarkTheme ? 'dark !bg-gray-800/95 !border-white/10' : '!bg-white/95 !border-gray-200']"
                 :style="volumePopoverStyle"
               >
                 <button
@@ -391,7 +402,11 @@ onUnmounted(() => {
     </div>
 
     <transition name="mini-queue">
-      <div v-if="showMiniPlaylist" class="absolute left-0 right-0 top-[45px] bottom-0 z-30 bg-white/95 dark:bg-gray-900/95">
+      <div
+        v-if="showMiniPlaylist"
+        class="absolute left-0 right-0 top-[45px] bottom-0 z-30 bg-white/95 dark:bg-gray-900/95"
+        :class="[isDarkTheme ? 'dark !bg-gray-900/95' : '!bg-white/95']"
+      >
         <div class="h-full overflow-y-auto custom-scrollbar px-1.5 pt-0 pb-1.5">
           <div v-if="displayQueue.length === 0" class="h-full flex items-center justify-center text-xs text-gray-400 dark:text-white/30">
             暂无歌曲

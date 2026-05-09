@@ -25,6 +25,7 @@ export interface MiniPlayerStatePayload {
   currentSong: Song | null;
   coverUrl: string;
   isPlaying: boolean;
+  isDarkTheme: boolean;
   volume: number;
   queue: Song[];
   lyricText: string;
