@@ -30,10 +30,20 @@ const lyricsSourcePath = ref<string | null>(null);
 const isLyricsLoading = ref(false);
 const isLyricsSaving = ref(false);
 const lyricsError = ref('');
+const isSongInfoExpanded = ref(false);
 const isLyricsEditorExpanded = ref(false);
+const pendingSongInfoExpanded = ref<boolean | null>(null);
 const pendingLyricsExpanded = ref<boolean | null>(null);
 let detailRequestId = 0;
+let songInfoExpandTimer: ReturnType<typeof window.setTimeout> | null = null;
 let lyricsExpandTimer: ReturnType<typeof window.setTimeout> | null = null;
+
+const clearSongInfoExpandTimers = () => {
+  if (songInfoExpandTimer !== null) {
+    window.clearTimeout(songInfoExpandTimer);
+    songInfoExpandTimer = null;
+  }
+};
 
 const clearLyricsExpandTimers = () => {
   if (lyricsExpandTimer !== null) {
@@ -57,6 +67,7 @@ watch(
     const requestId = ++detailRequestId;
 
     if (!visible || !path) {
+      clearSongInfoExpandTimers();
       clearLyricsExpandTimers();
       currentSongDetail.value = null;
       lyricsText.value = '';
@@ -66,7 +77,9 @@ watch(
       lyricsError.value = '';
       isLyricsLoading.value = false;
       isLyricsSaving.value = false;
+      isSongInfoExpanded.value = false;
       isLyricsEditorExpanded.value = false;
+      pendingSongInfoExpanded.value = null;
       pendingLyricsExpanded.value = null;
       setTimeout(() => {
         if (requestId === detailRequestId) {
@@ -76,6 +89,7 @@ watch(
       return;
     }
 
+    clearSongInfoExpandTimers();
     clearLyricsExpandTimers();
     isClosing.value = false;
     isLyricsLoading.value = true;
@@ -83,7 +97,9 @@ watch(
     lyricsSource.value = 'empty';
     lyricsSourcePath.value = null;
     lyricsError.value = '';
+    isSongInfoExpanded.value = false;
     isLyricsEditorExpanded.value = false;
+    pendingSongInfoExpanded.value = null;
     pendingLyricsExpanded.value = null;
 
     const [url, detail, lyricsResult] = await Promise.all([
@@ -116,6 +132,9 @@ watch(
 );
 
 const hasLyricsChanged = computed(() => lyricsText.value !== originalLyricsText.value);
+const isSongInfoVisuallyExpanded = computed(
+  () => pendingSongInfoExpanded.value ?? isSongInfoExpanded.value,
+);
 const isLyricsEditorVisuallyExpanded = computed(
   () => pendingLyricsExpanded.value ?? isLyricsEditorExpanded.value,
 );
@@ -129,6 +148,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 onMounted(() => window.addEventListener('keydown', handleKeydown));
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
+  clearSongInfoExpandTimers();
   clearLyricsExpandTimers();
 });
 
@@ -170,11 +190,36 @@ const handleSaveLyrics = async () => {
   }
 };
 
+const toggleSongInfoExpanded = () => {
+  clearSongInfoExpandTimers();
+
+  const nextExpanded = !isSongInfoExpanded.value;
+  pendingSongInfoExpanded.value = nextExpanded;
+
+  if (nextExpanded) {
+    clearLyricsExpandTimers();
+    isLyricsEditorExpanded.value = false;
+    pendingLyricsExpanded.value = null;
+  }
+
+  songInfoExpandTimer = window.setTimeout(() => {
+    isSongInfoExpanded.value = nextExpanded;
+    pendingSongInfoExpanded.value = null;
+    songInfoExpandTimer = null;
+  }, 360);
+};
+
 const toggleLyricsEditorExpanded = () => {
   clearLyricsExpandTimers();
 
   const nextExpanded = !isLyricsEditorExpanded.value;
   pendingLyricsExpanded.value = nextExpanded;
+
+  if (nextExpanded) {
+    clearSongInfoExpandTimers();
+    isSongInfoExpanded.value = false;
+    pendingSongInfoExpanded.value = null;
+  }
 
   lyricsExpandTimer = window.setTimeout(() => {
     isLyricsEditorExpanded.value = nextExpanded;
@@ -261,120 +306,129 @@ const formatTime = (timestampSeconds?: number) => {
       <div
         class="song-info-stage"
         :class="[
-          isClosing ? 'scale-95 opacity-0 translate-y-4' : 'scale-100 opacity-100 translate-y-0',
+          isClosing ? 'scale-95 opacity-0 translate-y-4' : 'scale-100 opacity-100 -translate-y-3',
           isDarkTheme ? 'song-info-stage--dark' : '',
+          isSongInfoExpanded ? 'song-info-stage--song-expanded' : '',
           isLyricsEditorExpanded ? 'song-info-stage--lyrics-expanded' : '',
+          pendingSongInfoExpanded === true ? 'song-info-stage--song-expanding' : '',
+          pendingSongInfoExpanded === false ? 'song-info-stage--song-collapsing' : '',
           pendingLyricsExpanded === true ? 'song-info-stage--lyrics-expanding' : '',
           pendingLyricsExpanded === false ? 'song-info-stage--lyrics-collapsing' : '',
         ]"
       >
-        <!-- 模态框主体 -->
-        <div
-          class="song-info-main relative w-full bg-white/85 dark:bg-gray-900/90 backdrop-blur-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-white/40 dark:border-white/10"
-        >
-          <!-- 头部 -->
-          <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200/50 dark:border-gray-700/50 shrink-0">
+        <section class="song-info-column">
+          <div class="modal-external-header song-info-header">
             <h2 class="text-lg font-bold text-gray-900 dark:text-white">歌曲信息</h2>
             <button
-              @click="handleClose"
-              class="p-2 -mr-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+              type="button"
+              class="lyrics-editor-expand-button"
+              :title="isSongInfoVisuallyExpanded ? '还原歌曲信息' : '放大歌曲信息'"
+              @click="toggleSongInfoExpanded"
             >
-              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              <svg v-if="!isSongInfoVisuallyExpanded" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+              </svg>
+              <svg v-else class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
               </svg>
             </button>
           </div>
 
-          <!-- 内容区 -->
-          <div v-if="displaySong" class="song-info-content p-6 overflow-y-auto custom-scrollbar">
-            <!-- 上半部分：封面 + 基本信息 -->
-            <div class="song-info-hero flex flex-col sm:flex-row gap-6 mb-4">
-              <div class="song-info-cover w-32 h-32 shrink-0 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 shadow-md border border-gray-200/50 dark:border-gray-700/50 flex items-center justify-center">
-                <img v-if="coverUrl" :src="coverUrl" class="w-full h-full object-cover" />
-                <svg v-else class="w-12 h-12 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                </svg>
-              </div>
-
-              <div class="flex-1 min-w-0 flex flex-col justify-center">
-                <h3 class="song-info-name text-3xl font-bold text-gray-900 dark:text-white truncate" :title="displaySong.title || displaySong.name">{{ displaySong.title || displaySong.name }}</h3>
-                <p class="text-lg text-gray-600 dark:text-gray-300 mt-3 truncate" :title="displaySong.artist">{{ displaySong.artist }}</p>
-                <p class="text-base text-gray-500 dark:text-gray-400 mt-2 truncate" :title="displaySong.album">专辑：{{ displaySong.album }}</p>
-
-                <div v-if="displaySong.is_various_artists_album" class="flex flex-wrap gap-2 mt-4">
-                  <span class="px-2 py-0.5 text-xs font-semibold rounded bg-blue-100/80 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50">
-                    群星合辑
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <!-- 下半部分：详细属性网格 -->
-            <div class="flex flex-col gap-4">
-              <div class="song-info-detail-grid bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800 grid grid-cols-3 gap-y-6 gap-x-4">
-                <!-- 第一行 -->
-                <div>
-                  <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">音轨号</div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.track_number || '无' }}</div>
-                </div>
-                <div>
-                  <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">碟号</div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.disc_number || '无' }}</div>
-                </div>
-                <div>
-                  <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">年份</div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.year || '无' }}</div>
+          <!-- 模态框主体 -->
+          <div
+            class="song-info-main relative w-full bg-white/85 dark:bg-gray-900/90 backdrop-blur-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-white/40 dark:border-white/10"
+          >
+            <!-- 内容区 -->
+            <div v-if="displaySong" class="song-info-content p-6 overflow-y-auto custom-scrollbar">
+              <!-- 上半部分：封面 + 基本信息 -->
+              <div class="song-info-hero flex flex-col sm:flex-row gap-6 mb-4">
+                <div class="song-info-cover w-32 h-32 shrink-0 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 shadow-md border border-gray-200/50 dark:border-gray-700/50 flex items-center justify-center">
+                  <img v-if="coverUrl" :src="coverUrl" class="w-full h-full object-cover" />
+                  <svg v-else class="w-12 h-12 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                  </svg>
                 </div>
 
-                <!-- 第二行 -->
-                <div>
-                  <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">音乐时长</div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatDuration(displaySong.duration) }}</div>
-                </div>
-                <div>
-                  <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">文件大小</div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatSize(displaySong.file_size) }}</div>
-                </div>
-                <div>
-                  <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">格式</div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200 uppercase">{{ displaySong.format || displaySong.container || '无' }}</div>
-                </div>
+                <div class="flex-1 min-w-0 flex flex-col justify-center">
+                  <h3 class="song-info-name text-3xl font-bold text-gray-900 dark:text-white truncate" :title="displaySong.title || displaySong.name">{{ displaySong.title || displaySong.name }}</h3>
+                  <p class="text-lg text-gray-600 dark:text-gray-300 mt-3 truncate" :title="displaySong.artist">{{ displaySong.artist }}</p>
+                  <p class="text-base text-gray-500 dark:text-gray-400 mt-2 truncate" :title="displaySong.album">专辑：{{ displaySong.album }}</p>
 
-                <!-- 第三行 -->
-                <div>
-                  <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">位深</div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.bit_depth ? displaySong.bit_depth + ' bit' : '无' }}</div>
-                </div>
-                <div>
-                  <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">采样率</div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatSampleRate(displaySong.sample_rate) }}</div>
-                </div>
-                <div>
-                  <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">比特率</div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatBitrate(displaySong.bitrate) }}</div>
+                  <div v-if="displaySong.is_various_artists_album" class="flex flex-wrap gap-2 mt-4">
+                    <span class="px-2 py-0.5 text-xs font-semibold rounded bg-blue-100/80 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50">
+                      群星合辑
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div class="bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800">
-                <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">文件路径</div>
-                <div class="text-sm text-gray-800 dark:text-gray-200 break-all leading-snug">{{ displaySong.path }}</div>
-              </div>
+              <!-- 下半部分：详细属性网格 -->
+              <div class="flex flex-col gap-4">
+                <div class="song-info-detail-grid bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800 grid grid-cols-3 gap-y-6 gap-x-4">
+                  <!-- 第一行 -->
+                  <div>
+                    <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">音轨号</div>
+                    <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.track_number || '无' }}</div>
+                  </div>
+                  <div>
+                    <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">碟号</div>
+                    <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.disc_number || '无' }}</div>
+                  </div>
+                  <div>
+                    <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">年份</div>
+                    <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.year || '无' }}</div>
+                  </div>
 
-              <div class="song-info-time-grid bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">添加时间</div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatTime(displaySong.added_at) }}</div>
+                  <!-- 第二行 -->
+                  <div>
+                    <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">音乐时长</div>
+                    <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatDuration(displaySong.duration) }}</div>
+                  </div>
+                  <div>
+                    <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">文件大小</div>
+                    <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatSize(displaySong.file_size) }}</div>
+                  </div>
+                  <div>
+                    <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">格式</div>
+                    <div class="text-sm text-gray-800 dark:text-gray-200 uppercase">{{ displaySong.format || displaySong.container || '无' }}</div>
+                  </div>
+
+                  <!-- 第三行 -->
+                  <div>
+                    <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">位深</div>
+                    <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.bit_depth ? displaySong.bit_depth + ' bit' : '无' }}</div>
+                  </div>
+                  <div>
+                    <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">采样率</div>
+                    <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatSampleRate(displaySong.sample_rate) }}</div>
+                  </div>
+                  <div>
+                    <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">比特率</div>
+                    <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatBitrate(displaySong.bitrate) }}</div>
+                  </div>
                 </div>
-                <div>
-                  <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">文件修改时间</div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatTime(displaySong.file_modified_at) }}</div>
+
+                <div class="bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800">
+                  <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">文件路径</div>
+                  <div class="text-sm text-gray-800 dark:text-gray-200 break-all leading-snug">{{ displaySong.path }}</div>
+                </div>
+
+                <div class="song-info-time-grid bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">添加时间</div>
+                    <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatTime(displaySong.added_at) }}</div>
+                  </div>
+                  <div>
+                    <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">文件修改时间</div>
+                    <div class="text-sm text-gray-800 dark:text-gray-200">{{ formatTime(displaySong.file_modified_at) }}</div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- 底部 -->
-          <div class="song-info-footer px-6 flex justify-between items-center shrink-0">
+          <!-- 外置操作区 -->
+          <div class="song-info-footer modal-external-actions">
             <button
               @click="handleOpenFolder"
               class="modal-action-button modal-action-button--wide"
@@ -385,17 +439,11 @@ const formatTime = (timestampSeconds?: number) => {
               打开文件所在目录
             </button>
 
-            <button
-              @click="handleClose"
-              class="modal-action-button"
-            >
-              关闭
-            </button>
           </div>
-        </div>
+        </section>
 
-        <aside class="lyrics-editor-panel" :class="isLyricsEditorVisuallyExpanded ? 'lyrics-editor-panel--expanded' : ''">
-          <div class="lyrics-editor-header">
+        <section class="lyrics-editor-column" :class="isLyricsEditorVisuallyExpanded ? 'lyrics-editor-column--expanded' : ''">
+          <div class="modal-external-header lyrics-editor-header">
             <div class="lyrics-editor-heading">
               <div class="lyrics-editor-title" :class="isLyricsEditorVisuallyExpanded ? 'lyrics-editor-title--expanded' : ''">
                 编辑歌词
@@ -436,23 +484,19 @@ const formatTime = (timestampSeconds?: number) => {
             </button>
           </div>
 
-          <textarea
-            v-model="lyricsText"
-            class="lyrics-editor-textarea custom-scrollbar"
-            :placeholder="isLyricsLoading ? '正在读取歌词...' : '[00:00.00] 在这里编辑 LRC 歌词'"
-            :disabled="isLyricsLoading"
-            spellcheck="false"
-          ></textarea>
+          <aside class="lyrics-editor-panel" :class="isLyricsEditorVisuallyExpanded ? 'lyrics-editor-panel--expanded' : ''">
+            <textarea
+              v-model="lyricsText"
+              class="lyrics-editor-textarea custom-scrollbar"
+              :placeholder="isLyricsLoading ? '正在读取歌词...' : '[00:00.00] 在这里编辑 LRC 歌词'"
+              :disabled="isLyricsLoading"
+              spellcheck="false"
+            ></textarea>
 
-          <div v-if="lyricsError" class="lyrics-editor-error">{{ lyricsError }}</div>
+            <div v-if="lyricsError" class="lyrics-editor-error">{{ lyricsError }}</div>
+          </aside>
 
-          <div class="lyrics-editor-actions">
-            <button type="button" class="modal-action-button" :disabled="!hasLyricsChanged || isLyricsSaving" @click="handleResetLyrics">
-              恢复
-            </button>
-            <button type="button" class="modal-action-button" :disabled="!lyricsText || isLyricsSaving" @click="handleClearLyrics">
-              清空
-            </button>
+          <div class="lyrics-editor-actions modal-external-actions">
             <button
               type="button"
               class="modal-action-button modal-action-button--primary"
@@ -462,7 +506,7 @@ const formatTime = (timestampSeconds?: number) => {
               {{ isLyricsSaving ? '保存中' : '保存' }}
             </button>
           </div>
-        </aside>
+        </section>
       </div>
     </div>
   </Teleport>
@@ -474,21 +518,22 @@ const formatTime = (timestampSeconds?: number) => {
 }
 
 .song-info-stage {
-  --song-info-footer-height: clamp(76px, 10vh, 96px);
+  --song-info-footer-height: clamp(44px, 5.8vh, 52px);
+  --song-info-footer-gap: clamp(10px, 1.2vh, 14px);
   --song-info-page-gap: clamp(12px, 1.3vw, 18px);
   --song-info-viewport-x: clamp(360px, 26vw, 520px);
-  --song-info-viewport-y: clamp(200px, 24vh, 300px);
+  --song-info-viewport-y: clamp(120px, 14vh, 190px);
   --lyrics-panel-width: clamp(340px, 32vw, 460px);
   --song-info-main-width: min(680px, calc(100% - var(--lyrics-panel-width) - var(--song-info-page-gap)));
   --lyrics-editor-panel-bg: rgba(255, 255, 255, 0.82);
   --lyrics-editor-panel-border: rgba(255, 255, 255, 0.38);
   --lyrics-editor-panel-shadow: 0 24px 70px rgba(15, 23, 42, 0.2);
-  --lyrics-editor-header-bg: rgba(255, 255, 255, 0.08);
-  --lyrics-editor-header-border: rgba(148, 163, 184, 0.18);
+  --modal-external-header-bg: rgba(255, 255, 255, 0.62);
+  --modal-external-header-border: rgba(255, 255, 255, 0.42);
+  --modal-external-header-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
   --lyrics-editor-title-color: rgb(17 24 39);
   --lyrics-editor-text-color: rgb(31 41 55);
   --lyrics-editor-placeholder-color: rgb(156 163 175);
-  --lyrics-editor-actions-bg: rgba(243, 244, 246, 0.96);
   --lyrics-editor-button-bg: rgba(255, 255, 255, 0.72);
   --lyrics-editor-button-border: rgba(148, 163, 184, 0.26);
   --lyrics-editor-button-color: rgb(55 65 81);
@@ -501,8 +546,8 @@ const formatTime = (timestampSeconds?: number) => {
   display: flex;
   gap: var(--song-info-page-gap);
   width: min(1360px, calc(100vw - var(--song-info-viewport-x)));
-  height: min(860px, calc(100dvh - var(--song-info-viewport-y)));
-  max-height: min(860px, calc(100dvh - var(--song-info-viewport-y)));
+  height: min(1040px, calc(100dvh - var(--song-info-viewport-y)));
+  max-height: min(1040px, calc(100dvh - var(--song-info-viewport-y)));
   transform-origin: center center;
   transition:
     gap 360ms cubic-bezier(0.4, 0, 0.2, 1),
@@ -514,12 +559,12 @@ const formatTime = (timestampSeconds?: number) => {
   --lyrics-editor-panel-bg: rgba(15, 23, 42, 0.92);
   --lyrics-editor-panel-border: rgba(255, 255, 255, 0.1);
   --lyrics-editor-panel-shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
-  --lyrics-editor-header-bg: rgba(15, 23, 42, 0.24);
-  --lyrics-editor-header-border: rgba(255, 255, 255, 0.08);
+  --modal-external-header-bg: rgba(15, 23, 42, 0.72);
+  --modal-external-header-border: rgba(255, 255, 255, 0.1);
+  --modal-external-header-shadow: 0 10px 28px rgba(0, 0, 0, 0.26);
   --lyrics-editor-title-color: rgb(248 250 252);
   --lyrics-editor-text-color: rgba(255, 255, 255, 0.86);
   --lyrics-editor-placeholder-color: rgba(148, 163, 184, 0.72);
-  --lyrics-editor-actions-bg: rgba(15, 23, 42, 0.96);
   --lyrics-editor-button-bg: rgba(255, 255, 255, 0.06);
   --lyrics-editor-button-border: rgba(255, 255, 255, 0.1);
   --lyrics-editor-button-color: rgba(255, 255, 255, 0.82);
@@ -545,15 +590,6 @@ const formatTime = (timestampSeconds?: number) => {
   padding: clamp(18px, 2.2vw, 24px);
 }
 
-.song-info-footer,
-.lyrics-editor-actions {
-  min-height: var(--song-info-footer-height);
-}
-
-.song-info-footer {
-  padding-inline: clamp(18px, 2.2vw, 24px);
-}
-
 .song-info-hero {
   gap: clamp(16px, 2vw, 24px);
 }
@@ -574,16 +610,19 @@ const formatTime = (timestampSeconds?: number) => {
 }
 
 .song-info-stage--lyrics-expanded,
-.song-info-stage--lyrics-expanding {
+.song-info-stage--lyrics-expanding,
+.song-info-stage--song-expanded,
+.song-info-stage--song-expanding {
   gap: 0;
 }
 
-.song-info-stage--lyrics-collapsing {
+.song-info-stage--lyrics-collapsing,
+.song-info-stage--song-collapsing {
   gap: var(--song-info-page-gap);
 }
 
-.song-info-stage--lyrics-expanded .song-info-main,
-.song-info-stage--lyrics-expanding .song-info-main {
+.song-info-stage--lyrics-expanded .song-info-column,
+.song-info-stage--lyrics-expanding .song-info-column {
   flex-basis: 0;
   width: 0;
   opacity: 0;
@@ -591,7 +630,7 @@ const formatTime = (timestampSeconds?: number) => {
   pointer-events: none;
 }
 
-.song-info-stage--lyrics-collapsing .song-info-main {
+.song-info-stage--lyrics-collapsing .song-info-column {
   flex-basis: var(--song-info-main-width);
   width: auto;
   opacity: 1;
@@ -599,30 +638,64 @@ const formatTime = (timestampSeconds?: number) => {
   pointer-events: auto;
 }
 
-.song-info-stage--lyrics-expanded .lyrics-editor-panel,
-.song-info-stage--lyrics-expanding .lyrics-editor-panel {
+.song-info-stage--song-expanded .song-info-column,
+.song-info-stage--song-expanding .song-info-column {
   flex-basis: 100%;
 }
 
-.song-info-stage--lyrics-collapsing .lyrics-editor-panel {
+.song-info-stage--song-collapsing .song-info-column {
+  flex-basis: var(--song-info-main-width);
+}
+
+.song-info-stage--lyrics-expanded .lyrics-editor-column,
+.song-info-stage--lyrics-expanding .lyrics-editor-column {
+  flex-basis: 100%;
+}
+
+.song-info-stage--song-expanded .lyrics-editor-column,
+.song-info-stage--song-expanding .lyrics-editor-column {
+  flex-basis: 0;
+  min-width: 0;
+  width: 0;
+  opacity: 0;
+  transform: translateX(18px);
+  pointer-events: none;
+}
+
+.song-info-stage--lyrics-collapsing .lyrics-editor-column {
   flex-basis: var(--lyrics-panel-width);
 }
 
+.song-info-stage--song-collapsing .lyrics-editor-column {
+  flex-basis: var(--lyrics-panel-width);
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
 .song-info-stage--lyrics-expanding .lyrics-editor-textarea,
-.song-info-stage--lyrics-collapsing .lyrics-editor-textarea {
+.song-info-stage--lyrics-collapsing .lyrics-editor-textarea,
+.song-info-stage--song-expanding .song-info-content,
+.song-info-stage--song-collapsing .song-info-content {
   scrollbar-width: none;
 }
 
 .song-info-stage--lyrics-expanding .lyrics-editor-textarea::-webkit-scrollbar,
-.song-info-stage--lyrics-collapsing .lyrics-editor-textarea::-webkit-scrollbar {
+.song-info-stage--lyrics-collapsing .lyrics-editor-textarea::-webkit-scrollbar,
+.song-info-stage--song-expanding .song-info-content::-webkit-scrollbar,
+.song-info-stage--song-collapsing .song-info-content::-webkit-scrollbar {
   width: 0;
   height: 0;
 }
 
-.song-info-main,
-.lyrics-editor-panel {
+.song-info-column,
+.lyrics-editor-column {
+  position: relative;
+  display: flex;
+  height: 100%;
   min-height: 0;
   max-height: min(860px, calc(100dvh - var(--song-info-viewport-y)));
+  flex-direction: column;
   transition:
     flex-basis 360ms cubic-bezier(0.4, 0, 0.2, 1),
     width 360ms cubic-bezier(0.4, 0, 0.2, 1),
@@ -631,20 +704,40 @@ const formatTime = (timestampSeconds?: number) => {
     max-height 360ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.song-info-main {
+.song-info-main,
+.lyrics-editor-panel {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto;
+  max-height: min(860px, calc(100dvh - var(--song-info-viewport-y)));
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    max-height 360ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.song-info-column {
   flex: 0 1 var(--song-info-main-width);
   min-width: 0;
+  animation: song-info-column-in 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.song-info-main {
   overflow: hidden;
 }
 
-.song-info-stage--lyrics-expanded .lyrics-editor-panel {
+.lyrics-editor-column {
+  flex: 1 1 var(--lyrics-panel-width);
+  min-width: min(320px, 100%);
+  animation: lyrics-editor-column-in 560ms cubic-bezier(0.16, 1, 0.3, 1) 40ms both;
+}
+
+.song-info-stage--lyrics-expanded .lyrics-editor-column {
   max-height: min(860px, calc(100dvh - var(--song-info-viewport-y)));
   height: min(860px, calc(100dvh - var(--song-info-viewport-y)));
 }
 
 .lyrics-editor-panel {
-  flex: 1 1 var(--lyrics-panel-width);
-  min-width: min(320px, 100%);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -657,10 +750,6 @@ const formatTime = (timestampSeconds?: number) => {
   -webkit-backdrop-filter: blur(24px) saturate(150%);
   transform: translateX(0) scale(1);
   transition:
-    flex-basis 360ms cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 360ms cubic-bezier(0.4, 0, 0.2, 1),
-    transform 360ms cubic-bezier(0.4, 0, 0.2, 1),
-    max-height 360ms cubic-bezier(0.4, 0, 0.2, 1),
     border-color 160ms ease,
     background-color 160ms ease;
 }
@@ -669,15 +758,25 @@ const formatTime = (timestampSeconds?: number) => {
   transform: translateX(0) scale(1);
 }
 
-.lyrics-editor-header {
+.modal-external-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 72px;
-  padding: 12px 72px 12px 18px;
-  border-bottom: 1px solid var(--lyrics-editor-header-border);
-  background: var(--lyrics-editor-header-bg);
+  min-height: 52px;
+  padding: 6px 18px;
+  margin-bottom: 10px;
+  border: 1px solid var(--modal-external-header-border);
+  border-radius: 16px;
+  background: var(--modal-external-header-bg);
+  box-shadow: var(--modal-external-header-shadow);
+  backdrop-filter: blur(18px) saturate(145%);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  flex-shrink: 0;
+}
+
+.lyrics-editor-header {
+  padding-right: 18px;
 }
 
 .lyrics-editor-heading {
@@ -688,10 +787,6 @@ const formatTime = (timestampSeconds?: number) => {
 }
 
 .lyrics-editor-expand-button {
-  position: absolute;
-  top: 18px;
-  right: 18px;
-  z-index: 2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -777,10 +872,6 @@ const formatTime = (timestampSeconds?: number) => {
   min-height: 0;
 }
 
-.lyrics-editor-panel--expanded .lyrics-editor-actions {
-  padding: 0 18px;
-}
-
 .modal-action-button {
   display: inline-flex;
   align-items: center;
@@ -796,6 +887,8 @@ const formatTime = (timestampSeconds?: number) => {
   font-size: 14px;
   font-weight: 700;
   line-height: 1;
+  backdrop-filter: blur(16px) saturate(145%);
+  -webkit-backdrop-filter: blur(16px) saturate(145%);
   transition:
     border-color 160ms ease,
     background-color 160ms ease,
@@ -815,13 +908,36 @@ const formatTime = (timestampSeconds?: number) => {
   }
 }
 
+@keyframes song-info-column-in {
+  from {
+    transform: translateX(-24px);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes lyrics-editor-column-in {
+  from {
+    transform: translateX(24px);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .song-info-stage,
-  .song-info-main,
+  .song-info-column,
+  .lyrics-editor-column,
   .lyrics-editor-panel {
     transition-duration: 0ms;
   }
 
+  .song-info-column,
+  .lyrics-editor-column,
   .lyrics-editor-inline-song {
     animation: none;
   }
@@ -842,14 +958,22 @@ const formatTime = (timestampSeconds?: number) => {
   line-height: 1.5;
 }
 
-.lyrics-editor-actions {
+.modal-external-actions {
+  position: absolute;
+  top: calc(100% + var(--song-info-footer-gap));
+  right: 0;
+  left: 0;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 10px;
   min-height: var(--song-info-footer-height);
-  padding: 0 18px;
-  background: var(--lyrics-editor-actions-bg);
+  background: transparent;
+  pointer-events: auto;
+}
+
+.lyrics-editor-actions {
+  gap: clamp(10px, 1.4vw, 20px);
 }
 
 .modal-action-button--wide {
@@ -879,7 +1003,8 @@ const formatTime = (timestampSeconds?: number) => {
 
 @media (max-width: 1100px) {
   .song-info-stage {
-    --song-info-footer-height: clamp(60px, 8vh, 76px);
+    --song-info-footer-height: clamp(42px, 6vh, 48px);
+    --song-info-footer-gap: 10px;
     --song-info-viewport-x: clamp(180px, 24vw, 280px);
     --song-info-viewport-y: clamp(120px, 20vh, 190px);
     flex-direction: column;
@@ -889,33 +1014,42 @@ const formatTime = (timestampSeconds?: number) => {
     max-height: calc(100dvh - var(--song-info-viewport-y));
   }
 
-  .song-info-stage--lyrics-expanded .song-info-main,
-  .song-info-stage--lyrics-expanding .song-info-main {
+  .modal-external-actions {
+    position: static;
+    justify-content: center;
+    margin-top: var(--song-info-footer-gap);
+  }
+
+  .song-info-stage--lyrics-expanded .song-info-column,
+  .song-info-stage--lyrics-expanding .song-info-column {
     position: absolute;
     inset: 0;
   }
 
+  .song-info-column,
+  .lyrics-editor-column,
   .song-info-main,
   .lyrics-editor-panel {
     max-height: none;
   }
 
-  .song-info-main,
-  .song-info-stage--lyrics-collapsing .song-info-main {
+  .song-info-column,
+  .song-info-stage--lyrics-collapsing .song-info-column {
     flex: 0 0 auto;
     width: 100%;
+    height: auto;
   }
 
-  .lyrics-editor-panel,
-  .song-info-stage--lyrics-collapsing .lyrics-editor-panel {
+  .lyrics-editor-column,
+  .song-info-stage--lyrics-collapsing .lyrics-editor-column {
     flex: 0 0 min(440px, calc(100dvh - var(--song-info-viewport-y)));
     width: 100%;
     min-width: 0;
     min-height: 360px;
   }
 
-  .song-info-stage--lyrics-expanded .lyrics-editor-panel,
-  .song-info-stage--lyrics-expanding .lyrics-editor-panel {
+  .song-info-stage--lyrics-expanded .lyrics-editor-column,
+  .song-info-stage--lyrics-expanding .lyrics-editor-column {
     flex-basis: auto;
     max-height: calc(100dvh - var(--song-info-viewport-y));
     height: calc(100dvh - var(--song-info-viewport-y));
@@ -929,10 +1063,6 @@ const formatTime = (timestampSeconds?: number) => {
     min-height: 0;
   }
 
-  .lyrics-editor-panel--expanded .lyrics-editor-actions {
-    padding: 0 18px;
-  }
-
   .lyrics-editor-heading {
     gap: 12px;
   }
@@ -942,7 +1072,7 @@ const formatTime = (timestampSeconds?: number) => {
   .song-info-stage {
     --song-info-viewport-x: clamp(96px, 20vw, 132px);
     --song-info-viewport-y: clamp(72px, 16vh, 112px);
-    --song-info-footer-height: 58px;
+    --song-info-footer-height: 42px;
     border-radius: 18px;
   }
 
@@ -986,7 +1116,7 @@ const formatTime = (timestampSeconds?: number) => {
   .song-info-stage {
     --song-info-viewport-x: 64px;
     --song-info-viewport-y: 56px;
-    --song-info-footer-height: 56px;
+    --song-info-footer-height: 42px;
     border-radius: 16px;
   }
 
@@ -1008,24 +1138,16 @@ const formatTime = (timestampSeconds?: number) => {
     grid-template-columns: 1fr;
   }
 
-  .song-info-footer,
-  .lyrics-editor-actions {
-    justify-content: flex-end;
-    padding-inline: 12px;
-  }
-
   .modal-action-button--wide {
     min-width: 0;
   }
 
-  .lyrics-editor-header {
-    min-height: 58px;
-    padding: 10px 58px 10px 14px;
+  .modal-external-header {
+    min-height: 48px;
+    padding: 5px 14px;
   }
 
   .lyrics-editor-expand-button {
-    top: 12px;
-    right: 14px;
     width: 32px;
     height: 32px;
   }
@@ -1033,13 +1155,13 @@ const formatTime = (timestampSeconds?: number) => {
 
 @media (max-height: 720px) {
   .song-info-stage {
-    --song-info-footer-height: 56px;
+    --song-info-footer-height: 42px;
     --song-info-viewport-y: clamp(88px, 18vh, 140px);
   }
 
-  .lyrics-editor-header {
-    min-height: 62px;
-    padding-block: 10px;
+  .modal-external-header {
+    min-height: 48px;
+    padding-block: 5px;
   }
 
   .lyrics-editor-textarea {
