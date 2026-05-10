@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
+import { SquarePen } from 'lucide-vue-next';
 import type { Song, SongDetail } from '../../types';
 import { useCoverCache } from '../../composables/useCoverCache';
 import { usePlayer } from '../../composables/player';
 import { useSongDetailCache } from '../../composables/useSongDetailCache';
 import { useThemeSettings } from '../../composables/useThemeSettings';
+import { useToast } from '../../composables/toast';
+import { useLibraryStore } from '../../features/library/store';
 import type { LyricsStorageSource } from '../../services/tauri/contracts';
 import { tauriInvoke } from '../../services/tauri/invoke';
 
@@ -15,14 +20,43 @@ const props = defineProps<{
 
 const emit = defineEmits(['close']);
 
-const { loadCover } = useCoverCache();
+const { loadCover, clearCoverCaches } = useCoverCache();
 const { loadSongDetail } = useSongDetailCache();
 const { openInFinder } = usePlayer();
 const { isDarkTheme } = useThemeSettings();
+const { showToast } = useToast();
+const libraryStore = useLibraryStore();
+
+interface SongInfoEditForm {
+  title: string;
+  artist: string;
+  album: string;
+  trackNumber: string;
+  discNumber: string;
+  year: string;
+  coverPath: string | null;
+  coverPreviewUrl: string;
+}
+
+const createEmptySongInfoEditForm = (): SongInfoEditForm => ({
+  title: '',
+  artist: '',
+  album: '',
+  trackNumber: '',
+  discNumber: '',
+  year: '',
+  coverPath: null,
+  coverPreviewUrl: '',
+});
 
 const coverUrl = ref('');
+const savedSongOverride = ref<Song | null>(null);
 const isClosing = ref(false);
 const currentSongDetail = ref<SongDetail | null>(null);
+const isSongInfoEditing = ref(false);
+const isSongInfoSaving = ref(false);
+const songInfoEditError = ref('');
+const songInfoEditForm = ref<SongInfoEditForm>(createEmptySongInfoEditForm());
 const lyricsText = ref('');
 const originalLyricsText = ref('');
 const lyricsSource = ref<LyricsStorageSource>('empty');
@@ -70,6 +104,11 @@ watch(
       clearSongInfoExpandTimers();
       clearLyricsExpandTimers();
       currentSongDetail.value = null;
+      savedSongOverride.value = null;
+      isSongInfoEditing.value = false;
+      isSongInfoSaving.value = false;
+      songInfoEditError.value = '';
+      songInfoEditForm.value = createEmptySongInfoEditForm();
       lyricsText.value = '';
       originalLyricsText.value = '';
       lyricsSource.value = 'empty';
@@ -92,6 +131,11 @@ watch(
     clearSongInfoExpandTimers();
     clearLyricsExpandTimers();
     isClosing.value = false;
+    savedSongOverride.value = null;
+    isSongInfoEditing.value = false;
+    isSongInfoSaving.value = false;
+    songInfoEditError.value = '';
+    songInfoEditForm.value = createEmptySongInfoEditForm();
     isLyricsLoading.value = true;
     isLyricsSaving.value = false;
     lyricsSource.value = 'empty';
@@ -157,14 +201,6 @@ const handleOpenFolder = () => {
     void openInFinder(props.song.path);
     handleClose();
   }
-};
-
-const handleResetLyrics = () => {
-  lyricsText.value = originalLyricsText.value;
-};
-
-const handleClearLyrics = () => {
-  lyricsText.value = '';
 };
 
 const handleSaveLyrics = async () => {
@@ -233,17 +269,127 @@ const displaySong = computed(() => {
     return null;
   }
 
+  const baseSong = savedSongOverride.value?.path === props.song.path
+    ? savedSongOverride.value
+    : props.song;
+
   return {
-    ...props.song,
-    genre: currentSongDetail.value?.genre ?? props.song.genre,
-    year: currentSongDetail.value?.year ?? props.song.year,
-    container: currentSongDetail.value?.container ?? props.song.container,
-    codec: currentSongDetail.value?.codec ?? props.song.codec,
-    file_size: currentSongDetail.value?.file_size ?? props.song.file_size,
+    ...baseSong,
+    genre: currentSongDetail.value?.genre ?? baseSong.genre,
+    year: currentSongDetail.value?.year ?? baseSong.year,
+    container: currentSongDetail.value?.container ?? baseSong.container,
+    codec: currentSongDetail.value?.codec ?? baseSong.codec,
+    file_size: currentSongDetail.value?.file_size ?? baseSong.file_size,
     track_number: currentSongDetail.value?.track_number,
     disc_number: currentSongDetail.value?.disc_number,
   };
 });
+
+const populateSongInfoEditForm = () => {
+  const song = displaySong.value;
+  if (!song) {
+    songInfoEditForm.value = createEmptySongInfoEditForm();
+    return;
+  }
+
+  songInfoEditForm.value = {
+    title: song.title || song.name || '',
+    artist: song.artist || '',
+    album: song.album || '',
+    trackNumber: song.track_number || '',
+    discNumber: song.disc_number || '',
+    year: song.year || '',
+    coverPath: null,
+    coverPreviewUrl: '',
+  };
+};
+
+const beginSongInfoEdit = () => {
+  songInfoEditError.value = '';
+  populateSongInfoEditForm();
+  isSongInfoEditing.value = true;
+};
+
+const cancelSongInfoEdit = () => {
+  if (isSongInfoSaving.value) return;
+  songInfoEditError.value = '';
+  isSongInfoEditing.value = false;
+  populateSongInfoEditForm();
+};
+
+const normalizeFormValue = (value: string) => value.trim() || null;
+
+const handleChooseCover = async () => {
+  if (!isSongInfoEditing.value) return;
+
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: '选择歌曲封面',
+    filters: [
+      {
+        name: '图片',
+        extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'],
+      },
+    ],
+  });
+
+  if (!selected || Array.isArray(selected)) {
+    return;
+  }
+
+  songInfoEditForm.value.coverPath = selected;
+  songInfoEditForm.value.coverPreviewUrl = convertFileSrc(selected);
+};
+
+const handleSaveSongInfo = async () => {
+  const songPath = props.song?.path;
+  if (!songPath || isSongInfoSaving.value) return;
+
+  const title = songInfoEditForm.value.title.trim();
+  if (!title) {
+    songInfoEditError.value = '歌名不能为空';
+    return;
+  }
+
+  isSongInfoSaving.value = true;
+  songInfoEditError.value = '';
+
+  try {
+    const result = await tauriInvoke('save_song_info', {
+      path: songPath,
+      payload: {
+        title,
+        artist: songInfoEditForm.value.artist.trim(),
+        album: songInfoEditForm.value.album.trim(),
+        trackNumber: normalizeFormValue(songInfoEditForm.value.trackNumber),
+        discNumber: normalizeFormValue(songInfoEditForm.value.discNumber),
+        year: normalizeFormValue(songInfoEditForm.value.year),
+        coverPath: songInfoEditForm.value.coverPath,
+      },
+    });
+
+    savedSongOverride.value = result.song;
+    currentSongDetail.value = result.detail;
+    libraryStore.setSongRecord(result.song);
+
+    if (songInfoEditForm.value.coverPath) {
+      await tauriInvoke('clear_cover_cache');
+      clearCoverCaches();
+      coverUrl.value = (await loadCover(songPath)) || '';
+    }
+
+    isSongInfoEditing.value = false;
+    populateSongInfoEditForm();
+    showToast('歌曲信息已保存', 'success');
+  } catch (error) {
+    const message = String(error);
+    songInfoEditError.value = message;
+    showToast(`保存歌曲信息失败: ${message}`, 'error');
+  } finally {
+    isSongInfoSaving.value = false;
+  }
+};
 
 // 格式化工具
 const formatSize = (bytes?: number) => {
@@ -318,7 +464,19 @@ const formatTime = (timestampSeconds?: number) => {
       >
         <section class="song-info-column">
           <div class="modal-external-header song-info-header">
-            <h2 class="text-lg font-bold text-gray-900 dark:text-white">歌曲信息</h2>
+            <div class="song-info-header-title">
+              <h2 class="text-lg font-bold text-gray-900 dark:text-white">歌曲信息</h2>
+              <button
+                type="button"
+                class="song-info-edit-toggle"
+                :class="isSongInfoEditing ? 'song-info-edit-toggle--active' : ''"
+                :title="isSongInfoEditing ? '取消编辑歌曲信息' : '编辑歌曲信息'"
+                :aria-label="isSongInfoEditing ? '取消编辑歌曲信息' : '编辑歌曲信息'"
+                @click="isSongInfoEditing ? cancelSongInfoEdit() : beginSongInfoEdit()"
+              >
+                <SquarePen class="h-4 w-4" :stroke-width="2.2" />
+              </button>
+            </div>
             <button
               type="button"
               class="lyrics-editor-expand-button"
@@ -342,17 +500,43 @@ const formatTime = (timestampSeconds?: number) => {
             <div v-if="displaySong" class="song-info-content p-6 overflow-y-auto custom-scrollbar">
               <!-- 上半部分：封面 + 基本信息 -->
               <div class="song-info-hero flex flex-col sm:flex-row gap-6 mb-4">
-                <div class="song-info-cover w-32 h-32 shrink-0 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 shadow-md border border-gray-200/50 dark:border-gray-700/50 flex items-center justify-center">
-                  <img v-if="coverUrl" :src="coverUrl" class="w-full h-full object-cover" />
+                <button
+                  type="button"
+                  class="song-info-cover w-32 h-32 shrink-0 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 shadow-md border border-gray-200/50 dark:border-gray-700/50 flex items-center justify-center"
+                  :class="isSongInfoEditing ? 'song-info-cover--editable' : ''"
+                  :disabled="!isSongInfoEditing"
+                  @click="handleChooseCover"
+                >
+                  <img v-if="songInfoEditForm.coverPreviewUrl || coverUrl" :src="songInfoEditForm.coverPreviewUrl || coverUrl" class="w-full h-full object-cover" />
                   <svg v-else class="w-12 h-12 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                   </svg>
-                </div>
+                  <span v-if="isSongInfoEditing" class="song-info-cover-overlay">更换封面</span>
+                </button>
 
                 <div class="flex-1 min-w-0 flex flex-col justify-center">
-                  <h3 class="song-info-name text-3xl font-bold text-gray-900 dark:text-white truncate" :title="displaySong.title || displaySong.name">{{ displaySong.title || displaySong.name }}</h3>
-                  <p class="text-lg text-gray-600 dark:text-gray-300 mt-3 truncate" :title="displaySong.artist">{{ displaySong.artist }}</p>
-                  <p class="text-base text-gray-500 dark:text-gray-400 mt-2 truncate" :title="displaySong.album">专辑：{{ displaySong.album }}</p>
+                  <template v-if="isSongInfoEditing">
+                    <input
+                      v-model="songInfoEditForm.title"
+                      class="song-info-edit-input song-info-edit-input--title"
+                      placeholder="歌名"
+                    />
+                    <input
+                      v-model="songInfoEditForm.artist"
+                      class="song-info-edit-input song-info-edit-input--artist mt-3"
+                      placeholder="歌手名"
+                    />
+                    <input
+                      v-model="songInfoEditForm.album"
+                      class="song-info-edit-input mt-2"
+                      placeholder="专辑名"
+                    />
+                  </template>
+                  <template v-else>
+                    <h3 class="song-info-name text-3xl font-bold text-gray-900 dark:text-white truncate" :title="displaySong.title || displaySong.name">{{ displaySong.title || displaySong.name }}</h3>
+                    <p class="text-lg text-gray-600 dark:text-gray-300 mt-3 truncate" :title="displaySong.artist">{{ displaySong.artist }}</p>
+                    <p class="text-base text-gray-500 dark:text-gray-400 mt-2 truncate" :title="displaySong.album">专辑：{{ displaySong.album }}</p>
+                  </template>
 
                   <div v-if="displaySong.is_various_artists_album" class="flex flex-wrap gap-2 mt-4">
                     <span class="px-2 py-0.5 text-xs font-semibold rounded bg-blue-100/80 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50">
@@ -362,21 +546,41 @@ const formatTime = (timestampSeconds?: number) => {
                 </div>
               </div>
 
+              <div v-if="songInfoEditError" class="song-info-edit-error">{{ songInfoEditError }}</div>
+
               <!-- 下半部分：详细属性网格 -->
               <div class="flex flex-col gap-4">
                 <div class="song-info-detail-grid bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800 grid grid-cols-3 gap-y-6 gap-x-4">
                   <!-- 第一行 -->
                   <div>
                     <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">音轨号</div>
-                    <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.track_number || '无' }}</div>
+                    <input
+                      v-if="isSongInfoEditing"
+                      v-model="songInfoEditForm.trackNumber"
+                      class="song-info-edit-input song-info-edit-input--compact"
+                      placeholder="无"
+                    />
+                    <div v-else class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.track_number || '无' }}</div>
                   </div>
                   <div>
                     <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">碟号</div>
-                    <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.disc_number || '无' }}</div>
+                    <input
+                      v-if="isSongInfoEditing"
+                      v-model="songInfoEditForm.discNumber"
+                      class="song-info-edit-input song-info-edit-input--compact"
+                      placeholder="无"
+                    />
+                    <div v-else class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.disc_number || '无' }}</div>
                   </div>
                   <div>
                     <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">年份</div>
-                    <div class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.year || '无' }}</div>
+                    <input
+                      v-if="isSongInfoEditing"
+                      v-model="songInfoEditForm.year"
+                      class="song-info-edit-input song-info-edit-input--compact"
+                      placeholder="无"
+                    />
+                    <div v-else class="text-sm text-gray-800 dark:text-gray-200">{{ displaySong.year || '无' }}</div>
                   </div>
 
                   <!-- 第二行 -->
@@ -430,6 +634,7 @@ const formatTime = (timestampSeconds?: number) => {
           <!-- 外置操作区 -->
           <div class="song-info-footer modal-external-actions">
             <button
+              v-if="!isSongInfoEditing"
               @click="handleOpenFolder"
               class="modal-action-button modal-action-button--wide"
             >
@@ -438,7 +643,24 @@ const formatTime = (timestampSeconds?: number) => {
               </svg>
               打开文件所在目录
             </button>
-
+            <template v-else>
+              <button
+                type="button"
+                class="modal-action-button"
+                :disabled="isSongInfoSaving"
+                @click="cancelSongInfoEdit"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                class="modal-action-button modal-action-button--primary"
+                :disabled="isSongInfoSaving"
+                @click="handleSaveSongInfo"
+              >
+                {{ isSongInfoSaving ? '保存中' : '保存信息' }}
+              </button>
+            </template>
           </div>
         </section>
 
@@ -775,6 +997,137 @@ const formatTime = (timestampSeconds?: number) => {
   flex-shrink: 0;
 }
 
+.song-info-header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.song-info-edit-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  padding: 0;
+  color: var(--lyrics-editor-button-color);
+  line-height: 1;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.song-info-edit-toggle:hover,
+.song-info-edit-toggle--active {
+  background: transparent;
+  color: #ec4141;
+}
+
+.song-info-cover {
+  position: relative;
+  padding: 0;
+  color: inherit;
+  cursor: default;
+}
+
+.song-info-cover:disabled {
+  opacity: 1;
+}
+
+.song-info-cover--editable {
+  cursor: pointer;
+}
+
+.song-info-cover--editable:hover {
+  border-color: rgba(236, 65, 65, 0.35);
+}
+
+.song-info-cover-overlay {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  background: rgba(15, 23, 42, 0.62);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.song-info-edit-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.64);
+  padding: 9px 11px;
+  color: rgb(17 24 39);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  outline: none;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.song-info-edit-input:focus {
+  border-color: rgba(236, 65, 65, 0.45);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 3px rgba(236, 65, 65, 0.1);
+}
+
+.song-info-edit-input--title {
+  padding: 10px 12px;
+  font-size: clamp(21px, 2.6vw, 28px);
+  font-weight: 800;
+}
+
+.song-info-edit-input--artist {
+  font-size: 16px;
+}
+
+.song-info-edit-input--compact {
+  height: 32px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.song-info-edit-error {
+  margin-bottom: 14px;
+  border: 1px solid rgba(236, 65, 65, 0.22);
+  border-radius: 12px;
+  background: rgba(236, 65, 65, 0.08);
+  padding: 10px 12px;
+  color: #ec4141;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.song-info-stage--dark .song-info-edit-input {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.song-info-stage--dark .song-info-edit-input:focus {
+  border-color: rgba(236, 65, 65, 0.42);
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .lyrics-editor-header {
   padding-right: 18px;
 }
@@ -793,9 +1146,9 @@ const formatTime = (timestampSeconds?: number) => {
   width: 34px;
   height: 34px;
   flex-shrink: 0;
-  border: 1px solid var(--lyrics-editor-expand-border);
+  border: 0;
   border-radius: 10px;
-  background: var(--lyrics-editor-expand-bg);
+  background: transparent;
   color: var(--lyrics-editor-expand-color);
   transition:
     border-color 160ms ease,
@@ -804,8 +1157,7 @@ const formatTime = (timestampSeconds?: number) => {
 }
 
 .lyrics-editor-expand-button:hover {
-  border-color: rgba(236, 65, 65, 0.35);
-  background: rgba(236, 65, 65, 0.08);
+  background: transparent;
   color: #ec4141;
 }
 

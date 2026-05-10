@@ -1,11 +1,14 @@
 // music/files.rs - 文件操作命令
 
 use super::lyrics::{build_structured_lyrics_payload, StructuredLyricsPayload};
+use super::scanner::{apply_scan_changes, parse_song_from_file};
 use super::tags::{
     extract_detail_metadata, extract_embedded_lyrics, extract_embedded_lyrics_match,
     read_tagged_file_from_path,
 };
-use super::types::{LyricsStorageSource, SongDetail, SongLyricsForEdit};
+use super::types::{
+    LyricsStorageSource, SaveSongInfoResponse, SongDetail, SongInfoEditPayload, SongLyricsForEdit,
+};
 use crate::database::DbState;
 use crate::error::CommandError;
 use crate::remote::{
@@ -15,6 +18,7 @@ use crate::remote::{
 };
 use lofty::config::WriteOptions;
 use lofty::file::{AudioFile, TaggedFileExt};
+use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::tag::{ItemKey, ItemValue, Tag, TagItem};
 use rusqlite::{params, OptionalExtension};
 use serde::Serialize;
@@ -169,6 +173,124 @@ fn write_embedded_lyrics(path_obj: &Path, lyrics: String) -> Result<String, Stri
         .map_err(|e| e.to_string())?;
 
     Ok(normalize_path(&path_obj.to_string_lossy()))
+}
+
+fn normalized_optional_text(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn write_optional_text(tag: &mut Tag, key: ItemKey, value: Option<String>) {
+    if let Some(value) = normalized_optional_text(value) {
+        let _ = tag.insert_text(key, value);
+    } else {
+        tag.remove_key(&key);
+    }
+}
+
+fn picture_mime_from_path(path: &Path) -> MimeType {
+    match path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("jpg") | Some("jpeg") => MimeType::Jpeg,
+        Some("png") => MimeType::Png,
+        Some("gif") => MimeType::Gif,
+        Some("bmp") => MimeType::Bmp,
+        Some("tif") | Some("tiff") => MimeType::Tiff,
+        Some("webp") => MimeType::Unknown("image/webp".to_string()),
+        _ => MimeType::Unknown("application/octet-stream".to_string()),
+    }
+}
+
+fn write_song_info_tags(path_obj: &Path, payload: &SongInfoEditPayload) -> Result<(), String> {
+    let title = payload.title.trim();
+    if title.is_empty() {
+        return Err("歌名不能为空".to_string());
+    }
+
+    let mut tagged_file = read_tagged_file_from_path(path_obj).map_err(|e| e.to_string())?;
+    let tag_type = tagged_file.primary_tag_type();
+
+    if tagged_file.tag_mut(tag_type).is_none() {
+        tagged_file.insert_tag(Tag::new(tag_type));
+    }
+
+    let tag = tagged_file
+        .tag_mut(tag_type)
+        .ok_or_else(|| "当前歌曲格式不支持写入标签".to_string())?;
+
+    let _ = tag.insert_text(ItemKey::TrackTitle, title.to_string());
+    write_optional_text(tag, ItemKey::TrackArtist, Some(payload.artist.clone()));
+    write_optional_text(tag, ItemKey::AlbumTitle, Some(payload.album.clone()));
+    write_optional_text(tag, ItemKey::AlbumArtist, Some(payload.artist.clone()));
+    write_optional_text(tag, ItemKey::TrackNumber, payload.track_number.clone());
+    write_optional_text(tag, ItemKey::DiscNumber, payload.disc_number.clone());
+    write_optional_text(tag, ItemKey::RecordingDate, payload.year.clone());
+    if normalized_optional_text(payload.year.clone()).is_none() {
+        tag.remove_key(&ItemKey::Year);
+    }
+
+    if let Some(cover_path) = normalized_optional_text(payload.cover_path.clone()) {
+        let cover_path_obj = Path::new(&cover_path);
+        if !cover_path_obj.is_file() {
+            return Err("选择的封面图片不存在".to_string());
+        }
+
+        let image_bytes = fs::read(cover_path_obj).map_err(|e| e.to_string())?;
+        let picture = Picture::new_unchecked(
+            PictureType::CoverFront,
+            Some(picture_mime_from_path(cover_path_obj)),
+            None,
+            image_bytes,
+        );
+        tag.remove_picture_type(PictureType::CoverFront);
+        tag.push_picture(picture);
+    }
+
+    tagged_file
+        .save_to_path(path_obj, WriteOptions::default())
+        .map_err(|e| e.to_string())
+}
+
+fn build_song_detail_from_file(path_obj: &Path, normalized_path: &str) -> SongDetail {
+    let mut detail = SongDetail {
+        path: normalized_path.to_string(),
+        ..SongDetail::default()
+    };
+
+    if let Ok(metadata) = fs::metadata(path_obj) {
+        detail.file_size = Some(metadata.len());
+    }
+
+    if let Ok(tagged_file) = read_tagged_file_from_path(path_obj) {
+        let tag_detail = extract_detail_metadata(&tagged_file);
+        detail.genre = tag_detail.genre;
+        detail.year = tag_detail.year;
+        detail.track_number = tag_detail.track_number;
+        detail.disc_number = tag_detail.disc_number;
+        detail.comment = tag_detail.comment;
+    }
+
+    detail.container = path_obj
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase());
+
+    detail
+}
+
+fn load_song_id(conn: &rusqlite::Connection, path: &str) -> Result<Option<i64>, String> {
+    conn.query_row(
+        "SELECT id FROM songs WHERE path = ?1 LIMIT 1",
+        params![path],
+        |row| row.get::<_, i64>(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
 }
 
 fn sync_moved_song_paths(
@@ -335,6 +457,56 @@ pub async fn save_song_lyrics(
             })
         }
     }
+}
+
+#[tauri::command]
+pub fn save_song_info(
+    path: String,
+    payload: SongInfoEditPayload,
+    db_state: State<'_, DbState>,
+) -> Result<SaveSongInfoResponse, String> {
+    if is_remote_uri(&path) {
+        return Err("远程歌曲暂不支持直接编辑文件标签".to_string());
+    }
+
+    let normalized_path = normalize_path(&path);
+    let path_obj = Path::new(&path);
+    if !path_obj.is_file() {
+        return Err("歌曲文件不存在".to_string());
+    }
+
+    let existing_song_id = {
+        let conn = db_state.conn.lock().map_err(|e| e.to_string())?;
+        load_song_id(&conn, &normalized_path)?
+    };
+
+    write_song_info_tags(path_obj, &payload)?;
+
+    let extension = path_obj
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .unwrap_or_default();
+    let mut song = parse_song_from_file(path_obj, &normalized_path, &extension)
+        .ok_or_else(|| "保存后无法重新读取歌曲信息".to_string())?;
+    song.id = existing_song_id;
+
+    {
+        let mut conn = db_state.conn.lock().map_err(|e| e.to_string())?;
+        if existing_song_id.is_some() {
+            apply_scan_changes(&mut conn, &[], std::slice::from_ref(&song), &[], None)?;
+        } else {
+            apply_scan_changes(&mut conn, std::slice::from_ref(&song), &[], &[], None)?;
+            song.id = load_song_id(&conn, &normalized_path)?;
+        }
+    }
+
+    let mut detail = build_song_detail_from_file(path_obj, &normalized_path);
+    detail.container = song.container.clone().or(detail.container);
+    detail.codec = song.codec.clone();
+    detail.file_size = Some(song.file_size);
+
+    Ok(SaveSongInfoResponse { song, detail })
 }
 
 #[tauri::command]

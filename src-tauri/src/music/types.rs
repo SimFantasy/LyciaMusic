@@ -57,6 +57,25 @@ pub struct Song {
     pub file_modified_at: Option<u64>,
 }
 
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SongInfoEditPayload {
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub track_number: Option<String>,
+    pub disc_number: Option<String>,
+    pub year: Option<String>,
+    pub cover_path: Option<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSongInfoResponse {
+    pub song: Song,
+    pub detail: SongDetail,
+}
+
 #[derive(Serialize, Clone, Debug)]
 pub struct LibrarySong {
     pub id: Option<i64>,

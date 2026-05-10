@@ -48,6 +48,21 @@ export interface SongLyricsForEdit {
   sourcePath: string | null;
 }
 
+export interface SongInfoEditPayload {
+  title: string;
+  artist: string;
+  album: string;
+  trackNumber: string | null;
+  discNumber: string | null;
+  year: string | null;
+  coverPath: string | null;
+}
+
+export interface SaveSongInfoResponse {
+  song: Song;
+  detail: SongDetail;
+}
+
 export interface RecentHistoryRecord {
   songPath: string;
   playedAt: number;
@@ -218,6 +233,13 @@ export interface TauriCommandMap {
       sourcePath: string | null;
     };
     response: SongLyricsForEdit;
+  };
+  save_song_info: {
+    payload: {
+      path: string;
+      payload: SongInfoEditPayload;
+    };
+    response: SaveSongInfoResponse;
   };
   get_song_detail: { payload: { path: string }; response: SongDetail };
   play_audio: { payload: PlayAudioOptions; response: void };

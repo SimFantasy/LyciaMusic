@@ -15,7 +15,8 @@ describe('SongInfoModal lyrics editor theme', () => {
     expect(source).toContain("isDarkTheme ? 'song-info-stage--dark' : ''");
     expect(source).toContain('.song-info-stage--dark');
     expect(source).toContain('--lyrics-editor-panel-bg: rgba(15, 23, 42, 0.92);');
-    expect(source).toContain('--lyrics-editor-actions-bg: rgba(15, 23, 42, 0.96);');
+    expect(source).toContain('--modal-external-header-bg: rgba(15, 23, 42, 0.72);');
+    expect(source).toContain('--lyrics-editor-button-bg: rgba(255, 255, 255, 0.06);');
   });
 
   it('keeps dark editor selectors local to the modal instead of compiling to global .dark rules', () => {
