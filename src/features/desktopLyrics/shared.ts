@@ -36,6 +36,7 @@ export interface DesktopLyricsSongSnapshot {
   path: string;
   title: string;
   artist: string;
+  duration: number;
 }
 
 export interface DesktopLyricsWindowBounds {
@@ -96,6 +97,7 @@ export function createDesktopLyricsSongSnapshot(song: Song | null): DesktopLyric
     path: song.path,
     title: song.title || song.name,
     artist: song.artist || 'Unknown Artist',
+    duration: song.duration,
   };
 }
 

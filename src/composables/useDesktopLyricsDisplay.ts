@@ -46,6 +46,9 @@ const FIXED_PALETTES = {
   white: ['#ffffff', '#f3f4f6', '#d1d5db', '#9ca3af'],
 } as const;
 
+const PSEUDO_WORD_FINISH_LEAD_SECONDS = 0.08;
+const DEFAULT_PSEUDO_WORD_DURATION_SECONDS = 3;
+
 export const DESKTOP_LYRICS_ALIGNMENT_OPTIONS: Array<{
   value: DesktopLyricsWindowSettings['playerAlignment'];
   label: string;
@@ -73,6 +76,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
   const lyricsStatus = ref<LyricsStatus>('idle');
   const fallbackText = ref('Instrumental / No lyrics');
   const themeColors = ref<string[]>([]);
+  const songDuration = ref<number | null>(null);
   const doubleLinePageStartIndex = ref(-1);
   const settings = ref<DesktopLyricsWindowSettings>({
     showTranslation: true,
@@ -150,11 +154,16 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
   }
 
   function handlePayload(payload: DesktopLyricsStatePayload) {
+    const nextSongDuration = payload.song?.duration;
+
     parsedLyrics.value = payload.parsedLyrics;
     lyricsStatus.value = payload.lyricsStatus;
     fallbackText.value = payload.fallbackText;
     audioDelay.value = payload.audioDelay;
     themeColors.value = [...payload.themeColors];
+    songDuration.value = typeof nextSongDuration === 'number' && Number.isFinite(nextSongDuration)
+      ? nextSongDuration
+      : null;
     settings.value = {
       ...settings.value,
       ...payload.settings,
@@ -210,7 +219,24 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     return secondary;
   }
 
-  function getMainDisplayWords(line: LyricLine): LyricWord[] {
+  function getPseudoWordEnd(line: LyricLine, lineIndex: number, start: number): number {
+    const parsedEnd = Number.isFinite(line.endTime) && line.endTime > start
+      ? line.endTime
+      : start + DEFAULT_PSEUDO_WORD_DURATION_SECONDS;
+    const nextStart = parsedLyrics.value[lineIndex + 1]?.time;
+    const visibleBoundary = typeof nextStart === 'number' && Number.isFinite(nextStart) && nextStart > start
+      ? nextStart
+      : songDuration.value;
+
+    if (typeof visibleBoundary === 'number' && Number.isFinite(visibleBoundary) && visibleBoundary > start) {
+      const visibleEnd = Math.max(start, visibleBoundary - PSEUDO_WORD_FINISH_LEAD_SECONDS);
+      return Math.min(parsedEnd, visibleEnd);
+    }
+
+    return parsedEnd;
+  }
+
+  function getMainDisplayWords(line: LyricLine, lineIndex: number): LyricWord[] {
     if (!settings.value.enableWordEffect) {
       return [];
     }
@@ -227,8 +253,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     if (!text) return [];
 
     const start = Number.isFinite(line.time) ? line.time : 0;
-    const parsedEnd = Number.isFinite(line.endTime) ? line.endTime : start + 3;
-    const end = Math.max(start + 0.8, parsedEnd);
+    const end = Math.max(start + 0.001, getPseudoWordEnd(line, lineIndex, start));
 
     return [{
       text,
@@ -388,7 +413,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
         line,
         lineIndex,
         active: activeLyricIndex.value >= 0 ? lineIndex === activeLyricIndex.value : lineIndex === 0,
-        words: getMainDisplayWords(line),
+        words: getMainDisplayWords(line, lineIndex),
         secondaryLines: getSecondaryLines(line),
       });
     }

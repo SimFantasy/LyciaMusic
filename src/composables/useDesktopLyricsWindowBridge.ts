@@ -421,6 +421,7 @@ export function useDesktopLyricsWindowBridge() {
       () => currentSong.value?.title,
       () => currentSong.value?.name,
       () => currentSong.value?.artist,
+      () => currentSong.value?.duration,
       isPlaying,
       audioDelay,
       () => lyricsSettings.showTranslation,
