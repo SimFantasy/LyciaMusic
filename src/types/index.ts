@@ -240,6 +240,7 @@ export interface SidebarSettings {
 }
 
 export type LyricsPlayerAlignment = 'left' | 'center' | 'right';
+export type DesktopLyricsPlayerAlignment = LyricsPlayerAlignment | 'split-corners';
 export type LyricsColorScheme = 'auto' | 'default' | 'pink' | 'blue' | 'green' | 'white' | 'custom';
 export type LyricsFontPreset = string;
 
@@ -275,7 +276,7 @@ export interface DesktopLyricsSettings {
   playerLineGap: number;
   playerOffsetX: number;
   playerOffsetY: number;
-  playerAlignment: LyricsPlayerAlignment;
+  playerAlignment: DesktopLyricsPlayerAlignment;
   playerFontPreset: LyricsFontPreset;
 }
 

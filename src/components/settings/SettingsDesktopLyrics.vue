@@ -33,11 +33,12 @@ import {
   getLyricsFontFamily,
   loadSystemLyricsFonts,
   normalizeHexColor,
+  normalizeDesktopPlayerAlignment,
   normalizeLyricsFontPreset,
   systemLyricsFontOptions,
+  type DesktopLyricsPlayerAlignment,
   type LyricsColorScheme,
   type LyricsFontPreset,
-  type LyricsPlayerAlignment,
   useLyrics,
 } from '../../composables/lyrics';
 import { DESKTOP_LYRICS_RESET_BOUNDS_EVENT } from '../../features/desktopLyrics/shared';
@@ -49,10 +50,11 @@ const OFFSET_STEP = 1;
 const TEXT_OPACITY_STEP = 0.01;
 const SHADOW_STRENGTH_STEP = 1;
 
-const ALIGNMENT_OPTIONS: Array<{ value: LyricsPlayerAlignment; label: string }> = [
+const ALIGNMENT_OPTIONS: Array<{ value: DesktopLyricsPlayerAlignment; label: string }> = [
   { value: 'left', label: '靠左' },
   { value: 'center', label: '居中' },
   { value: 'right', label: '靠右' },
+  { value: 'split-corners', label: '阶梯式' },
 ];
 
 const COLOR_SCHEME_OPTIONS: Array<{
@@ -213,8 +215,8 @@ function setDesktopTextShadowColor(value: string) {
   desktopLyricsSettings.textShadowColor = normalizeHexColor(value, DEFAULT_DESKTOP_TEXT_SHADOW_COLOR);
 }
 
-function setDesktopAlignment(value: LyricsPlayerAlignment) {
-  desktopLyricsSettings.playerAlignment = value;
+function setDesktopAlignment(value: DesktopLyricsPlayerAlignment) {
+  desktopLyricsSettings.playerAlignment = normalizeDesktopPlayerAlignment(value);
 }
 
 function setDesktopFontPreset(value: LyricsFontPreset) {

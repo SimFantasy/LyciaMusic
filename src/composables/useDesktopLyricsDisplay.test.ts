@@ -92,4 +92,31 @@ describe('useDesktopLyricsDisplay', () => {
       '--desktop-second-line-text-shadow-blur': '18px',
     });
   });
+
+  it('exposes split-corner alignment only for desktop double-line placement', () => {
+    const display = useDesktopLyricsDisplay(ref(false));
+    const payload = createPayload(true);
+
+    display.handlePayload({
+      ...payload,
+      settings: {
+        ...payload.settings,
+        showDoubleLine: true,
+        playerAlignment: 'split-corners',
+      },
+    });
+
+    expect(display.lyricsAlignmentClass.value).toBe('lyrics-align-split-corners');
+
+    display.handlePayload({
+      ...payload,
+      settings: {
+        ...payload.settings,
+        showDoubleLine: false,
+        playerAlignment: 'split-corners',
+      },
+    });
+
+    expect(display.lyricsAlignmentClass.value).toBe('lyrics-align-left');
+  });
 });

@@ -1009,6 +1009,20 @@ describe('lyrics settings normalization', async () => {
     expect(normalized.enableWordEffect).toBe(true);
   });
 
+  it('restores desktop split-corner alignment from migrated settings', () => {
+    expect(normalizeDesktopLyricsSettingsPatch({
+      playerAlignment: 'split-corners',
+    }).playerAlignment).toBe('split-corners');
+  });
+
+  it('keeps non-desktop lyric alignment limited to horizontal values', () => {
+    const normalized = normalizeLyricsSettingsPatch({
+      playerAlignment: 'split-corners' as any,
+    });
+
+    expect(normalized.playerAlignment).toBe('left');
+  });
+
   it('restores desktop auto-hide on fullscreen from migrated values', () => {
     const normalized = normalizeDesktopLyricsSettingsPatch({
       autoHideWhenFullscreen: false,

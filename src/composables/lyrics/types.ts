@@ -1,5 +1,6 @@
 import type {
   DesktopLyricsSettings,
+  DesktopLyricsPlayerAlignment,
   LyricsColorScheme,
   LyricsFontPreset,
   LyricsPlayerAlignment,
@@ -8,6 +9,7 @@ import type {
 
 export type {
   DesktopLyricsSettings,
+  DesktopLyricsPlayerAlignment,
   LyricsColorScheme,
   LyricsFontPreset,
   LyricsPlayerAlignment,

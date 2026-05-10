@@ -245,8 +245,8 @@ const {
   transition: transform 180ms ease;
   will-change: transform;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: var(--lyrics-vertical-align, center);
+  justify-content: var(--lyrics-horizontal-align, center);
   min-height: 100%;
   padding: 16px 0;
   box-sizing: border-box;
@@ -394,18 +394,52 @@ const {
 }
 
 .lyrics-align-left {
+  --lyrics-horizontal-align: center;
+  --lyrics-vertical-align: center;
   --lyrics-text-align: left;
   --lyrics-line-transform-origin: 0%;
 }
 
 .lyrics-align-center {
+  --lyrics-horizontal-align: center;
+  --lyrics-vertical-align: center;
   --lyrics-text-align: center;
   --lyrics-line-transform-origin: 50%;
 }
 
 .lyrics-align-right {
+  --lyrics-horizontal-align: center;
+  --lyrics-vertical-align: center;
   --lyrics-text-align: right;
   --lyrics-line-transform-origin: 100%;
+}
+
+.lyrics-align-split-corners {
+  --lyrics-horizontal-align: center;
+  --lyrics-vertical-align: stretch;
+  --lyrics-text-align: left;
+  --lyrics-line-transform-origin: 0%;
+}
+
+.lyrics-align-split-corners .desktop-lyric-block {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 0;
+}
+
+.lyrics-align-split-corners .desktop-lyric-row:first-child {
+  text-align: left;
+  transform-origin: 0% center;
+}
+
+.lyrics-align-split-corners .desktop-lyric-row:nth-child(2) {
+  --lyrics-text-align: right;
+  --lyrics-line-transform-origin: 100%;
+  text-align: right;
+  transform-origin: 100% center;
 }
 
 .desktop-empty-state {

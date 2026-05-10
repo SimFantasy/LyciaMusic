@@ -30,6 +30,7 @@ import {
   MIN_DESKTOP_TEXT_SHADOW_STRENGTH,
   getLyricsFontFamily,
   normalizeHexColor,
+  normalizeDesktopPlayerAlignment,
   normalizeLyricsFontPreset,
   systemLyricsFontOptions,
   type LyricsStatus,
@@ -157,6 +158,10 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
 
     if (typeof normalizedPatch.playerFontPreset === 'string') {
       normalizedPatch.playerFontPreset = normalizeLyricsFontPreset(normalizedPatch.playerFontPreset);
+    }
+
+    if (typeof normalizedPatch.playerAlignment === 'string') {
+      normalizedPatch.playerAlignment = normalizeDesktopPlayerAlignment(normalizedPatch.playerAlignment);
     }
 
     if (typeof normalizedPatch.textOpacity === 'number') {
@@ -332,7 +337,13 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
   }
 
   const syncedCurrentTime = computed(() => Math.max(0, playbackTime.value - audioDelay.value));
-  const lyricsAlignmentClass = computed(() => `lyrics-align-${settings.value.playerAlignment}`);
+  const lyricsAlignmentClass = computed(() => {
+    if (settings.value.playerAlignment === 'split-corners') {
+      return settings.value.showDoubleLine ? 'lyrics-align-split-corners' : 'lyrics-align-left';
+    }
+
+    return `lyrics-align-${settings.value.playerAlignment}`;
+  });
   const availableFontOptions = computed(() => [
     ...LYRICS_FONT_OPTIONS,
     ...systemLyricsFontOptions.value,

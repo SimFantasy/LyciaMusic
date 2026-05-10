@@ -1,5 +1,6 @@
 import type {
   DesktopLyricsSettings,
+  DesktopLyricsPlayerAlignment,
   LyricsColorScheme,
   LyricsFontPreset,
   LyricsPlayerAlignment,
@@ -22,7 +23,7 @@ export const DEFAULT_PLAYER_OFFSET_Y = 0;
 export const MIN_PLAYER_OFFSET_Y = -25;
 export const MAX_PLAYER_OFFSET_Y = 25;
 export const DEFAULT_PLAYER_ALIGNMENT: LyricsPlayerAlignment = 'left';
-export const DEFAULT_DESKTOP_PLAYER_ALIGNMENT: LyricsPlayerAlignment = 'center';
+export const DEFAULT_DESKTOP_PLAYER_ALIGNMENT: DesktopLyricsPlayerAlignment = 'center';
 export const DEFAULT_PLAYER_FONT_PRESET: LyricsFontPreset = 'system';
 export const DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR = '#EC4141';
 export const DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR = '#FFFFFF';
@@ -175,6 +176,20 @@ export function normalizePlayerAlignment(
   return value === 'center' || value === 'right' || value === 'left' ? value : fallback;
 }
 
+export function normalizeDesktopPlayerAlignment(
+  value: unknown,
+  fallback: DesktopLyricsPlayerAlignment = DEFAULT_DESKTOP_PLAYER_ALIGNMENT,
+): DesktopLyricsPlayerAlignment {
+  if (value === 'split-corners') {
+    return value;
+  }
+
+  const horizontalFallback: LyricsPlayerAlignment = fallback === 'split-corners'
+    ? 'center'
+    : fallback;
+  return normalizePlayerAlignment(value, horizontalFallback);
+}
+
 export function normalizeLyricsColorScheme(value: unknown): LyricsColorScheme {
   return value === 'default'
     || value === 'pink'
@@ -299,7 +314,7 @@ export function normalizeDesktopLyricsSettingsPatch(
     playerLineGap: clampPlayerLineGap(patch.playerLineGap ?? DEFAULT_PLAYER_LINE_GAP),
     playerOffsetX: clampPlayerOffsetX(patch.playerOffsetX ?? DEFAULT_PLAYER_OFFSET_X),
     playerOffsetY: clampPlayerOffsetY(patch.playerOffsetY ?? DEFAULT_PLAYER_OFFSET_Y),
-    playerAlignment: normalizePlayerAlignment(
+    playerAlignment: normalizeDesktopPlayerAlignment(
       patch.playerAlignment,
       DEFAULT_DESKTOP_PLAYER_ALIGNMENT,
     ),
