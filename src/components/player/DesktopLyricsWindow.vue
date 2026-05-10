@@ -94,7 +94,10 @@ const {
                       >
                         <div
                           class="desktop-lyric-main"
-                          :class="{ 'desktop-lyric-main--inactive': !displayLine.active }"
+                          :class="{
+                            'desktop-lyric-main--inactive': !displayLine.active,
+                            'desktop-lyric-main--solid': !displayLine.words.length,
+                          }"
                         >
                           <template v-if="displayLine.words.length">
                             <span
@@ -313,6 +316,20 @@ const {
   text-shadow:
     0 1px 8px rgba(0, 0, 0, 0.16),
     0 0 18px color-mix(in srgb, var(--desktop-accent-c) 10%, transparent);
+}
+
+.desktop-lyric-main--solid {
+  color: var(--desktop-lyric-solid-color, var(--desktop-text-primary));
+  text-shadow:
+    0 1px 10px rgba(0, 0, 0, 0.18),
+    0 0 24px color-mix(in srgb, var(--desktop-lyric-solid-color, var(--desktop-accent-a)) 22%, transparent);
+}
+
+.desktop-lyric-main--solid.desktop-lyric-main--inactive {
+  color: color-mix(in srgb, var(--desktop-lyric-solid-color, var(--desktop-text-primary)) 76%, transparent);
+  text-shadow:
+    0 1px 8px rgba(0, 0, 0, 0.16),
+    0 0 18px color-mix(in srgb, var(--desktop-lyric-solid-color, var(--desktop-accent-c)) 14%, transparent);
 }
 
 .desktop-lyric-word {

@@ -296,6 +296,9 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
       '--desktop-accent-b': resolvedPalette.value[1],
       '--desktop-accent-c': resolvedPalette.value[2],
       '--desktop-accent-d': resolvedPalette.value[3],
+      '--desktop-lyric-solid-color': settings.value.colorScheme === 'custom'
+        ? settings.value.customPlayedColor
+        : 'var(--desktop-accent-a)',
       '--desktop-text-primary': settings.value.colorScheme === 'custom'
         ? settings.value.customUnplayedColor
         : 'rgba(255, 255, 255, 0.98)',
