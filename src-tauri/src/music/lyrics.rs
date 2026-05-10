@@ -1787,6 +1787,71 @@ fn looks_like_english_phrase(text: &str) -> bool {
     average_token_length >= 3.0 && keyword_hits >= 2 && score_romanized_latin_text(text) < 0.42
 }
 
+fn looks_like_non_romaji_english_latin_text(text: &str) -> bool {
+    let profile = get_line_script_profile(text);
+    if profile.dominant_script != DominantScript::Latin {
+        return false;
+    }
+
+    let tokens = tokenize_latin_words(text);
+    if tokens.is_empty() {
+        return false;
+    }
+
+    let lower = text.to_lowercase();
+    let romanization = score_romanized_latin_text(text);
+    let englishness = score_englishness(text);
+    let english_hint_words = [
+        "be", "believe", "but", "dream", "dreamt", "i", "leave", "need", "needing", "so", "still",
+        "wait", "you", "yet",
+    ];
+    let hint_matches = tokens
+        .iter()
+        .filter(|token| english_hint_words.contains(&token.as_str()))
+        .count();
+
+    if Regex::new(r"(?i)\b(i'm|you're|we're|it's|i'll|don't|can't)\b")
+        .expect("valid contraction regex")
+        .is_match(text)
+    {
+        return true;
+    }
+
+    if tokens.iter().any(|token| token.contains('v')) {
+        return true;
+    }
+
+    if Regex::new(r"(th|gh|ph|wh|ck|ee|oo)")
+        .expect("valid english digraph regex")
+        .is_match(&lower)
+    {
+        return romanization < 0.52 || hint_matches > 0;
+    }
+
+    if Regex::new(r"(str|scr|dr|st|mp?t)")
+        .expect("valid english consonant cluster regex")
+        .is_match(&lower)
+    {
+        return romanization < 0.52 || hint_matches > 0;
+    }
+
+    let has_english_word_ending = tokens.iter().any(|token| {
+        token.len() > 1
+            && token
+                .chars()
+                .last()
+                .map(|last| {
+                    matches!(
+                        last,
+                        'd' | 't' | 'l' | 'p' | 'm' | 'k' | 'g' | 'f' | 's' | 'z' | 'r'
+                    )
+                })
+                .unwrap_or(false)
+    });
+
+    has_english_word_ending && (hint_matches >= 2 || englishness >= romanization + 0.12)
+}
+
 fn score_englishness(text: &str) -> f64 {
     let tokens = tokenize_latin_words(text);
     if tokens.is_empty() {
@@ -2551,6 +2616,10 @@ fn score_cluster_main_candidate(
     let has_han_peer = group
         .iter()
         .any(|(_, _, line)| line.script_profile.dominant_script == DominantScript::Han);
+    let has_non_romaji_english_latin_peer = group.iter().any(|(_, _, line)| {
+        line.script_profile.dominant_script == DominantScript::Latin
+            && looks_like_non_romaji_english_latin_text(&line.text)
+    });
     let first_non_latin_source_index = group
         .iter()
         .filter(|(_, _, line)| line.script_profile.dominant_script != DominantScript::Latin)
@@ -2610,6 +2679,12 @@ fn score_cluster_main_candidate(
         if has_han_peer && looks_like_english_phrase(&candidate_line.text) {
             score += 3.2;
         }
+        if has_han_peer
+            && !has_japanese_like_peer
+            && looks_like_non_romaji_english_latin_text(&candidate_line.text)
+        {
+            score += 4.2;
+        }
     } else if has_latin_peer {
         if let Some(first_non_latin_source_index) = first_non_latin_source_index {
             if (candidate_line.source_index - first_non_latin_source_index).abs() < 0.01 {
@@ -2617,6 +2692,12 @@ fn score_cluster_main_candidate(
             } else {
                 score -= 1.4;
             }
+        }
+        if candidate_line.script_profile.dominant_script == DominantScript::Han
+            && !has_japanese_like_peer
+            && has_non_romaji_english_latin_peer
+        {
+            score -= 2.4;
         }
     }
     if candidate_line.script_profile.dominant_script == DominantScript::Han
@@ -3011,37 +3092,44 @@ pub fn lyric_document_to_semantic_lines(document: &LyricDocument) -> Vec<Semanti
         let (display_main_line, display_translation_line, display_roman_line) =
             resolve_display_line_roles(main_line, translation_line, roman_line);
 
-        let secondary_texts = secondary_tracks
-            .iter()
-            .filter_map(|(track_index, track)| {
-                alignments[*track_index]
-                    .pairs
-                    .iter()
-                    .find(|pair| {
-                        pair.main_index == main_index
-                            && should_attach_aligned_pair(
-                                main_track,
-                                track,
-                                &alignments[*track_index],
-                                pair,
-                            )
-                    })
-                    .and_then(|pair| {
-                        attached_line_keys.push((*track_index, pair.aux_index));
-                        track
-                            .lines
-                            .get(pair.aux_index)
-                            .map(|line| line.text.clone())
-                    })
-            })
-            .collect::<Vec<_>>();
+        let mut fallback_translation_line: Option<&LyricTrackLine> = None;
+        let mut secondary_texts = Vec::new();
+        for (track_index, track) in &secondary_tracks {
+            let Some(pair) = alignments[*track_index].pairs.iter().find(|pair| {
+                pair.main_index == main_index
+                    && should_attach_aligned_pair(
+                        main_track,
+                        track,
+                        &alignments[*track_index],
+                        pair,
+                    )
+            }) else {
+                continue;
+            };
+            attached_line_keys.push((*track_index, pair.aux_index));
+
+            let Some(line) = track.lines.get(pair.aux_index) else {
+                continue;
+            };
+
+            if display_translation_line.is_none()
+                && fallback_translation_line.is_none()
+                && line.script_profile.dominant_script == DominantScript::Han
+                && should_use_line_as_translation(display_main_line, track, line)
+            {
+                fallback_translation_line = Some(line);
+            } else {
+                secondary_texts.push(line.text.clone());
+            }
+        }
+        let resolved_translation_line = display_translation_line.or(fallback_translation_line);
 
         semantic_lines.push(normalize_semantic_line_display_roles(SemanticLine {
             start_ms: display_main_line.start_ms,
             end_ms: display_main_line.end_ms,
             main_text: display_main_line.text.clone(),
             main_words: display_main_line.words.clone(),
-            translation_text: display_translation_line.map(|line| line.text.clone()),
+            translation_text: resolved_translation_line.map(|line| line.text.clone()),
             roman_text: display_roman_line.map(|line| line.text.clone()),
             roman_words: build_aligned_roman_words(display_main_line, display_roman_line),
             secondary_texts: if secondary_texts.is_empty() {
@@ -3051,7 +3139,7 @@ pub fn lyric_document_to_semantic_lines(document: &LyricDocument) -> Vec<Semanti
             },
             confidence: resolve_semantic_confidence(&[
                 Some(display_main_line),
-                display_translation_line,
+                resolved_translation_line,
                 display_roman_line,
             ]),
         }));

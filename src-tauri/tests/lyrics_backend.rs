@@ -316,3 +316,41 @@ fn keeps_latin_main_when_chinese_translation_contains_repeated_latin_words() {
     assert_eq!(faraway_line.text, "Somewhere out far away");
     assert_eq!(faraway_line.translation, "在某个遥远海域");
 }
+
+#[test]
+fn keeps_short_english_lines_as_main_inside_japanese_romaji_lyrics() {
+    let payload = build_structured_lyrics_payload(
+        [
+            "[01:14.957]<01:14.957>qi <01:15.107>yo <01:15.247>  <01:15.527>to <01:15.747>Wait! <01:16.287>Wait <01:16.637>yet! <01:17.137>",
+            "[01:14.957]<01:14.957>ち<01:15.107>ょ<01:15.247>っ<01:15.527>と<01:15.747>Wait! <01:16.287>Wait <01:16.637>yet!<01:17.137>",
+            "[01:14.957]<01:14.957>等一下 再等等<01:17.560>",
+            "[01:17.567]<01:17.567>\"Believe <01:19.347>Be:leave\"<01:20.287>",
+            "[01:17.567]<01:17.567>\"相信如此 离开吧\"<01:20.280>",
+            "[01:21.517]<01:21.517>ma <01:21.947>da <01:22.157>yume <01:22.867>mi <01:23.067>te <01:23.247>yi <01:23.477>ta <01:23.697>n <01:23.917>da <01:24.417>",
+            "[01:21.517]<01:21.517>ま<01:21.947>だ<01:22.157>夢<01:22.867>見<01:23.067>て<01:23.247>い<01:23.477>た<01:23.697>ん<01:23.917>だ<01:24.417>",
+            "[01:21.517]<01:21.517>我是否还置身梦境中<01:24.650>",
+            "[01:24.657]<01:24.657>So <01:24.867>I <01:25.317>dreamt?<01:26.047>",
+            "[01:24.657]<01:24.657>所以这只是我的一场梦？<01:26.040>",
+            "[01:39.956]<01:39.956>Still <01:40.196>I <01:40.516>believe?<01:41.345>",
+            "[01:39.956]<01:39.956>我仍相信?<01:41.340>",
+        ]
+        .join("\n"),
+    );
+    let believe_line =
+        find_display_line_by_time(&payload, 77.567).expect("short english line exists");
+    assert_eq!(believe_line.text, "\"Believe Be:leave\"");
+    assert_eq!(believe_line.translation, "\"相信如此 离开吧\"");
+    assert!(believe_line.romaji.is_empty());
+
+    let dreamt_line =
+        find_display_line_by_time(&payload, 84.657).expect("short english question exists");
+    assert_eq!(dreamt_line.text, "So I dreamt?");
+    assert_eq!(dreamt_line.translation, "所以这只是我的一场梦？");
+    assert!(dreamt_line.romaji.is_empty());
+
+    let still_line =
+        find_display_line_by_time(&payload, 99.956).expect("short english refrain exists");
+    assert_eq!(still_line.text, "Still I believe?");
+    assert_eq!(still_line.translation, "我仍相信?");
+    assert!(still_line.romaji.is_empty());
+}
