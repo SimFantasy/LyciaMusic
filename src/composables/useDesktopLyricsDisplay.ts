@@ -7,11 +7,16 @@ import {
   DEFAULT_DESKTOP_CUSTOM_ROMAJI_COLOR,
   DEFAULT_DESKTOP_CUSTOM_TRANSLATION_COLOR,
   DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR,
+  DEFAULT_DESKTOP_TEXT_OPACITY,
+  DEFAULT_DESKTOP_TEXT_SHADOW_COLOR,
+  DEFAULT_DESKTOP_TEXT_SHADOW_STRENGTH,
   DEFAULT_PLAYER_FONT_PRESET,
   DEFAULT_PLAYER_FONT_SCALE,
   DEFAULT_PLAYER_LINE_GAP,
   DEFAULT_PLAYER_OFFSET_X,
   DEFAULT_PLAYER_OFFSET_Y,
+  MAX_DESKTOP_TEXT_OPACITY,
+  MAX_DESKTOP_TEXT_SHADOW_STRENGTH,
   LYRICS_FONT_OPTIONS,
   MAX_PLAYER_FONT_SCALE,
   MAX_PLAYER_LINE_GAP,
@@ -21,7 +26,10 @@ import {
   MIN_PLAYER_LINE_GAP,
   MIN_PLAYER_OFFSET_X,
   MIN_PLAYER_OFFSET_Y,
+  MIN_DESKTOP_TEXT_OPACITY,
+  MIN_DESKTOP_TEXT_SHADOW_STRENGTH,
   getLyricsFontFamily,
+  normalizeHexColor,
   normalizeLyricsFontPreset,
   systemLyricsFontOptions,
   type LyricsStatus,
@@ -48,6 +56,11 @@ const FIXED_PALETTES = {
 
 const PSEUDO_WORD_FINISH_LEAD_SECONDS = 0.08;
 const DEFAULT_PSEUDO_WORD_DURATION_SECONDS = 3;
+const DEFAULT_SHADOW_RGB = '0 0 0';
+const FIRST_LINE_TEXT_SHADOW = [
+  '0 1px 2px rgb(var(--desktop-text-shadow-color) / calc(var(--desktop-first-line-text-shadow-alpha) * 0.55))',
+  '0 0 var(--desktop-first-line-text-shadow-blur) rgb(var(--desktop-text-shadow-color) / var(--desktop-first-line-text-shadow-alpha))',
+].join(', ');
 
 export const DESKTOP_LYRICS_ALIGNMENT_OPTIONS: Array<{
   value: DesktopLyricsWindowSettings['playerAlignment'];
@@ -93,6 +106,10 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     customUnplayedColor: DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR,
     customRomajiColor: DEFAULT_DESKTOP_CUSTOM_ROMAJI_COLOR,
     customTranslationColor: DEFAULT_DESKTOP_CUSTOM_TRANSLATION_COLOR,
+    textOpacity: DEFAULT_DESKTOP_TEXT_OPACITY,
+    textShadowColor: DEFAULT_DESKTOP_TEXT_SHADOW_COLOR,
+    firstLineTextShadowStrength: DEFAULT_DESKTOP_TEXT_SHADOW_STRENGTH,
+    secondLineTextShadowStrength: DEFAULT_DESKTOP_TEXT_SHADOW_STRENGTH,
     playerFontScale: DEFAULT_PLAYER_FONT_SCALE,
     playerLineGap: DEFAULT_PLAYER_LINE_GAP,
     playerOffsetX: DEFAULT_PLAYER_OFFSET_X,
@@ -140,6 +157,37 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
 
     if (typeof normalizedPatch.playerFontPreset === 'string') {
       normalizedPatch.playerFontPreset = normalizeLyricsFontPreset(normalizedPatch.playerFontPreset);
+    }
+
+    if (typeof normalizedPatch.textOpacity === 'number') {
+      normalizedPatch.textOpacity = Number(
+        Math.min(MAX_DESKTOP_TEXT_OPACITY, Math.max(MIN_DESKTOP_TEXT_OPACITY, normalizedPatch.textOpacity)).toFixed(2),
+      );
+    }
+
+    if (typeof normalizedPatch.firstLineTextShadowStrength === 'number') {
+      normalizedPatch.firstLineTextShadowStrength = Math.round(
+        Math.min(
+          MAX_DESKTOP_TEXT_SHADOW_STRENGTH,
+          Math.max(MIN_DESKTOP_TEXT_SHADOW_STRENGTH, normalizedPatch.firstLineTextShadowStrength),
+        ),
+      );
+    }
+
+    if (typeof normalizedPatch.secondLineTextShadowStrength === 'number') {
+      normalizedPatch.secondLineTextShadowStrength = Math.round(
+        Math.min(
+          MAX_DESKTOP_TEXT_SHADOW_STRENGTH,
+          Math.max(MIN_DESKTOP_TEXT_SHADOW_STRENGTH, normalizedPatch.secondLineTextShadowStrength),
+        ),
+      );
+    }
+
+    if (typeof normalizedPatch.textShadowColor === 'string') {
+      normalizedPatch.textShadowColor = normalizeHexColor(
+        normalizedPatch.textShadowColor,
+        DEFAULT_DESKTOP_TEXT_SHADOW_COLOR,
+      );
     }
 
     settings.value = {
@@ -267,6 +315,22 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     return `${value > 0 ? '+' : ''}${Math.round(value)}%`;
   }
 
+  function formatCssNumber(value: number) {
+    return Number(value.toFixed(2)).toString();
+  }
+
+  function hexToRgbTriplet(value: string) {
+    const normalized = normalizeHexColor(value, DEFAULT_DESKTOP_TEXT_SHADOW_COLOR);
+    const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(normalized);
+    if (!match) return DEFAULT_SHADOW_RGB;
+
+    return [
+      Number.parseInt(match[1], 16),
+      Number.parseInt(match[2], 16),
+      Number.parseInt(match[3], 16),
+    ].join(' ');
+  }
+
   const syncedCurrentTime = computed(() => Math.max(0, playbackTime.value - audioDelay.value));
   const lyricsAlignmentClass = computed(() => `lyrics-align-${settings.value.playerAlignment}`);
   const availableFontOptions = computed(() => [
@@ -335,6 +399,12 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
       '--desktop-translation-color': settings.value.colorScheme === 'custom'
         ? settings.value.customTranslationColor
         : 'color-mix(in srgb, var(--desktop-accent-c) 28%, var(--desktop-text-tertiary))',
+      '--desktop-text-opacity': formatCssNumber(settings.value.textOpacity),
+      '--desktop-text-shadow-color': hexToRgbTriplet(settings.value.textShadowColor),
+      '--desktop-first-line-text-shadow-alpha': formatCssNumber(settings.value.firstLineTextShadowStrength / 100),
+      '--desktop-first-line-text-shadow-blur': `${Math.round(settings.value.firstLineTextShadowStrength * 0.24)}px`,
+      '--desktop-second-line-text-shadow-alpha': formatCssNumber(settings.value.secondLineTextShadowStrength / 100),
+      '--desktop-second-line-text-shadow-blur': `${Math.round(settings.value.secondLineTextShadowStrength * 0.24)}px`,
       outline: shouldShowSurface ? '1px solid rgba(255, 255, 255, 0.16)' : 'none',
     } as Record<string, string>;
   });
@@ -431,7 +501,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     if (progress <= 0) {
       return {
         color: 'var(--desktop-text-primary)',
-        textShadow: '0 1px 8px rgba(0, 0, 0, 0.18)',
+        textShadow: FIRST_LINE_TEXT_SHADOW,
       };
     }
 
@@ -443,7 +513,9 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
       backgroundClip: 'text',
       color: 'transparent',
       WebkitTextFillColor: 'transparent',
-      textShadow: progress >= 1 ? '0 0 14px color-mix(in srgb, var(--desktop-accent-b) 45%, transparent)' : 'none',
+      textShadow: progress >= 1
+        ? `${FIRST_LINE_TEXT_SHADOW}, 0 0 14px color-mix(in srgb, var(--desktop-accent-b) 45%, transparent)`
+        : FIRST_LINE_TEXT_SHADOW,
       filter: progress > 0 && progress < 1 ? 'drop-shadow(0 0 10px color-mix(in srgb, var(--desktop-accent-a) 30%, transparent))' : 'none',
       transition: 'filter 120ms linear, text-shadow 120ms linear',
     };

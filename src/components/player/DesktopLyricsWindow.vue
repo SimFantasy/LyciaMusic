@@ -90,6 +90,7 @@ const {
                         :class="{
                           'desktop-lyric-row--active': displayLine.active,
                           'desktop-lyric-row--inactive': !displayLine.active,
+                          'desktop-lyric-row--second-line': settings.showDoubleLine && !displayLine.active,
                         }"
                       >
                         <div
@@ -262,6 +263,8 @@ const {
   text-align: var(--lyrics-text-align, center);
   font-family: var(--lyrics-font-family, system-ui, sans-serif);
   transform-origin: var(--lyrics-line-transform-origin, 50%) center;
+  opacity: var(--desktop-text-opacity, 1);
+  transition: opacity 220ms ease;
 }
 
 .desktop-lyric-row {
@@ -300,7 +303,8 @@ const {
   overflow-wrap: anywhere;
   word-break: break-word;
   text-shadow:
-    0 1px 10px rgba(0, 0, 0, 0.18),
+    0 1px 2px rgb(var(--desktop-text-shadow-color, 0 0 0) / calc(var(--desktop-first-line-text-shadow-alpha, 0) * 0.55)),
+    0 0 var(--desktop-first-line-text-shadow-blur, 0px) rgb(var(--desktop-text-shadow-color, 0 0 0) / var(--desktop-first-line-text-shadow-alpha, 0)),
     0 0 24px color-mix(in srgb, var(--desktop-accent-a) 14%, transparent);
   transition:
     color 460ms ease,
@@ -314,21 +318,24 @@ const {
   font-weight: 650;
   color: color-mix(in srgb, var(--desktop-text-primary) 76%, transparent);
   text-shadow:
-    0 1px 8px rgba(0, 0, 0, 0.16),
+    0 1px 2px rgb(var(--desktop-second-line-text-shadow-color, var(--desktop-text-shadow-color, 0 0 0)) / calc(var(--desktop-second-line-text-shadow-alpha, 0) * 0.48)),
+    0 0 var(--desktop-second-line-text-shadow-blur, 0px) rgb(var(--desktop-second-line-text-shadow-color, var(--desktop-text-shadow-color, 0 0 0)) / calc(var(--desktop-second-line-text-shadow-alpha, 0) * 0.86)),
     0 0 18px color-mix(in srgb, var(--desktop-accent-c) 10%, transparent);
 }
 
 .desktop-lyric-main--solid {
   color: var(--desktop-lyric-solid-color, var(--desktop-text-primary));
   text-shadow:
-    0 1px 10px rgba(0, 0, 0, 0.18),
+    0 1px 2px rgb(var(--desktop-text-shadow-color, 0 0 0) / calc(var(--desktop-first-line-text-shadow-alpha, 0) * 0.55)),
+    0 0 var(--desktop-first-line-text-shadow-blur, 0px) rgb(var(--desktop-text-shadow-color, 0 0 0) / var(--desktop-first-line-text-shadow-alpha, 0)),
     0 0 24px color-mix(in srgb, var(--desktop-lyric-solid-color, var(--desktop-accent-a)) 22%, transparent);
 }
 
 .desktop-lyric-main--solid.desktop-lyric-main--inactive {
   color: color-mix(in srgb, var(--desktop-lyric-solid-color, var(--desktop-text-primary)) 76%, transparent);
   text-shadow:
-    0 1px 8px rgba(0, 0, 0, 0.16),
+    0 1px 2px rgb(var(--desktop-second-line-text-shadow-color, var(--desktop-text-shadow-color, 0 0 0)) / calc(var(--desktop-second-line-text-shadow-alpha, 0) * 0.48)),
+    0 0 var(--desktop-second-line-text-shadow-blur, 0px) rgb(var(--desktop-second-line-text-shadow-color, var(--desktop-text-shadow-color, 0 0 0)) / calc(var(--desktop-second-line-text-shadow-alpha, 0) * 0.86)),
     0 0 18px color-mix(in srgb, var(--desktop-lyric-solid-color, var(--desktop-accent-c)) 14%, transparent);
 }
 
@@ -358,12 +365,32 @@ const {
 
 .desktop-lyric-sub--romaji {
   color: var(--desktop-romaji-color);
-  text-shadow: 0 0 16px color-mix(in srgb, var(--desktop-romaji-color) 20%, transparent);
+  text-shadow:
+    0 1px 2px rgb(var(--desktop-text-shadow-color, 0 0 0) / calc(var(--desktop-first-line-text-shadow-alpha, 0) * 0.48)),
+    0 0 calc(var(--desktop-first-line-text-shadow-blur, 0px) * 0.86) rgb(var(--desktop-text-shadow-color, 0 0 0) / calc(var(--desktop-first-line-text-shadow-alpha, 0) * 0.86)),
+    0 0 16px color-mix(in srgb, var(--desktop-romaji-color) 20%, transparent);
 }
 
 .desktop-lyric-sub--translation {
   color: var(--desktop-translation-color);
-  text-shadow: 0 0 12px color-mix(in srgb, var(--desktop-translation-color) 18%, transparent);
+  text-shadow:
+    0 1px 2px rgb(var(--desktop-text-shadow-color, 0 0 0) / calc(var(--desktop-first-line-text-shadow-alpha, 0) * 0.48)),
+    0 0 calc(var(--desktop-first-line-text-shadow-blur, 0px) * 0.82) rgb(var(--desktop-text-shadow-color, 0 0 0) / calc(var(--desktop-first-line-text-shadow-alpha, 0) * 0.82)),
+    0 0 12px color-mix(in srgb, var(--desktop-translation-color) 18%, transparent);
+}
+
+.desktop-lyric-row--second-line .desktop-lyric-sub--romaji {
+  text-shadow:
+    0 1px 2px rgb(var(--desktop-second-line-text-shadow-color, var(--desktop-text-shadow-color, 0 0 0)) / calc(var(--desktop-second-line-text-shadow-alpha, 0) * 0.48)),
+    0 0 calc(var(--desktop-second-line-text-shadow-blur, 0px) * 0.86) rgb(var(--desktop-second-line-text-shadow-color, var(--desktop-text-shadow-color, 0 0 0)) / calc(var(--desktop-second-line-text-shadow-alpha, 0) * 0.86)),
+    0 0 16px color-mix(in srgb, var(--desktop-romaji-color) 20%, transparent);
+}
+
+.desktop-lyric-row--second-line .desktop-lyric-sub--translation {
+  text-shadow:
+    0 1px 2px rgb(var(--desktop-second-line-text-shadow-color, var(--desktop-text-shadow-color, 0 0 0)) / calc(var(--desktop-second-line-text-shadow-alpha, 0) * 0.48)),
+    0 0 calc(var(--desktop-second-line-text-shadow-blur, 0px) * 0.82) rgb(var(--desktop-second-line-text-shadow-color, var(--desktop-text-shadow-color, 0 0 0)) / calc(var(--desktop-second-line-text-shadow-alpha, 0) * 0.82)),
+    0 0 12px color-mix(in srgb, var(--desktop-translation-color) 18%, transparent);
 }
 
 .lyrics-align-left {
@@ -386,7 +413,10 @@ const {
   font-size: 1.1rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  text-shadow: 0 0 16px color-mix(in srgb, var(--desktop-accent-a) 12%, transparent);
+  text-shadow:
+    0 1px 2px rgb(var(--desktop-text-shadow-color, 0 0 0) / calc(var(--desktop-first-line-text-shadow-alpha, 0) * 0.48)),
+    0 0 calc(var(--desktop-first-line-text-shadow-blur, 0px) * 0.82) rgb(var(--desktop-text-shadow-color, 0 0 0) / calc(var(--desktop-first-line-text-shadow-alpha, 0) * 0.82)),
+    0 0 16px color-mix(in srgb, var(--desktop-accent-a) 12%, transparent);
 }
 
 .desktop-block-enter-active,

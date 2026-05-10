@@ -28,6 +28,13 @@ export const DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR = '#EC4141';
 export const DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR = '#FFFFFF';
 export const DEFAULT_DESKTOP_CUSTOM_ROMAJI_COLOR = '#BFDBFE';
 export const DEFAULT_DESKTOP_CUSTOM_TRANSLATION_COLOR = '#FBCFE8';
+export const DEFAULT_DESKTOP_TEXT_OPACITY = 1;
+export const MIN_DESKTOP_TEXT_OPACITY = 0.6;
+export const MAX_DESKTOP_TEXT_OPACITY = 1;
+export const DEFAULT_DESKTOP_TEXT_SHADOW_COLOR = '#000000';
+export const DEFAULT_DESKTOP_TEXT_SHADOW_STRENGTH = 0;
+export const MIN_DESKTOP_TEXT_SHADOW_STRENGTH = 0;
+export const MAX_DESKTOP_TEXT_SHADOW_STRENGTH = 100;
 
 export interface LyricsFontOption {
   value: LyricsFontPreset;
@@ -108,6 +115,10 @@ export const defaultDesktopLyricsSettings: DesktopLyricsSettings = {
   customUnplayedColor: DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR,
   customRomajiColor: DEFAULT_DESKTOP_CUSTOM_ROMAJI_COLOR,
   customTranslationColor: DEFAULT_DESKTOP_CUSTOM_TRANSLATION_COLOR,
+  textOpacity: DEFAULT_DESKTOP_TEXT_OPACITY,
+  textShadowColor: DEFAULT_DESKTOP_TEXT_SHADOW_COLOR,
+  firstLineTextShadowStrength: DEFAULT_DESKTOP_TEXT_SHADOW_STRENGTH,
+  secondLineTextShadowStrength: DEFAULT_DESKTOP_TEXT_SHADOW_STRENGTH,
   playerFontScale: DEFAULT_PLAYER_FONT_SCALE,
   playerLineGap: DEFAULT_PLAYER_LINE_GAP,
   playerOffsetX: DEFAULT_PLAYER_OFFSET_X,
@@ -142,6 +153,19 @@ export function clampPlayerOffsetX(value: number) {
 export function clampPlayerOffsetY(value: number) {
   if (!Number.isFinite(value)) return DEFAULT_PLAYER_OFFSET_Y;
   return Math.min(MAX_PLAYER_OFFSET_Y, Math.max(MIN_PLAYER_OFFSET_Y, value));
+}
+
+export function clampDesktopTextOpacity(value: number) {
+  if (!Number.isFinite(value)) return DEFAULT_DESKTOP_TEXT_OPACITY;
+  return Math.min(MAX_DESKTOP_TEXT_OPACITY, Math.max(MIN_DESKTOP_TEXT_OPACITY, value));
+}
+
+export function clampDesktopTextShadowStrength(value: number) {
+  if (!Number.isFinite(value)) return DEFAULT_DESKTOP_TEXT_SHADOW_STRENGTH;
+  return Math.min(
+    MAX_DESKTOP_TEXT_SHADOW_STRENGTH,
+    Math.max(MIN_DESKTOP_TEXT_SHADOW_STRENGTH, Math.round(value)),
+  );
 }
 
 export function normalizePlayerAlignment(
@@ -216,6 +240,9 @@ export function normalizeLyricsSettingsPatch(patch: Partial<LyricsSettings>): Ly
 export function normalizeDesktopLyricsSettingsPatch(
   patch: Partial<DesktopLyricsSettings>,
 ): DesktopLyricsSettings {
+  const legacyPatch = patch as Partial<DesktopLyricsSettings> & { textShadowStrength?: number };
+  const legacyTextShadowStrength = legacyPatch.textShadowStrength;
+
   return {
     ...defaultDesktopLyricsSettings,
     ...patch,
@@ -256,6 +283,17 @@ export function normalizeDesktopLyricsSettingsPatch(
     customTranslationColor: normalizeHexColor(
       patch.customTranslationColor,
       defaultDesktopLyricsSettings.customTranslationColor,
+    ),
+    textOpacity: clampDesktopTextOpacity(patch.textOpacity ?? DEFAULT_DESKTOP_TEXT_OPACITY),
+    textShadowColor: normalizeHexColor(
+      patch.textShadowColor,
+      defaultDesktopLyricsSettings.textShadowColor,
+    ),
+    firstLineTextShadowStrength: clampDesktopTextShadowStrength(
+      patch.firstLineTextShadowStrength ?? legacyTextShadowStrength ?? DEFAULT_DESKTOP_TEXT_SHADOW_STRENGTH,
+    ),
+    secondLineTextShadowStrength: clampDesktopTextShadowStrength(
+      patch.secondLineTextShadowStrength ?? legacyTextShadowStrength ?? DEFAULT_DESKTOP_TEXT_SHADOW_STRENGTH,
     ),
     playerFontScale: clampPlayerFontScale(patch.playerFontScale ?? DEFAULT_PLAYER_FONT_SCALE),
     playerLineGap: clampPlayerLineGap(patch.playerLineGap ?? DEFAULT_PLAYER_LINE_GAP),

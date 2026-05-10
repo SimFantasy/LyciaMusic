@@ -44,6 +44,10 @@ function createPayload(enableWordEffect: boolean): DesktopLyricsStatePayload {
       customUnplayedColor: '#FFFFFF',
       customRomajiColor: '#BFDBFE',
       customTranslationColor: '#FBCFE8',
+      textOpacity: 1,
+      textShadowColor: '#000000',
+      firstLineTextShadowStrength: 0,
+      secondLineTextShadowStrength: 0,
       playerFontScale: 1,
       playerLineGap: 1,
       playerOffsetX: 0,
@@ -62,5 +66,30 @@ describe('useDesktopLyricsDisplay', () => {
 
     expect(display.visibleLyricLines.value[0]?.line.text).toBe('hello world');
     expect(display.visibleLyricLines.value[0]?.words).toEqual([]);
+  });
+
+  it('exposes desktop readability settings as CSS variables', () => {
+    const display = useDesktopLyricsDisplay(ref(false));
+    const payload = createPayload(true);
+
+    display.handlePayload({
+      ...payload,
+      settings: {
+        ...payload.settings,
+        textOpacity: 0.82,
+        textShadowColor: '#112233',
+        firstLineTextShadowStrength: 25,
+        secondLineTextShadowStrength: 75,
+      } as any,
+    });
+
+    expect(display.widgetStyle.value).toMatchObject({
+      '--desktop-text-opacity': '0.82',
+      '--desktop-text-shadow-color': '17 34 51',
+      '--desktop-first-line-text-shadow-alpha': '0.25',
+      '--desktop-first-line-text-shadow-blur': '6px',
+      '--desktop-second-line-text-shadow-alpha': '0.75',
+      '--desktop-second-line-text-shadow-blur': '18px',
+    });
   });
 });

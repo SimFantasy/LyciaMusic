@@ -8,6 +8,9 @@ import {
   DEFAULT_DESKTOP_CUSTOM_ROMAJI_COLOR,
   DEFAULT_DESKTOP_CUSTOM_TRANSLATION_COLOR,
   DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR,
+  DEFAULT_DESKTOP_TEXT_OPACITY,
+  DEFAULT_DESKTOP_TEXT_SHADOW_COLOR,
+  DEFAULT_DESKTOP_TEXT_SHADOW_STRENGTH,
   DEFAULT_DESKTOP_PLAYER_ALIGNMENT,
   DEFAULT_PLAYER_FONT_PRESET,
   DEFAULT_PLAYER_FONT_SCALE,
@@ -15,10 +18,14 @@ import {
   DEFAULT_PLAYER_OFFSET_X,
   DEFAULT_PLAYER_OFFSET_Y,
   LYRICS_FONT_OPTIONS,
+  MAX_DESKTOP_TEXT_OPACITY,
+  MAX_DESKTOP_TEXT_SHADOW_STRENGTH,
   MAX_PLAYER_FONT_SCALE,
   MAX_PLAYER_LINE_GAP,
   MAX_PLAYER_OFFSET_X,
   MAX_PLAYER_OFFSET_Y,
+  MIN_DESKTOP_TEXT_OPACITY,
+  MIN_DESKTOP_TEXT_SHADOW_STRENGTH,
   MIN_PLAYER_FONT_SCALE,
   MIN_PLAYER_LINE_GAP,
   MIN_PLAYER_OFFSET_X,
@@ -39,6 +46,8 @@ import { useSettings } from '../../features/settings/useSettings';
 const FONT_SCALE_STEP = 0.05;
 const LINE_GAP_STEP = 0.05;
 const OFFSET_STEP = 1;
+const TEXT_OPACITY_STEP = 0.01;
+const SHADOW_STRENGTH_STEP = 1;
 
 const ALIGNMENT_OPTIONS: Array<{ value: LyricsPlayerAlignment; label: string }> = [
   { value: 'left', label: '靠左' },
@@ -58,6 +67,12 @@ const COLOR_SCHEME_OPTIONS: Array<{
   { value: 'green', label: '青绿', hint: '更清爽的绿色高亮' },
   { value: 'white', label: '白色', hint: '使用当前这种偏白的清透高亮风格' },
   { value: 'custom', label: '自定义', hint: '手动选择已播放和未播放颜色' },
+];
+
+const SHADOW_COLOR_PRESETS = [
+  { label: '黑', value: '#000000' },
+  { label: '白', value: '#FFFFFF' },
+  { label: '红', value: DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR },
 ];
 
 const { settings } = useSettings();
@@ -89,6 +104,12 @@ const fontScaleLabel = computed(() => `${Math.round(desktopLyricsSettings.player
 const lineGapLabel = computed(() => `${Math.round(desktopLyricsSettings.playerLineGap * 100)}%`);
 const offsetXLabel = computed(() => formatOffsetValue(desktopLyricsSettings.playerOffsetX));
 const offsetYLabel = computed(() => formatOffsetValue(desktopLyricsSettings.playerOffsetY));
+const textOpacityLabel = computed(() => `${Math.round(desktopLyricsSettings.textOpacity * 100)}%`);
+const firstLineTextShadowStrengthLabel = computed(() => `${desktopLyricsSettings.firstLineTextShadowStrength}`);
+const secondLineTextShadowStrengthLabel = computed(() => `${desktopLyricsSettings.secondLineTextShadowStrength}`);
+const isCustomShadowColor = computed(() => {
+  return !SHADOW_COLOR_PRESETS.some((preset) => preset.value === desktopLyricsSettings.textShadowColor);
+});
 const customPreviewPlayedStyle = computed(() => ({
   color: desktopLyricsSettings.customPlayedColor,
   textShadow: `0 0 16px ${desktopLyricsSettings.customPlayedColor}66`,
@@ -143,6 +164,14 @@ function clampOffsetY(value: number) {
   return Math.min(MAX_PLAYER_OFFSET_Y, Math.max(MIN_PLAYER_OFFSET_Y, value));
 }
 
+function clampTextOpacity(value: number) {
+  return Math.min(MAX_DESKTOP_TEXT_OPACITY, Math.max(MIN_DESKTOP_TEXT_OPACITY, value));
+}
+
+function clampTextShadowStrength(value: number) {
+  return Math.min(MAX_DESKTOP_TEXT_SHADOW_STRENGTH, Math.max(MIN_DESKTOP_TEXT_SHADOW_STRENGTH, value));
+}
+
 function clampLyricsSyncOffset(value: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.min(1000, Math.max(-1000, Math.round(value / 10) * 10));
@@ -166,6 +195,22 @@ function setDesktopOffsetX(value: number) {
 
 function setDesktopOffsetY(value: number) {
   desktopLyricsSettings.playerOffsetY = Number(clampOffsetY(value).toFixed(0));
+}
+
+function setDesktopTextOpacity(value: number) {
+  desktopLyricsSettings.textOpacity = Number(clampTextOpacity(value).toFixed(2));
+}
+
+function setDesktopFirstLineTextShadowStrength(value: number) {
+  desktopLyricsSettings.firstLineTextShadowStrength = Number(clampTextShadowStrength(value).toFixed(0));
+}
+
+function setDesktopSecondLineTextShadowStrength(value: number) {
+  desktopLyricsSettings.secondLineTextShadowStrength = Number(clampTextShadowStrength(value).toFixed(0));
+}
+
+function setDesktopTextShadowColor(value: string) {
+  desktopLyricsSettings.textShadowColor = normalizeHexColor(value, DEFAULT_DESKTOP_TEXT_SHADOW_COLOR);
 }
 
 function setDesktopAlignment(value: LyricsPlayerAlignment) {
@@ -670,6 +715,139 @@ onUnmounted(() => {
               @input="setDesktopOffsetY(Number(($event.target as HTMLInputElement).value))"
             />
             <button type="button" class="desktop-mini-button" @click="setDesktopOffsetY(desktopLyricsSettings.playerOffsetY + OFFSET_STEP)">+</button>
+          </div>
+        </div>
+
+        <div class="desktop-typography-row">
+          <div class="desktop-inline-header">
+            <div class="desktop-inline-title">
+              <span class="text-sm font-medium text-gray-800 dark:text-gray-200">文字不透明度</span>
+              <button
+                v-if="desktopLyricsSettings.textOpacity !== DEFAULT_DESKTOP_TEXT_OPACITY"
+                type="button"
+                class="desktop-inline-reset"
+                title="重置文字不透明度"
+                @click="setDesktopTextOpacity(DEFAULT_DESKTOP_TEXT_OPACITY)"
+              >
+                <RotateCcw :size="12" />
+              </button>
+            </div>
+            <div class="desktop-inline-value">{{ textOpacityLabel }}</div>
+          </div>
+          <div class="desktop-slider-row">
+            <button type="button" class="desktop-mini-button" @click="setDesktopTextOpacity(desktopLyricsSettings.textOpacity - TEXT_OPACITY_STEP)">-</button>
+            <input
+              :value="desktopLyricsSettings.textOpacity"
+              type="range"
+              :min="MIN_DESKTOP_TEXT_OPACITY"
+              :max="MAX_DESKTOP_TEXT_OPACITY"
+              :step="TEXT_OPACITY_STEP"
+              class="desktop-slider flex-1"
+              @input="setDesktopTextOpacity(Number(($event.target as HTMLInputElement).value))"
+            />
+            <button type="button" class="desktop-mini-button" @click="setDesktopTextOpacity(desktopLyricsSettings.textOpacity + TEXT_OPACITY_STEP)">+</button>
+          </div>
+        </div>
+
+        <div class="desktop-typography-row">
+          <div class="desktop-inline-header">
+            <div class="desktop-inline-title">
+              <span class="text-sm font-medium text-gray-800 dark:text-gray-200">第一行阴影强度</span>
+              <button
+                v-if="desktopLyricsSettings.firstLineTextShadowStrength !== DEFAULT_DESKTOP_TEXT_SHADOW_STRENGTH"
+                type="button"
+                class="desktop-inline-reset"
+                title="重置第一行阴影强度"
+                @click="setDesktopFirstLineTextShadowStrength(DEFAULT_DESKTOP_TEXT_SHADOW_STRENGTH)"
+              >
+                <RotateCcw :size="12" />
+              </button>
+            </div>
+            <div class="desktop-inline-value">{{ firstLineTextShadowStrengthLabel }}</div>
+          </div>
+          <div class="desktop-slider-row">
+            <button type="button" class="desktop-mini-button" @click="setDesktopFirstLineTextShadowStrength(desktopLyricsSettings.firstLineTextShadowStrength - SHADOW_STRENGTH_STEP)">-</button>
+            <input
+              :value="desktopLyricsSettings.firstLineTextShadowStrength"
+              type="range"
+              :min="MIN_DESKTOP_TEXT_SHADOW_STRENGTH"
+              :max="MAX_DESKTOP_TEXT_SHADOW_STRENGTH"
+              :step="SHADOW_STRENGTH_STEP"
+              class="desktop-slider flex-1"
+              @input="setDesktopFirstLineTextShadowStrength(Number(($event.target as HTMLInputElement).value))"
+            />
+            <button type="button" class="desktop-mini-button" @click="setDesktopFirstLineTextShadowStrength(desktopLyricsSettings.firstLineTextShadowStrength + SHADOW_STRENGTH_STEP)">+</button>
+          </div>
+        </div>
+
+        <div class="desktop-typography-row">
+          <div class="desktop-inline-header">
+            <div class="desktop-inline-title">
+              <span class="text-sm font-medium text-gray-800 dark:text-gray-200">第二行阴影强度</span>
+              <button
+                v-if="desktopLyricsSettings.secondLineTextShadowStrength !== DEFAULT_DESKTOP_TEXT_SHADOW_STRENGTH"
+                type="button"
+                class="desktop-inline-reset"
+                title="重置第二行阴影强度"
+                @click="setDesktopSecondLineTextShadowStrength(DEFAULT_DESKTOP_TEXT_SHADOW_STRENGTH)"
+              >
+                <RotateCcw :size="12" />
+              </button>
+            </div>
+            <div class="desktop-inline-value">{{ secondLineTextShadowStrengthLabel }}</div>
+          </div>
+          <div class="desktop-slider-row">
+            <button type="button" class="desktop-mini-button" @click="setDesktopSecondLineTextShadowStrength(desktopLyricsSettings.secondLineTextShadowStrength - SHADOW_STRENGTH_STEP)">-</button>
+            <input
+              :value="desktopLyricsSettings.secondLineTextShadowStrength"
+              type="range"
+              :min="MIN_DESKTOP_TEXT_SHADOW_STRENGTH"
+              :max="MAX_DESKTOP_TEXT_SHADOW_STRENGTH"
+              :step="SHADOW_STRENGTH_STEP"
+              class="desktop-slider flex-1"
+              @input="setDesktopSecondLineTextShadowStrength(Number(($event.target as HTMLInputElement).value))"
+            />
+            <button type="button" class="desktop-mini-button" @click="setDesktopSecondLineTextShadowStrength(desktopLyricsSettings.secondLineTextShadowStrength + SHADOW_STRENGTH_STEP)">+</button>
+          </div>
+        </div>
+
+        <div class="desktop-typography-row desktop-typography-row--inline">
+          <div class="desktop-inline-title">
+            <span class="text-sm font-medium text-gray-800 dark:text-gray-200">阴影颜色</span>
+            <button
+              v-if="desktopLyricsSettings.textShadowColor !== DEFAULT_DESKTOP_TEXT_SHADOW_COLOR"
+              type="button"
+              class="desktop-inline-reset"
+              title="重置阴影颜色"
+              @click="setDesktopTextShadowColor(DEFAULT_DESKTOP_TEXT_SHADOW_COLOR)"
+            >
+              <RotateCcw :size="12" />
+            </button>
+          </div>
+          <div class="desktop-inline-actions">
+            <button
+              v-for="preset in SHADOW_COLOR_PRESETS"
+              :key="preset.value"
+              type="button"
+              class="desktop-chip"
+              :class="desktopLyricsSettings.textShadowColor === preset.value ? 'desktop-chip--active' : ''"
+              @click="setDesktopTextShadowColor(preset.value)"
+            >
+              {{ preset.label }}
+            </button>
+            <label
+              class="desktop-chip desktop-shadow-custom-chip"
+              :class="isCustomShadowColor ? 'desktop-chip--active' : ''"
+            >
+              <input
+                type="color"
+                :value="desktopLyricsSettings.textShadowColor"
+                aria-label="自定义阴影颜色"
+                @input="setDesktopTextShadowColor(($event.target as HTMLInputElement).value)"
+              >
+              <span class="desktop-shadow-custom-swatch" :style="{ backgroundColor: desktopLyricsSettings.textShadowColor }"></span>
+              <span>自定义</span>
+            </label>
           </div>
         </div>
 
@@ -1413,6 +1591,35 @@ onUnmounted(() => {
   height: 100%;
   opacity: 0;
   cursor: pointer;
+}
+
+.desktop-shadow-custom-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.desktop-shadow-custom-chip input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.desktop-shadow-custom-swatch {
+  width: 16px;
+  height: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 0 0 1px rgba(15, 23, 42, 0.08),
+    0 2px 6px rgba(15, 23, 42, 0.14);
 }
 
 .desktop-color-swatch {

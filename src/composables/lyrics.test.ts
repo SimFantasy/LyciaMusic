@@ -1032,6 +1032,38 @@ describe('lyrics settings normalization', async () => {
 
     expect(normalized.enableWordEffect).toBe(false);
   });
+
+  it('defaults desktop readability settings with independent disabled shadows', () => {
+    const normalized = normalizeDesktopLyricsSettingsPatch({});
+
+    expect(normalized.textOpacity).toBe(1);
+    expect(normalized.textShadowColor).toBe('#000000');
+    expect(normalized.firstLineTextShadowStrength).toBe(0);
+    expect(normalized.secondLineTextShadowStrength).toBe(0);
+  });
+
+  it('normalizes desktop readability settings from migrated values', () => {
+    const normalized = normalizeDesktopLyricsSettingsPatch({
+      textOpacity: 2,
+      textShadowColor: 'not-a-color',
+      firstLineTextShadowStrength: 180,
+      secondLineTextShadowStrength: -20,
+    } as any);
+
+    expect(normalized.textOpacity).toBe(1);
+    expect(normalized.textShadowColor).toBe('#000000');
+    expect(normalized.firstLineTextShadowStrength).toBe(100);
+    expect(normalized.secondLineTextShadowStrength).toBe(0);
+  });
+
+  it('maps legacy desktop text shadow strength to both lyric lines', () => {
+    const normalized = normalizeDesktopLyricsSettingsPatch({
+      textShadowStrength: 45,
+    } as any);
+
+    expect(normalized.firstLineTextShadowStrength).toBe(45);
+    expect(normalized.secondLineTextShadowStrength).toBe(45);
+  });
 });
 
 describe('raw lyrics samples from the common formats checklist', async () => {

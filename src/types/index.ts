@@ -267,6 +267,10 @@ export interface DesktopLyricsSettings {
   customUnplayedColor: string;
   customRomajiColor: string;
   customTranslationColor: string;
+  textOpacity: number;
+  textShadowColor: string;
+  firstLineTextShadowStrength: number;
+  secondLineTextShadowStrength: number;
   playerFontScale: number;
   playerLineGap: number;
   playerOffsetX: number;
