@@ -28,7 +28,7 @@ const tabs = [
 <template>
   <div class="flex h-full flex-1 overflow-hidden transition-colors duration-500">
     <aside class="z-10 flex w-[220px] shrink-0 flex-col border-r border-white/20 p-4 dark:border-white/5 md:w-[240px]">
-      <nav class="custom-scrollbar flex-1 space-y-1.5 overflow-y-auto">
+      <nav class="custom-scrollbar flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden">
         <button
           v-for="tab in tabs"
           :key="tab.id"
@@ -45,7 +45,7 @@ const tabs = [
       </nav>
     </aside>
 
-    <main class="custom-scrollbar relative h-full min-w-0 flex-1 overflow-y-auto px-10 py-10 xl:px-16">
+    <main :class="activeTab === 'about' ? 'relative h-full min-w-0 flex-1 overflow-hidden px-10 py-10 xl:px-16' : 'custom-scrollbar relative h-full min-w-0 flex-1 overflow-y-auto px-10 py-10 xl:px-16'">
       <div class="w-full pb-16">
         <SettingsGeneral v-if="activeTab === 'general'" />
         <SettingsTheme v-else-if="activeTab === 'theme'" />
