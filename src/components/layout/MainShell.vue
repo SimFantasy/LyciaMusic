@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { defineAsyncComponent } from 'vue';
+import { storeToRefs } from 'pinia';
 
 import { useAppShell } from '../../composables/useAppShell';
 import { useDesktopLyricsWindowBridge } from '../../composables/useDesktopLyricsWindowBridge';
+import { useUiStore } from '../../shared/stores/ui';
 import Sidebar from './Sidebar.vue';
 import TitleBar from './TitleBar.vue';
 import PlayerFooter from './PlayerFooter.vue';
@@ -34,6 +36,7 @@ const {
 
 import { useSongInfoDialog } from '../../composables/useSongInfoDialog';
 const { isSongInfoVisible, currentSongInfo, closeSongInfo } = useSongInfoDialog();
+const { skipNextPageTransition } = storeToRefs(useUiStore());
 
 useDesktopLyricsWindowBridge();
 </script>
@@ -109,7 +112,7 @@ useDesktopLyricsWindowBridge();
         <TitleBar />
         <main class="flex-1 overflow-hidden relative min-h-0">
           <router-view v-slot="{ Component, route }">
-            <transition name="page-fade" mode="out-in">
+            <transition :name="skipNextPageTransition ? '' : 'page-fade'" mode="out-in">
               <component
                 v-if="!route.meta.keepAlive"
                 :is="Component"

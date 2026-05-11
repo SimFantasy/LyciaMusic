@@ -5,7 +5,8 @@
   "windows": [
     "main",
     "desktop-lyrics",
-    "mini-player"
+    "mini-player",
+    "tray-menu"
   ],
   "permissions": [
     "core:default",

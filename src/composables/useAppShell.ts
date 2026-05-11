@@ -6,6 +6,7 @@ import { useExternalPathBridge } from './useExternalPathBridge';
 import { useAppShellTheme } from './useAppShellTheme';
 import { useMiniPlayerWindowBridge } from './useMiniPlayerWindowBridge';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
+import { useTrayMenuEvents } from './useTrayMenuEvents';
 import { useAddToPlaylistDialog } from '../features/collections/addToPlaylistDialog';
 import { useHomeRouteSync } from './useHomeRouteSync';
 import { usePlayerViewState } from './usePlayerViewState';
@@ -59,6 +60,7 @@ export function useAppShell() {
 
   useMiniPlayerWindowBridge();
   useKeyboardShortcuts();
+  useTrayMenuEvents(router);
 
   init();
 

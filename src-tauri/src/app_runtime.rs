@@ -8,15 +8,22 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{
-    menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
 use tokio::sync::Semaphore;
 
 const APP_SHOW_MAIN_EVENT: &str = "app:show-main";
+const APP_TRAY_MENU_OPEN_EVENT: &str = "app:tray-menu-open";
 const MAIN_WINDOW_LABEL: &str = "main";
 const MINI_PLAYER_WINDOW_LABEL: &str = "mini-player";
+
+#[derive(serde::Serialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+struct TrayMenuOpenPayload {
+    x: f64,
+    y: f64,
+}
 
 #[derive(Default)]
 pub(crate) struct PendingOpenPaths(pub(crate) Mutex<Vec<String>>);
@@ -96,6 +103,10 @@ fn reveal_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     }
 }
 
+fn emit_tray_menu_open<R: tauri::Runtime>(app: &tauri::AppHandle<R>, x: f64, y: f64) {
+    let _ = app.emit(APP_TRAY_MENU_OPEN_EVENT, TrayMenuOpenPayload { x, y });
+}
+
 fn install_window_boundary<R: tauri::Runtime>(app: &tauri::App<R>) {
     #[cfg(target_os = "windows")]
     {
@@ -112,20 +123,9 @@ fn install_window_boundary<R: tauri::Runtime>(app: &tauri::App<R>) {
 }
 
 fn build_tray<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
-    let handle = app.handle();
-    let show_item = MenuItem::with_id(handle, "show", "显示主界面", true, None::<&str>)?;
-    let quit_item = MenuItem::with_id(handle, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(handle, &[&show_item, &quit_item])?;
-
     let _tray = TrayIconBuilder::with_id("tray")
         .icon(app.default_window_icon().unwrap().clone())
-        .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "show" => reveal_main_window(app),
-            "quit" => app.exit(0),
-            _ => {}
-        })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
@@ -134,6 +134,17 @@ fn build_tray<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
             } = event
             {
                 reveal_main_window(&tray.app_handle());
+                return;
+            }
+
+            if let TrayIconEvent::Click {
+                button: MouseButton::Right,
+                button_state: MouseButtonState::Up,
+                position,
+                ..
+            } = event
+            {
+                emit_tray_menu_open(&tray.app_handle(), position.x, position.y);
             }
         })
         .build(app.handle())?;
@@ -188,4 +199,9 @@ pub(crate) fn consume_pending_open_paths(
 ) -> Result<Vec<String>, String> {
     let mut pending_paths = state.0.lock().map_err(|error| error.to_string())?;
     Ok(std::mem::take(&mut *pending_paths))
+}
+
+#[tauri::command]
+pub(crate) fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
 }

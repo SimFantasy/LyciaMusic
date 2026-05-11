@@ -13,7 +13,7 @@ mod window_material;
 mod window_theme;
 mod window_z_order;
 
-use app_runtime::{consume_pending_open_paths, handle_single_instance, setup_app};
+use app_runtime::{consume_pending_open_paths, exit_app, handle_single_instance, setup_app};
 use database::clear_all_app_data;
 use foreground_window::get_foreground_fullscreen_state;
 use music::{
@@ -157,7 +157,8 @@ pub fn run() {
             start_topmost_guard,
             stop_topmost_guard,
             consume_pending_open_paths,
-            get_system_fonts
+            get_system_fonts,
+            exit_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
