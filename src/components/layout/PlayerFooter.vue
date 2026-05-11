@@ -17,7 +17,7 @@ import {
 const { 
   currentSong,
   isPlaying, volume, currentTime, playMode, showPlaylist, showPlayerDetail,
-  togglePlay, nextSong, prevSong, handleVolume, toggleMute, toggleMode, togglePlaylist,
+  togglePlay, nextSong, prevSong, handleVolume, handleVolumeWheel, toggleMute, toggleMode, togglePlaylist,
   togglePlayerDetail, seekTo, formatDuration
 } = usePlaybackController();
 const { isFavorite, toggleFavorite } = useLibraryCollections();
@@ -399,6 +399,7 @@ onUnmounted(() => {
         class="relative flex items-center justify-center h-full z-[70]"
         @mouseenter="handleVolumeEnter"
         @mouseleave="handleVolumeLeave"
+        @wheel.prevent.stop="handleVolumeWheel"
       >
         <!-- 音量滑块弹窗 -->
         <div 

@@ -14,6 +14,16 @@ interface CreatePlayerUiShellDeps {
   removeFromHistory: (songPaths: string[]) => Promise<void>;
 }
 
+const clampVolumePercent = (volume: number) => Math.max(0, Math.min(100, Math.round(volume)));
+
+export const getNextWheelVolume = (currentVolume: number, deltaY: number) => {
+  if (deltaY === 0) {
+    return clampVolumePercent(currentVolume);
+  }
+
+  return clampVolumePercent(currentVolume + (deltaY < 0 ? 1 : -1));
+};
+
 export const createPlayerUiShell = ({
   addFolder,
   removeFromHistory,
@@ -28,7 +38,17 @@ export const createPlayerUiShell = ({
   const { favoritePaths } = storeToRefs(collectionsStore);
 
   const handleVolume = async (event: Event) => {
-    const volume = parseInt((event.target as HTMLInputElement).value, 10);
+    const volume = clampVolumePercent(parseInt((event.target as HTMLInputElement).value, 10));
+    playbackStore.volume = volume;
+    await playbackApi.setVolume(volume / 100);
+  };
+
+  const handleVolumeWheel = async (event: WheelEvent) => {
+    const volume = getNextWheelVolume(playbackStore.volume, event.deltaY);
+    if (volume === playbackStore.volume) {
+      return;
+    }
+
     playbackStore.volume = volume;
     await playbackApi.setVolume(volume / 100);
   };
@@ -95,6 +115,7 @@ export const createPlayerUiShell = ({
 
   return {
     handleVolume,
+    handleVolumeWheel,
     toggleMute,
     togglePlaylist,
     toggleMiniPlaylist,

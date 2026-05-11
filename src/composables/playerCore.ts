@@ -588,6 +588,7 @@ function createPlayerCore() {
     playAt: playbackActions.playAt,
     handleSeek: playbackActions.handleSeek,
     handleVolume: playbackActions.handleVolume,
+    handleVolumeWheel: playbackActions.handleVolumeWheel,
     toggleMute: playbackActions.toggleMute,
     toggleMode: playbackActions.toggleMode,
     togglePlaylist: playbackActions.togglePlaylist,

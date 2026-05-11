@@ -37,6 +37,7 @@ export function usePlaybackController() {
     seekTo: playbackDomain.seekTo,
     stepSeek: playbackDomain.stepSeek,
     handleVolume: playbackDomain.handleVolume,
+    handleVolumeWheel: playbackDomain.handleVolumeWheel,
     toggleMute: playbackDomain.toggleMute,
     toggleMode: playbackDomain.toggleMode,
     togglePlaylist: playbackDomain.togglePlaylist,

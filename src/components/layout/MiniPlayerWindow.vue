@@ -4,6 +4,7 @@ import { emitTo, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
+import { getNextWheelVolume } from '../../composables/playerUiShell';
 import {
   MINI_PLAYER_ACTION_EVENT,
   MINI_PLAYER_BOUNDS_EVENT,
@@ -117,6 +118,10 @@ const setVolume = (nextVolume: number) => {
   const normalizedVolume = Math.max(0, Math.min(100, Math.round(nextVolume)));
   volume.value = normalizedVolume;
   sendAction({ type: 'set-volume', volume: normalizedVolume });
+};
+
+const handleVolumeWheel = (event: WheelEvent) => {
+  setVolume(getNextWheelVolume(volume.value, event.deltaY));
 };
 
 const updateVolume = (clientX: number) => {
@@ -337,6 +342,7 @@ onUnmounted(() => {
                 class="fixed z-[200] w-40 h-[46px] bg-white/95 dark:bg-gray-800/95 backdrop-blur shadow-xl rounded-xl border border-gray-200 dark:border-white/10 px-2.5 py-2 flex items-center gap-2"
                 :class="[isDarkTheme ? 'dark !bg-gray-800/95 !border-white/10' : '!bg-white/95 !border-gray-200']"
                 :style="volumePopoverStyle"
+                @wheel.prevent.stop="handleVolumeWheel"
               >
                 <button
                   @click.stop="sendAction({ type: 'toggle-mute' })"
@@ -362,6 +368,7 @@ onUnmounted(() => {
             <button
               ref="volumeButtonRef"
               @click.stop="toggleVolumePopover"
+              @wheel.prevent.stop="handleVolumeWheel"
               class="text-gray-500 dark:text-white/80 hover:text-gray-800 p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
             >
               <svg v-if="volume === 0" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" /></svg>

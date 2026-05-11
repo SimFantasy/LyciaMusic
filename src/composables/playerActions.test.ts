@@ -53,6 +53,7 @@ describe('player action hooks', () => {
       }),
       playerUiShell: {
         handleVolume: vi.fn(),
+        handleVolumeWheel: vi.fn(),
         toggleMute: vi.fn(),
         togglePlaylist: vi.fn(),
         toggleMiniPlaylist: vi.fn(),
