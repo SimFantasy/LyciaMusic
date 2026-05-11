@@ -6,6 +6,8 @@ pub const SUPPORTED_LIBRARY_EXTENSIONS: &[&str] = &[
     "aac", "aif", "aiff", "flac", "m4a", "m4b", "mp3", "mp4", "oga", "ogg", "wav",
 ];
 
+pub const CUE_FILE_EXTENSIONS: &[&str] = &["cue"];
+
 /// 路径标准化
 pub fn normalize_path(path_str: &str) -> String {
     if let Ok(p) = fs::canonicalize(path_str) {
@@ -55,6 +57,10 @@ pub fn descendant_like_patterns(folder_path: &str) -> (String, String) {
 
 pub fn is_supported_library_extension(ext: &str) -> bool {
     SUPPORTED_LIBRARY_EXTENSIONS.contains(&ext)
+}
+
+pub fn is_cue_file_extension(ext: &str) -> bool {
+    CUE_FILE_EXTENSIONS.contains(&ext)
 }
 
 pub fn is_lossless_audio(codec: Option<&str>, format: &str) -> bool {

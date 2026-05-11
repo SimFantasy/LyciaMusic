@@ -29,6 +29,9 @@ export interface SongCore {
   file_modified_at?: number;
   source_type?: 'local' | 'remote';
   remote_source_id?: string;
+  cue_source_path?: string;
+  cue_start_offset?: number;
+  cue_end_offset?: number;
 }
 
 export interface Song extends SongCore {}

@@ -149,6 +149,24 @@ fn migrate_song_columns(conn: &Connection) -> Result<(), String> {
         conn.execute("ALTER TABLE songs ADD COLUMN cache_path TEXT", [])
             .ok();
     }
+    if !columns.iter().any(|column| column == "cue_source_path") {
+        conn.execute("ALTER TABLE songs ADD COLUMN cue_source_path TEXT", [])
+            .ok();
+    }
+    if !columns.iter().any(|column| column == "cue_start_offset") {
+        conn.execute(
+            "ALTER TABLE songs ADD COLUMN cue_start_offset INTEGER",
+            [],
+        )
+        .ok();
+    }
+    if !columns.iter().any(|column| column == "cue_end_offset") {
+        conn.execute(
+            "ALTER TABLE songs ADD COLUMN cue_end_offset INTEGER",
+            [],
+        )
+        .ok();
+    }
 
     Ok(())
 }

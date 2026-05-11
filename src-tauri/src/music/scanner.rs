@@ -227,6 +227,9 @@ mod tests {
             disc_number: None,
             added_at: Some(1),
             file_modified_at: Some(10),
+            cue_source_path: None,
+            cue_start_offset: None,
+            cue_end_offset: None,
         }
     }
 

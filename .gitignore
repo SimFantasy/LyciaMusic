@@ -53,3 +53,9 @@ MD/
 图标备选/
 
 website/
+
+# --- Claude Code 本地配置 ---
+.claude/
+
+# --- CD 镜像文件目录 ---
+CDImage/

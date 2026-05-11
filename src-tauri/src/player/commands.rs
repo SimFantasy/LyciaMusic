@@ -53,6 +53,7 @@ pub async fn play_audio(
     cover: String,
     duration: u32,
     output_mode: AudioOutputMode,
+    start_offset_ms: Option<u64>,
     app: tauri::AppHandle,
     db_state: tauri::State<'_, DbState>,
     state: tauri::State<'_, PlayerState>,
@@ -85,6 +86,7 @@ pub async fn play_audio(
     tx.send(AudioCommand::Play {
         source,
         output_mode: selected_output_mode,
+        start_offset_ms,
     })
     .map_err(|e| e.to_string())?;
 

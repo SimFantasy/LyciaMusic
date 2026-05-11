@@ -146,6 +146,7 @@ pub enum AudioCommand {
     Play {
         source: AudioSource,
         output_mode: AudioOutputMode,
+        start_offset_ms: Option<u64>,
     },
     Pause,
     Resume,

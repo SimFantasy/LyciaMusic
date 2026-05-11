@@ -1,6 +1,7 @@
 // music/mod.rs - 模块入口，统一导出
 
 pub mod covers;
+pub mod cue;
 pub mod files;
 pub mod library;
 pub mod lyrics;

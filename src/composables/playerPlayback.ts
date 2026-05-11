@@ -201,9 +201,11 @@ export const createPlayerPlayback = ({
       if (!isPlaying.value || isSeeking) return;
 
       try {
-        const realTime = await playbackApi.getPlaybackProgress();
-        if (Math.abs(realTime - currentTime.value) > 0.05) {
-          reanchorPlaybackClock(realTime);
+        const rawTime = await playbackApi.getPlaybackProgress();
+        const offsetSec = (currentSong.value?.cue_start_offset || 0) / 1000;
+        const adjustedTime = Math.max(0, rawTime - offsetSec);
+        if (Math.abs(adjustedTime - currentTime.value) > 0.05) {
+          reanchorPlaybackClock(adjustedTime);
         }
       } catch {}
     }, 1000);
@@ -267,18 +269,19 @@ export const createPlayerPlayback = ({
 
     isPlaying.value = true;
     isSongLoaded.value = false;
-    const cachedCover = peekCoverUrl(song.path);
-    const cachedCoverPath = peekCoverPath(song.path) || song.cover_thumb_path || '';
-    const persistedCover = primeCoverPath(song.path, song.cover_thumb_path);
-    const cachedFullCover = getFullCoverUrl(song.path);
+    const coverLookupPath = song.cue_source_path || song.path;
+    const cachedCover = peekCoverUrl(coverLookupPath);
+    const cachedCoverPath = peekCoverPath(coverLookupPath) || song.cover_thumb_path || '';
+    const persistedCover = primeCoverPath(coverLookupPath, song.cover_thumb_path);
+    const cachedFullCover = getFullCoverUrl(coverLookupPath);
     const immediateCover = cachedCover || persistedCover;
     if (immediateCover) {
       currentCover.value = immediateCover;
-      currentCoverPath.value = song.path;
+      currentCoverPath.value = coverLookupPath;
     }
     currentCoverFull.value = cachedFullCover || immediateCover || '';
     preloadPriorityCovers(getLikelyThumbnailPaths(song));
-    const currentThumbnailLoad = Promise.all([loadCover(song.path), loadCoverPath(song.path)]);
+    const currentThumbnailLoad = Promise.all([loadCover(coverLookupPath), loadCoverPath(coverLookupPath)]);
     void currentThumbnailLoad
       .then(([cover]) => {
         if (requestId !== playRequestId || currentSong.value?.path !== song.path) {
@@ -318,15 +321,19 @@ export const createPlayerPlayback = ({
 
     addToHistory(song);
 
+    const audioFilePath = song.cue_source_path || song.path;
+    const cueStartOffset = song.cue_start_offset || 0;
+
     try {
       await playbackApi.playAudio({
-        path: song.path,
+        path: audioFilePath,
         title: getSmtcTitle(song),
         artist: song.artist || 'Unknown Artist',
         album: song.album || 'Unknown Album',
         cover: cachedCoverPath,
         duration: Math.floor(song.duration),
         outputMode: settingsStore.settings.audio.outputMode,
+        startOffsetMs: cueStartOffset || undefined,
       });
       if (requestId !== playRequestId || currentSong.value?.path !== song.path) return;
 
@@ -415,13 +422,15 @@ export const createPlayerPlayback = ({
 
     isSeeking = true;
     stopPlaybackRuntime();
-    const targetTime = Math.max(0, Math.min(newTime, currentSong.value.duration));
+    const trackDuration = currentSong.value.duration;
+    const targetTime = Math.max(0, Math.min(newTime, trackDuration));
     const requestId = ++latestSeekRequestId;
     reanchorPlaybackClock(targetTime);
 
     try {
+      const offsetSec = (currentSong.value.cue_start_offset || 0) / 1000;
       await playbackApi.seekAudio({
-        time: targetTime,
+        time: targetTime + offsetSec,
         isPlaying: isPlaying.value,
         requestId,
       });

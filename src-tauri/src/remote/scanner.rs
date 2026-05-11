@@ -137,6 +137,9 @@ fn song_from_remote_file(source: &RemoteSourceCredentials, file: &RemoteFileEntr
         disc_number: None,
         added_at: None,
         file_modified_at: None,
+        cue_source_path: None,
+        cue_start_offset: None,
+        cue_end_offset: None,
     };
     apply_filename_metadata_fallback(&mut song, file);
     song
@@ -366,6 +369,9 @@ fn load_remote_song_snapshots(
                         disc_number: row.get::<_, Option<String>>(25)?,
                         added_at: i64_to_u64_opt(row.get::<_, Option<i64>>(26)?),
                         file_modified_at: i64_to_u64_opt(row.get::<_, Option<i64>>(27)?),
+                        cue_source_path: None,
+                        cue_start_offset: None,
+                        cue_end_offset: None,
                     })
                 }
                 None => None,

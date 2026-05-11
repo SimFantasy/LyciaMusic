@@ -85,7 +85,8 @@ export async function loadLyrics() {
   parsedLyrics.value = [];
 
   try {
-    const payload = await invoke<LyricsPayload>('get_song_lyrics_payload', { path: song.path });
+    const lyricsPath = song.cue_source_path || song.path;
+    const payload = await invoke<LyricsPayload>('get_song_lyrics_payload', { path: lyricsPath });
 
     if (requestId !== loadRequestId || playbackStore.currentSong?.path !== song.path) return;
 

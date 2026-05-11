@@ -44,7 +44,10 @@ pub(crate) fn ensure_base_schema(conn: &Connection) -> Result<(), String> {
             remote_source_id TEXT,
             remote_uri TEXT,
             remote_etag TEXT,
-            cache_path TEXT
+            cache_path TEXT,
+            cue_source_path TEXT,
+            cue_start_offset INTEGER,
+            cue_end_offset INTEGER
         )",
         [],
     )
@@ -291,6 +294,11 @@ pub(crate) fn ensure_base_schema(conn: &Connection) -> Result<(), String> {
     .ok();
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_songs_remote_source_id ON songs(remote_source_id)",
+        [],
+    )
+    .ok();
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_songs_cue_source_path ON songs(cue_source_path)",
         [],
     )
     .ok();

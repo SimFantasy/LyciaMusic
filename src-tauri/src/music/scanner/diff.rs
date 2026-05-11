@@ -1,10 +1,11 @@
+use super::super::cue;
 use super::super::types::Song;
 use super::super::utils::{
-    descendant_like_patterns, is_supported_library_extension, normalize_path,
+    descendant_like_patterns, is_cue_file_extension, is_supported_library_extension, normalize_path,
 };
 use super::parser::{
-    enrich_album_groups, parse_song_from_file, preferred_parse_workers, song_identity_missing,
-    song_metadata_incomplete,
+    build_cue_track_song, enrich_album_groups, parse_song_from_file, preferred_parse_workers,
+    song_identity_missing, song_metadata_incomplete,
 };
 use super::progress::ScanProgressReporter;
 use super::{
@@ -14,6 +15,7 @@ use rayon::prelude::*;
 use rusqlite::params;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 use walkdir::WalkDir;
 
 pub(super) struct DbSongSnapshot {
@@ -62,7 +64,7 @@ pub(super) fn load_db_snapshot_for_folder(
 
     let mut stmt = conn
         .prepare(
-                "SELECT id, path, title, artist, artist_names, effective_artist_names, album, album_artist, album_key, is_various_artists_album, collapse_artist_credits, duration, cover_thumb_path, bitrate, sample_rate, bit_depth, format, container, codec, file_size, track_number, disc_number, added_at, file_modified_at
+                "SELECT id, path, title, artist, artist_names, effective_artist_names, album, album_artist, album_key, is_various_artists_album, collapse_artist_credits, duration, cover_thumb_path, bitrate, sample_rate, bit_depth, format, container, codec, file_size, track_number, disc_number, added_at, file_modified_at, cue_source_path, cue_start_offset, cue_end_offset
              FROM songs
              WHERE path = ?1
                 OR path LIKE ?2 ESCAPE '^'
@@ -125,6 +127,11 @@ pub(super) fn load_db_snapshot_for_folder(
                             disc_number,
                             added_at: i64_to_u64_opt(added_at_i64),
                             file_modified_at: i64_to_u64_opt(file_modified_at_i64),
+                            cue_source_path: row.get::<_, Option<String>>(24)?,
+                            cue_start_offset: row
+                                .get::<_, Option<i64>>(25)?
+                                .map(|v| v as u32),
+                            cue_end_offset: row.get::<_, Option<i64>>(26)?.map(|v| v as u32),
                         },
                     },
                 ))
@@ -201,6 +208,64 @@ fn collect_disk_candidates(
         }
     }
 
+    // Collect CUE sheet tracks and record referenced audio paths
+    let mut cue_referenced_audio: Vec<String> = Vec::new();
+
+    for entry in WalkDir::new(normalized_folder)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+    {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let ext = match path.extension() {
+            Some(ext) => ext.to_string_lossy().to_lowercase(),
+            None => continue,
+        };
+
+        if !is_cue_file_extension(&ext) {
+            continue;
+        }
+
+        let cue_file_mtime = entry
+            .metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+            .map(|duration| duration.as_secs() as i64);
+        let cue_file_size = entry
+            .metadata()
+            .map(|m| m.len() as i64)
+            .unwrap_or(0);
+
+        let cue_path_str = normalize_path(&path.to_string_lossy().to_string());
+
+        if let Ok(sheet) = cue::parse_cue_file(path) {
+            let resolved = normalize_path(&sheet.resolved_audio_path.to_string_lossy());
+            cue_referenced_audio.push(resolved);
+
+            for track in &sheet.tracks {
+                let synthetic_path =
+                    format!("{}::track{:02}", cue_path_str, track.track_number);
+                candidates.push(DiskCandidate {
+                    index: candidates.len(),
+                    path: PathBuf::from(&synthetic_path),
+                    path_str: synthetic_path,
+                    ext: "cue_track".to_string(),
+                    disk_mtime: cue_file_mtime,
+                    disk_size: cue_file_size,
+                });
+            }
+        }
+    }
+
+    // Filter out audio files that are referenced by CUE sheets
+    if !cue_referenced_audio.is_empty() {
+        candidates.retain(|c| !cue_referenced_audio.contains(&c.path_str));
+    }
+
     if let Some(reporter) = reporter {
         reporter.emit_collecting(
             candidates.len(),
@@ -252,6 +317,100 @@ fn parse_tasks_in_parallel(
     Ok(results)
 }
 
+fn probe_audio_duration_ms(path: &Path) -> Option<u32> {
+    use symphonia::core::codecs::CODEC_TYPE_NULL;
+    use symphonia::core::formats::FormatOptions;
+    use symphonia::core::io::MediaSourceStream;
+    use symphonia::core::meta::MetadataOptions;
+    use symphonia::core::probe::Hint;
+
+    let file = std::fs::File::open(path).ok()?;
+    let media_source = MediaSourceStream::new(Box::new(file), Default::default());
+    let mut hint = Hint::new();
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        hint.with_extension(ext);
+    }
+    let probed = symphonia::default::get_probe()
+        .format(
+            &hint,
+            media_source,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
+        .ok()?;
+    let track = probed
+        .format
+        .tracks()
+        .iter()
+        .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)?;
+    let time_base = track.codec_params.time_base?;
+    let frames = track.codec_params.n_frames?;
+    let time = time_base.calc_time(frames);
+    let seconds = time.seconds.saturating_add(u64::from(time.frac > 0.0));
+    Some((seconds.min(u32::MAX as u64) * 1000) as u32)
+}
+
+fn process_cue_parse_tasks(tasks: &[ParseTask]) -> Vec<ParsedTaskResult> {
+    if tasks.is_empty() {
+        return Vec::new();
+    }
+
+    let mut grouped: HashMap<String, Vec<&ParseTask>> = HashMap::new();
+    for task in tasks {
+        // Extract CUE file path from synthetic path: "{cue_path}::track{NN}"
+        if let Some(cue_path) = task.path_str.split("::track").next() {
+            grouped
+                .entry(cue_path.to_string())
+                .or_default()
+                .push(task);
+        }
+    }
+
+    let mut results = Vec::new();
+    for (cue_path, group_tasks) in grouped {
+        let cue_path_buf = PathBuf::from(&cue_path);
+        let sheet = match cue::parse_cue_file(&cue_path_buf) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let flac_path = sheet.resolved_audio_path.to_string_lossy().to_string();
+        let flac_duration_ms = probe_audio_duration_ms(&sheet.resolved_audio_path).unwrap_or(0);
+        let cue_path_normalized = normalize_path(&cue_path);
+
+        for task in group_tasks {
+            // Extract track number from synthetic path
+            let track_number: u32 = task
+                .path_str
+                .rsplit("::track")
+                .next()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+
+            let track = match sheet.tracks.iter().find(|t| t.track_number == track_number) {
+                Some(t) => t,
+                None => continue,
+            };
+
+            if let Some(song) = build_cue_track_song(
+                &cue_path_normalized,
+                &flac_path,
+                track,
+                sheet.album_title.as_deref(),
+                sheet.album_performer.as_deref(),
+                flac_duration_ms,
+            ) {
+                results.push(ParsedTaskResult {
+                    index: task.index,
+                    song,
+                    is_add: task.is_add,
+                });
+            }
+        }
+    }
+
+    results
+}
+
 pub(super) fn collect_scan_diff(
     normalized_folder: &str,
     mut db_snapshot: HashMap<String, DbSongSnapshot>,
@@ -290,6 +449,14 @@ pub(super) fn collect_scan_diff(
         }
     }
 
+    // Separate CUE-track tasks from regular audio tasks
+    let (cue_tasks, audio_tasks): (Vec<ParseTask>, Vec<ParseTask>) =
+        parse_tasks.into_iter().partition(|t| t.ext == "cue_track");
+    parse_tasks = audio_tasks;
+
+    // Process CUE tasks: group by CUE file, parse once, build all track songs
+    let cue_results = process_cue_parse_tasks(&cue_tasks);
+
     if let Some(reporter) = reporter {
         reporter.start_parsing(parse_tasks.len());
     }
@@ -299,6 +466,16 @@ pub(super) fn collect_scan_diff(
     let mut to_update = Vec::new();
 
     for result in parsed_results {
+        songs_by_index[result.index] = Some(result.song.clone());
+        if result.is_add {
+            to_add.push(result.song);
+        } else {
+            to_update.push(result.song);
+        }
+    }
+
+    // Merge CUE track results
+    for result in cue_results {
         songs_by_index[result.index] = Some(result.song.clone());
         if result.is_add {
             to_add.push(result.song);

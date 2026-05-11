@@ -368,6 +368,7 @@ fn append_decoded_source<R>(
     current_sink: &mut Option<Sink>,
     current_volume: f32,
     progress: &Arc<SharedProgress>,
+    start_offset: Option<Duration>,
 ) where
     R: Read + Seek + Send + Sync + 'static,
 {
@@ -380,11 +381,23 @@ fn append_decoded_source<R>(
             let channels = source.channels();
             progress.sample_rate.store(rate, Ordering::Relaxed);
             progress.channels.store(channels as u32, Ordering::Relaxed);
-            progress.samples_played.store(0, Ordering::Relaxed);
-            progress.visualizer.reset();
+
+            let offset = start_offset.unwrap_or(Duration::ZERO);
+            let skip_samples =
+                (offset.as_secs_f64() * rate as f64 * channels as f64).round() as u64;
+            progress
+                .samples_played
+                .store(skip_samples, Ordering::Relaxed);
+            if start_offset.is_none() {
+                progress.visualizer.reset();
+            }
+
+            let skipped_source = source
+                .convert_samples::<f32>()
+                .skip_duration(offset);
 
             let timed_source = TimedSource::new(
-                source.convert_samples::<f32>(),
+                skipped_source,
                 progress.samples_played.clone(),
                 progress.visualizer.clone(),
             );
@@ -406,6 +419,7 @@ fn handle_play(
     current_volume: f32,
     is_playing_flag: &mut bool,
     progress: &Arc<SharedProgress>,
+    start_offset_ms: Option<u64>,
 ) {
     *current_path = source.display_path();
     *is_playing_flag = true;
@@ -415,15 +429,31 @@ fn handle_play(
         sink.stop();
     }
 
+    let start_offset = start_offset_ms.map(Duration::from_millis);
+
     match source {
         AudioSource::LocalFile(path) => {
             if let Ok(file) = File::open(path) {
-                append_decoded_source(file, output, current_sink, current_volume, progress);
+                append_decoded_source(
+                    file,
+                    output,
+                    current_sink,
+                    current_volume,
+                    progress,
+                    start_offset,
+                );
             }
         }
         AudioSource::RemoteWebDav(stream) => {
             if let Ok(reader) = RemoteRangeReader::new(stream) {
-                append_decoded_source(reader, output, current_sink, current_volume, progress);
+                append_decoded_source(
+                    reader,
+                    output,
+                    current_sink,
+                    current_volume,
+                    progress,
+                    start_offset,
+                );
             }
         }
     }
@@ -563,6 +593,7 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                     AudioCommand::Play {
                         source,
                         output_mode,
+                        start_offset_ms,
                     } => {
                         requested_output_mode = output_mode;
                         let source_is_remote = source.is_remote();
@@ -577,12 +608,14 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
 
                         #[cfg(target_os = "windows")]
                         if output_mode == AudioOutputMode::WasapiExclusive && !source_is_remote {
+                            let exclusive_start = start_offset_ms
+                                .map_or(Duration::ZERO, Duration::from_millis);
                             match start_exclusive_playback(
                                 display_path.clone(),
                                 selected_device_name.clone(),
                                 current_volume,
                                 true,
-                                Duration::ZERO,
+                                exclusive_start,
                                 &thread_progress,
                             ) {
                                 Ok(playback) => {
@@ -655,6 +688,7 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                             current_volume,
                             &mut is_playing_flag,
                             &thread_progress,
+                            start_offset_ms,
                         )
                     }
                     AudioCommand::Pause => {
@@ -923,6 +957,7 @@ mod tests {
             1.0,
             &mut is_playing_flag,
             &progress,
+            None,
         );
 
         assert_eq!(progress.samples_played.load(Ordering::Relaxed), 0);

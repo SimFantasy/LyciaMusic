@@ -140,9 +140,12 @@ fn apply_insert_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                 track_number,
                 disc_number,
                 added_at,
-                file_modified_at
+                file_modified_at,
+                cue_source_path,
+                cue_start_offset,
+                cue_end_offset
              )
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)
              ON CONFLICT(path) DO UPDATE SET
                 title = excluded.title,
                 artist = excluded.artist,
@@ -165,7 +168,10 @@ fn apply_insert_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                 track_number = excluded.track_number,
                 disc_number = excluded.disc_number,
                 added_at = excluded.added_at,
-                file_modified_at = excluded.file_modified_at",
+                file_modified_at = excluded.file_modified_at,
+                cue_source_path = excluded.cue_source_path,
+                cue_start_offset = excluded.cue_start_offset,
+                cue_end_offset = excluded.cue_end_offset",
             )
             .map_err(|error| error.to_string())?;
 
@@ -199,7 +205,10 @@ fn apply_insert_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                     &song.track_number,
                     &song.disc_number,
                     added_at_i64,
-                    mtime_i64
+                    mtime_i64,
+                    &song.cue_source_path,
+                    song.cue_start_offset.map(|v| v as i64),
+                    song.cue_end_offset.map(|v| v as i64)
                 ])
                 .map_err(|error| format!("insert failed for '{}': {}", song.path, error))?;
         }
@@ -244,7 +253,10 @@ fn apply_update_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                   track_number = ?19,
                   disc_number = ?20,
                   added_at = ?21,
-                  file_modified_at = ?22
+                  file_modified_at = ?22,
+                  cue_source_path = ?24,
+                  cue_start_offset = ?25,
+                  cue_end_offset = ?26
               WHERE path = ?23",
             )
             .map_err(|error| error.to_string())?;
@@ -279,7 +291,10 @@ fn apply_update_batch(conn: &mut rusqlite::Connection, songs: &[Song]) -> Result
                     &song.disc_number,
                     added_at_i64,
                     mtime_i64,
-                    &song.path
+                    &song.path,
+                    &song.cue_source_path,
+                    song.cue_start_offset.map(|v| v as i64),
+                    song.cue_end_offset.map(|v| v as i64)
                 ])
                 .map_err(|error| format!("update failed for '{}': {}", song.path, error))?;
         }

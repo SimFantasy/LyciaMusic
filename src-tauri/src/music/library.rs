@@ -217,7 +217,7 @@ fn folder_song_matches_query(row: &FolderViewSongRow, query: &str) -> bool {
 fn load_cached_songs(conn: &rusqlite::Connection) -> Result<Vec<LibrarySong>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, path, title, artist, artist_names, effective_artist_names, album, album_artist, album_key, is_various_artists_album, collapse_artist_credits, duration, cover_thumb_path, bitrate, sample_rate, bit_depth, format, container, codec, file_size, track_number, disc_number, added_at, file_modified_at, source_type, remote_source_id
+            "SELECT id, path, title, artist, artist_names, effective_artist_names, album, album_artist, album_key, is_various_artists_album, collapse_artist_credits, duration, cover_thumb_path, bitrate, sample_rate, bit_depth, format, container, codec, file_size, track_number, disc_number, added_at, file_modified_at, cue_source_path, cue_start_offset, cue_end_offset, source_type, remote_source_id
              FROM songs",
         )
         .map_err(|e| e.to_string())?;
@@ -265,10 +265,13 @@ fn load_cached_songs(conn: &rusqlite::Connection) -> Result<Vec<LibrarySong>, St
                 disc_number,
                 added_at: i64_to_u64_opt(added_at_i64),
                 file_modified_at: i64_to_u64_opt(file_modified_at_i64),
+                cue_source_path: row.get::<_, Option<String>>(24)?,
+                cue_start_offset: row.get::<_, Option<i64>>(25)?.map(|v| v as u32),
+                cue_end_offset: row.get::<_, Option<i64>>(26)?.map(|v| v as u32),
                 source_type: row
-                    .get::<_, Option<String>>(24)?
+                    .get::<_, Option<String>>(27)?
                     .unwrap_or_else(|| "local".to_string()),
-                remote_source_id: row.get::<_, Option<String>>(25)?,
+                remote_source_id: row.get::<_, Option<String>>(28)?,
             })
         })
         .map_err(|e| e.to_string())?;

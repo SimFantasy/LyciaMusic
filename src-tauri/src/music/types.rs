@@ -55,6 +55,9 @@ pub struct Song {
     pub disc_number: Option<String>,
     pub added_at: Option<u64>,
     pub file_modified_at: Option<u64>,
+    pub cue_source_path: Option<String>,
+    pub cue_start_offset: Option<u32>,
+    pub cue_end_offset: Option<u32>,
 }
 
 #[derive(Deserialize, Clone, Debug, Default)]
@@ -102,6 +105,9 @@ pub struct LibrarySong {
     pub file_modified_at: Option<u64>,
     pub source_type: String,
     pub remote_source_id: Option<String>,
+    pub cue_source_path: Option<String>,
+    pub cue_start_offset: Option<u32>,
+    pub cue_end_offset: Option<u32>,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]

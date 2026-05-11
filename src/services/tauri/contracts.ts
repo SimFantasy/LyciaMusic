@@ -109,6 +109,7 @@ export interface PlayAudioOptions {
   cover: string;
   duration: number;
   outputMode: AudioOutputMode;
+  startOffsetMs?: number;
 }
 
 export interface UpdatePlaybackMetadataOptions {
