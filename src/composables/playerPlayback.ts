@@ -11,6 +11,7 @@ interface PlaySongOptions {
   clearShuffleFuture?: boolean;
   preserveQueue?: boolean;
   insertAfterCurrent?: boolean;
+  startTime?: number;
 }
 
 interface SeekCompletedPayload {
@@ -314,15 +315,19 @@ export const createPlayerPlayback = ({
     if (retainedFullCoverPaths.length > 1) {
       preloadFullCovers(retainedFullCoverPaths.filter(path => path !== song.path));
     }
+    const cueStartOffset = song.cue_start_offset || 0;
+    const requestedStartTime = Number.isFinite(options.startTime) ? (options.startTime as number) : 0;
+    const resumeTime = Math.max(0, Math.min(requestedStartTime, song.duration || requestedStartTime));
+
     stopPlaybackRuntime();
-    reanchorPlaybackClock(0);
+    reanchorPlaybackClock(resumeTime);
     accumulatedTime = 0;
     sessionStartTime = null;
 
     addToHistory(song);
 
     const audioFilePath = song.cue_source_path || song.path;
-    const cueStartOffset = song.cue_start_offset || 0;
+    const startOffsetMs = cueStartOffset + Math.round(resumeTime * 1000);
 
     try {
       await playbackApi.playAudio({
@@ -333,7 +338,7 @@ export const createPlayerPlayback = ({
         cover: cachedCoverPath,
         duration: Math.floor(song.duration),
         outputMode: settingsStore.settings.audio.outputMode,
-        startOffsetMs: cueStartOffset || undefined,
+        startOffsetMs: startOffsetMs || undefined,
       });
       if (requestId !== playRequestId || currentSong.value?.path !== song.path) return;
 
@@ -402,7 +407,7 @@ export const createPlayerPlayback = ({
     }
 
     if (!isSongLoaded.value) {
-      await playSong(currentSong.value);
+      await playSong(currentSong.value, { startTime: currentTime.value });
     } else {
       await playbackApi.resumeAudio();
       sessionStartTime = Date.now();

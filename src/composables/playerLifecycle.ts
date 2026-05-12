@@ -526,6 +526,16 @@ export const createPlayerLifecycle = ({
 
     // 流光参数微调时 debounce 延迟重提取主色，避免拖动滑块时频繁触发层切换闪烁
     let flowTweakTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastPersistedPlaybackTime = Number.NaN;
+
+    const persistCurrentPlaybackTime = () => {
+      if (!currentSong.value) return;
+      const nextTime = Math.max(0, currentTime.value);
+      if (Math.abs(nextTime - lastPersistedPlaybackTime) < 0.5) return;
+      lastPersistedPlaybackTime = nextTime;
+      playerStorage.writeNumber(playerStorageKeys.lastTime, nextTime);
+    };
+
     watch([
       () => settings.value.theme.flowColorBoost,
       () => settings.value.theme.flowDepth,
@@ -551,13 +561,15 @@ export const createPlayerLifecycle = ({
 
     watch(isPlaying, playing => {
       if (!playing) {
-        playerStorage.writeNumber(playerStorageKeys.lastTime, currentTime.value);
+        persistCurrentPlaybackTime();
       }
     });
 
+    const playbackTimePersistTimer = setInterval(persistCurrentPlaybackTime, 2000);
+
     const beforeUnloadHandler = () => {
       flushPersistedState();
-      playerStorage.writeNumber(playerStorageKeys.lastTime, currentTime.value);
+      persistCurrentPlaybackTime();
     };
 
     onMounted(async () => {
@@ -622,6 +634,8 @@ export const createPlayerLifecycle = ({
       if (remoteAutoSyncTimer) {
         clearInterval(remoteAutoSyncTimer);
       }
+      persistCurrentPlaybackTime();
+      clearInterval(playbackTimePersistTimer);
       dominantColorTaskId += 1;
       dominantColorSignature = '';
       void Promise.all(listenerRegistrations).then(unlisteners => {
