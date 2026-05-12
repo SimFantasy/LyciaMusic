@@ -243,7 +243,7 @@ onMounted(() => {
     </div>
 
     <div class="mt-8 text-xs text-gray-400 dark:text-gray-600">
-      Copyright © 2026 LyciaPlayer Developer. All Rights Reserved.
+      Copyright © 2026 LyciaPlayer Developer. Licensed under AGPL-3.0-only.
     </div>
 
     <ModernModal
