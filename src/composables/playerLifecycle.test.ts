@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
+import { nextTick } from 'vue';
 
 import type { Song } from '../types';
 
@@ -42,10 +43,6 @@ vi.mock('./colorExtraction', () => ({
   extractDominantColors: vi.fn().mockResolvedValue([]),
 }));
 
-import { useLibraryStore } from '../features/library/store';
-import { usePlaybackStore } from '../features/playback/store';
-import { createPlayerLifecycle } from './playerLifecycle';
-
 const makeSong = (overrides: Partial<Song> = {}): Song => ({
   path: 'remote://source/demo.mp3',
   name: 'demo.mp3',
@@ -67,14 +64,99 @@ const makeSong = (overrides: Partial<Song> = {}): Song => ({
   ...overrides,
 });
 
-describe('player lifecycle remote metadata events', () => {
+const createLifecycleDeps = (loadLyrics = vi.fn()) => ({
+  bootstrapLibrary: vi.fn().mockResolvedValue(undefined),
+  togglePlay: vi.fn(),
+  nextSong: vi.fn(),
+  prevSong: vi.fn(),
+  applyLibraryScanBatch: vi.fn(),
+  flushBufferedLibraryScanBatch: vi.fn(),
+  handleSeekCompleted: vi.fn(),
+  schedulePersistedState: vi.fn(),
+  flushPersistedState: vi.fn(),
+  restorePathBackedState: vi.fn().mockResolvedValue(undefined),
+  restoreRecentHistory: vi.fn().mockResolvedValue(undefined),
+  refreshStateSongReferences: vi.fn(),
+  loadLyrics,
+  disposePlayerPlayback: vi.fn(),
+  disposeLibraryRuntime: vi.fn(),
+  disposePlayerPersistence: vi.fn(),
+  disposeLibraryBatch: vi.fn(),
+  lastSongPathKey: 'last-song-path',
+  legacyLastSongKey: 'last-song',
+});
+
+const loadModules = async () => {
+  const [
+    { useLibraryStore },
+    { usePlaybackStore },
+    { useSettingsStore },
+    { useUiStore },
+    { createPlayerLifecycle },
+    colorExtraction,
+  ] = await Promise.all([
+    import('../features/library/store'),
+    import('../features/playback/store'),
+    import('../features/settings/store'),
+    import('../shared/stores/ui'),
+    import('./playerLifecycle'),
+    import('./colorExtraction'),
+  ]);
+
+  return {
+    useLibraryStore,
+    usePlaybackStore,
+    useSettingsStore,
+    useUiStore,
+    createPlayerLifecycle,
+    colorExtraction,
+  };
+};
+
+describe('player lifecycle', () => {
   beforeEach(() => {
+    vi.resetModules();
     setActivePinia(createPinia());
     vi.clearAllMocks();
     mocks.listen.mockResolvedValue(vi.fn());
   });
 
+  it('extracts cover colors for desktop lyrics auto scheme when flow background is disabled', async () => {
+    const {
+      usePlaybackStore,
+      useSettingsStore,
+      useUiStore,
+      createPlayerLifecycle,
+      colorExtraction,
+    } = await loadModules();
+    const playbackStore = usePlaybackStore();
+    const settingsStore = useSettingsStore();
+    const uiStore = useUiStore();
+    const extractDominantColors = vi.mocked(colorExtraction.extractDominantColors);
+    extractDominantColors.mockResolvedValueOnce(['#111111', '#222222', '#333333', '#444444']);
+
+    settingsStore.settings.theme.dynamicBgType = 'none';
+    settingsStore.settings.desktopLyrics.colorScheme = 'auto';
+    createPlayerLifecycle(createLifecycleDeps()).init();
+    playbackStore.currentCover = 'http://asset.localhost/cover-thumb.png';
+
+    await nextTick();
+    await Promise.resolve();
+
+    expect(extractDominantColors).toHaveBeenCalledWith(
+      'http://asset.localhost/cover-thumb.png',
+      4,
+      { colorBoost: 25, depth: 30 },
+    );
+    expect(uiStore.dominantColors).toEqual(['#111111', '#222222', '#333333', '#444444']);
+  });
+
   it('patches current remote song metadata when the backend finishes caching it', async () => {
+    const {
+      useLibraryStore,
+      usePlaybackStore,
+      createPlayerLifecycle,
+    } = await loadModules();
     const callbacks = new Map<string, (event: { payload: unknown }) => void>();
     mocks.listen.mockImplementation((eventName: string, callback: (event: { payload: unknown }) => void) => {
       callbacks.set(eventName, callback);
@@ -99,27 +181,7 @@ describe('player lifecycle remote metadata events', () => {
     playbackStore.currentSong = staleSong;
     const loadLyrics = vi.fn();
 
-    createPlayerLifecycle({
-      bootstrapLibrary: vi.fn().mockResolvedValue(undefined),
-      togglePlay: vi.fn(),
-      nextSong: vi.fn(),
-      prevSong: vi.fn(),
-      applyLibraryScanBatch: vi.fn(),
-      flushBufferedLibraryScanBatch: vi.fn(),
-      handleSeekCompleted: vi.fn(),
-      schedulePersistedState: vi.fn(),
-      flushPersistedState: vi.fn(),
-      restorePathBackedState: vi.fn().mockResolvedValue(undefined),
-      restoreRecentHistory: vi.fn().mockResolvedValue(undefined),
-      refreshStateSongReferences: vi.fn(),
-      loadLyrics,
-      disposePlayerPlayback: vi.fn(),
-      disposeLibraryRuntime: vi.fn(),
-      disposePlayerPersistence: vi.fn(),
-      disposeLibraryBatch: vi.fn(),
-      lastSongPathKey: 'last-song-path',
-      legacyLastSongKey: 'last-song',
-    }).init();
+    createPlayerLifecycle(createLifecycleDeps(loadLyrics)).init();
 
     callbacks.get('remote-lyrics-cache-ready')?.({
       payload: {

@@ -450,7 +450,10 @@ export const createPlayerLifecycle = ({
     };
 
     const updateDominantColors = async (cover: string) => {
-      if (settings.value.theme.dynamicBgType !== 'flow' || !cover) {
+      const needsCoverPalette = settings.value.theme.dynamicBgType === 'flow'
+        || settings.value.desktopLyrics.colorScheme === 'auto';
+
+      if (!needsCoverPalette || !cover) {
         dominantColorTaskId += 1;
         dominantColorSignature = '';
         dominantColors.value = [...defaultDominantColors];
@@ -524,7 +527,7 @@ export const createPlayerLifecycle = ({
       }
     };
 
-    // 流光参数微调时 debounce 延迟重提取主色，避免拖动滑块时频繁触发层切换闪烁
+    // 流光/桌面歌词封面取色共用主色，参数微调时 debounce 延迟重提取，避免拖动滑块时频繁触发层切换闪烁
     let flowTweakTimer: ReturnType<typeof setTimeout> | null = null;
     let lastPersistedPlaybackTime = Number.NaN;
 
@@ -551,10 +554,17 @@ export const createPlayerLifecycle = ({
       (dynamicBgType) => {
         if (dynamicBgType !== 'flow') {
           clearPaletteCache();
-          void updateDominantColors('');
+          void updateDominantColors(currentCover.value);
           return;
         }
 
+        void updateDominantColors(currentCover.value);
+      },
+    );
+
+    watch(
+      () => settings.value.desktopLyrics.colorScheme,
+      () => {
         void updateDominantColors(currentCover.value);
       },
     );
