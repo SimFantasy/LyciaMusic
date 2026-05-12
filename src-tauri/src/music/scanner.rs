@@ -361,6 +361,40 @@ mod tests {
     }
 
     #[test]
+    fn collect_scan_diff_handles_cue_tracks_after_filtering_referenced_audio() {
+        let temp_dir = create_empty_temp_dir();
+        let audio_path = temp_dir.join("album.flac");
+        let cue_path = temp_dir.join("album.cue");
+        let normalized_folder = temp_dir.to_string_lossy().to_string();
+
+        fs::write(&audio_path, b"fake flac").expect("write referenced audio");
+        fs::write(
+            &cue_path,
+            concat!(
+                "TITLE \"Cue Album\"\n",
+                "PERFORMER \"Cue Artist\"\n",
+                "FILE \"album.flac\" WAVE\n",
+                "  TRACK 01 AUDIO\n",
+                "    TITLE \"First\"\n",
+                "    INDEX 01 00:00:00\n",
+                "  TRACK 02 AUDIO\n",
+                "    TITLE \"Second\"\n",
+                "    INDEX 01 03:00:00\n",
+            ),
+        )
+        .expect("write cue");
+
+        let diff =
+            collect_scan_diff(&normalized_folder, HashMap::new(), None).expect("collect diff");
+
+        assert_eq!(diff.songs.len(), 2);
+        assert_eq!(diff.to_add.len(), 2);
+        assert!(diff.songs.iter().all(|song| song.path.contains("::track")));
+
+        fs::remove_dir_all(temp_dir).expect("remove temp dir");
+    }
+
+    #[test]
     fn apply_scan_changes_writes_and_syncs_artist_relations() {
         let mut conn = setup_test_db();
         let added_song = make_song("/music/first.flac");

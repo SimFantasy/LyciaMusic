@@ -33,7 +33,6 @@ pub(super) struct ScanDiff {
 }
 
 struct DiskCandidate {
-    index: usize,
     path: PathBuf,
     path_str: String,
     ext: String,
@@ -185,7 +184,6 @@ fn collect_disk_candidates(
 
         discovered += 1;
         candidates.push(DiskCandidate {
-            index: candidates.len(),
             path: path.to_path_buf(),
             path_str,
             ext,
@@ -250,7 +248,6 @@ fn collect_disk_candidates(
                 let synthetic_path =
                     format!("{}::track{:02}", cue_path_str, track.track_number);
                 candidates.push(DiskCandidate {
-                    index: candidates.len(),
                     path: PathBuf::from(&synthetic_path),
                     path_str: synthetic_path,
                     ext: "cue_track".to_string(),
@@ -421,7 +418,7 @@ pub(super) fn collect_scan_diff(
     let mut songs_by_index: Vec<Option<Song>> = vec![None; candidates.len()];
     let mut parse_tasks = Vec::new();
 
-    for candidate in &candidates {
+    for (candidate_index, candidate) in candidates.iter().enumerate() {
         if let Some(db_info) = db_snapshot.remove(&candidate.path_str) {
             if db_info.file_modified_at != candidate.disk_mtime
                 || db_info.file_size != candidate.disk_size
@@ -429,18 +426,18 @@ pub(super) fn collect_scan_diff(
                 || song_metadata_incomplete(&db_info.song)
             {
                 parse_tasks.push(ParseTask {
-                    index: candidate.index,
+                    index: candidate_index,
                     path: candidate.path.clone(),
                     path_str: candidate.path_str.clone(),
                     ext: candidate.ext.clone(),
                     is_add: false,
                 });
             } else {
-                songs_by_index[candidate.index] = Some(db_info.song);
+                songs_by_index[candidate_index] = Some(db_info.song);
             }
         } else {
             parse_tasks.push(ParseTask {
-                index: candidate.index,
+                index: candidate_index,
                 path: candidate.path.clone(),
                 path_str: candidate.path_str.clone(),
                 ext: candidate.ext.clone(),
