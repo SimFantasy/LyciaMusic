@@ -7,6 +7,7 @@ import { useThemeSettings } from '../../composables/useThemeSettings';
 import { useCoverCache } from '../../composables/useCoverCache';
 import { usePlaybackStore } from '../../features/playback/store';
 import { useWindowMaterial } from '../../composables/windowMaterial';
+import { getPreblurredBackgroundUrl } from '../../composables/preblurredBackgroundCache';
 
 const { currentCover, currentCoverFull, dominantColors, showPlayerDetail } = usePlayer();
 const { theme, isDarkTheme } = useThemeSettings();
@@ -70,7 +71,7 @@ const activeBackgroundInfo = computed(() => {
   if (currentTheme.dynamicBgType === 'blur') {
     return {
       src: currentCoverFull.value || currentCover.value,
-      blur: 40,
+      blur: 32,
       opacity: 0.75,
       scale: 1.25,
       isDynamic: false,
@@ -198,11 +199,14 @@ const flowScene = computed(() => {
 });
 
 const flowLayers = ref<FlowLayerSnapshot[]>([]);
+const preblurredStaticBgSrc = ref('');
+const isStaticBgPreblurred = ref(false);
 
 let flowLayerId = 0;
 let flowTransitionTimer: ReturnType<typeof setTimeout> | null = null;
 let flowEnterAnimationFrame: number | null = null;
 let fullCoverRequestId = 0;
+let preblurRequestId = 0;
 
 function clearFlowTransitionTimer() {
   if (flowTransitionTimer) {
@@ -347,10 +351,55 @@ watch(
   { immediate: true },
 );
 
+const staticBlurAmount = computed(() => {
+  const info = activeBackgroundInfo.value;
+  if (info?.type !== 'blur') {
+    return 0;
+  }
+
+  return isMicaWindowMaterial.value ? Math.min(info.blur, 26) : info.blur;
+});
+
+const staticBrightness = computed(() => {
+  const info = activeBackgroundInfo.value;
+  return info?.type === 'blur' ? info.opacity : 1;
+});
+
+watch(
+  [() => activeBackgroundInfo.value?.type, bgImageSrc, staticBlurAmount, staticBrightness],
+  async ([backgroundType, src, blur, brightness]) => {
+    const requestId = ++preblurRequestId;
+    preblurredStaticBgSrc.value = '';
+    isStaticBgPreblurred.value = false;
+
+    if (backgroundType !== 'blur' || !src) {
+      return;
+    }
+
+    const preblurredUrl = await getPreblurredBackgroundUrl(src, {
+      blur,
+      brightness,
+    });
+
+    if (
+      requestId !== preblurRequestId
+      || activeBackgroundInfo.value?.type !== 'blur'
+      || bgImageSrc.value !== src
+    ) {
+      return;
+    }
+
+    preblurredStaticBgSrc.value = preblurredUrl;
+    isStaticBgPreblurred.value = preblurredUrl !== src;
+  },
+  { immediate: true },
+);
+
 onBeforeUnmount(() => {
   clearFlowTransitionTimer();
   clearFlowEnterAnimationFrame();
   fullCoverRequestId += 1;
+  preblurRequestId += 1;
 });
 
 const staticMaskClass = computed(() => {
@@ -460,10 +509,10 @@ const materialScrimStyle = computed(() => {
       >
         <div class="absolute inset-0 z-10 transition-colors duration-500" :class="staticMaskClass"></div>
         <img
-          :src="bgImageSrc"
-          class="w-full h-full object-cover transition-all duration-1000 z-0"
+          :src="preblurredStaticBgSrc || bgImageSrc"
+          class="w-full h-full object-cover transition-opacity duration-1000 z-0"
           :style="{
-            filter: `blur(${isMicaWindowMaterial ? Math.min(activeBackgroundInfo.blur, 26) : activeBackgroundInfo.blur}px) brightness(${activeBackgroundInfo.opacity})`,
+            filter: isStaticBgPreblurred ? 'none' : `blur(${staticBlurAmount}px) brightness(${staticBrightness})`,
             transform: `scale(${activeBackgroundInfo.scale})`,
             opacity: staticImageOpacity,
           }"
