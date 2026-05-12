@@ -320,6 +320,7 @@ export interface ShortcutSettings {
 
 export interface AppSettings {
   closeToTray: boolean;
+  showDesktopLyrics: boolean;
   showQualityBadges: boolean;
   enableScrollToTopButton: boolean;
   // Deprecated compat field. Retained only for legacy config deserialization.

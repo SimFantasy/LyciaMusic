@@ -88,6 +88,7 @@ export const defaultAudioSettings: AudioSettings = {
 
 export const defaultAppSettings: AppSettings = {
   closeToTray: false,
+  showDesktopLyrics: false,
   showQualityBadges: true,
   enableScrollToTopButton: true,
   // Deprecated compat field. Main folder-source behavior no longer depends on it.

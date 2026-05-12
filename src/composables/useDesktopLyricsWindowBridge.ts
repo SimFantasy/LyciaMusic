@@ -11,6 +11,10 @@ import { usePlaybackStore } from '../features/playback/store';
 import { useSettingsStore } from '../features/settings/store';
 import { useUiStore } from '../shared/stores/ui';
 import {
+  applyDesktopLyricsVisibilityPreference,
+  persistDesktopLyricsVisibilityPreference,
+} from '../features/desktopLyrics/visibilityPreference';
+import {
   createDesktopLyricsSongSnapshot,
   DESKTOP_LYRICS_ACTION_EVENT,
   DESKTOP_LYRICS_BOUNDS_EVENT,
@@ -382,6 +386,7 @@ export function useDesktopLyricsWindowBridge() {
     }));
 
     unlisteners.push(await listen<{ visible: boolean }>(DESKTOP_LYRICS_VISIBILITY_EVENT, (event) => {
+      if (isMainWindowClosing) return;
       showDesktopLyrics.value = event.payload.visible;
     }));
 
@@ -408,6 +413,12 @@ export function useDesktopLyricsWindowBridge() {
   });
 
   watch(showDesktopLyrics, async (visible) => {
+    persistDesktopLyricsVisibilityPreference(
+      settingsStore.settings,
+      settingsStore.patchSettings,
+      visible,
+    );
+
     if (visible) {
       await openDesktopLyricsWindow();
       return;
@@ -416,6 +427,14 @@ export function useDesktopLyricsWindowBridge() {
     stopSyncLoop();
     await destroyDesktopLyricsWindow();
   });
+
+  watch(
+    () => settingsStore.settings.showDesktopLyrics,
+    (preferredVisible) => {
+      applyDesktopLyricsVisibilityPreference(showDesktopLyrics, preferredVisible);
+    },
+    { immediate: true },
+  );
 
   watch(
     [

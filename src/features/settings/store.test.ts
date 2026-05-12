@@ -126,6 +126,18 @@ describe('settings store', () => {
     expect(settingsStore.settings.enableScrollToTopButton).toBe(true);
   });
 
+  it('remembers whether desktop lyrics were open', () => {
+    const settingsStore = useSettingsStore();
+
+    expect(settingsStore.settings.showDesktopLyrics).toBe(false);
+
+    const merged = mergeAppSettings(settingsStore.settings, {
+      showDesktopLyrics: true,
+    });
+
+    expect(merged.showDesktopLyrics).toBe(true);
+  });
+
   it('uses shared audio output by default and preserves persisted output mode', () => {
     const settingsStore = useSettingsStore();
 
