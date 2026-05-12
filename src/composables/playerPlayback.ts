@@ -481,7 +481,9 @@ export const createPlayerPlayback = ({
     if (payload.request_id !== latestSeekRequestId) return;
 
     isSeeking = false;
-    reanchorPlaybackClock(payload.time);
+    const offsetSec = (currentSong.value?.cue_start_offset || 0) / 1000;
+    const trackTime = Math.max(0, payload.time - offsetSec);
+    reanchorPlaybackClock(trackTime);
   };
 
   const dispose = () => {

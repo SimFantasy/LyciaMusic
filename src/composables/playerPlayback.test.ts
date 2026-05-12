@@ -169,6 +169,40 @@ describe('player playback domain', () => {
     vi.unstubAllGlobals();
   });
 
+  it('keeps cue track time relative when the backend confirms an absolute seek position', async () => {
+    const playbackStore = usePlaybackStore();
+    const song = makeSong({
+      path: '/music/album.cue::track02',
+      cue_source_path: '/music/album.flac',
+      cue_start_offset: 180_000,
+      cue_end_offset: 300_000,
+      duration: 120,
+    });
+    playbackStore.currentSong = song;
+
+    const playerPlayback = createPlayerPlayback({
+      getDisplaySongList: () => [song],
+      addToHistory: vi.fn(),
+      loadLyrics: vi.fn(),
+      handleAutoNext: vi.fn(),
+    });
+
+    await playerPlayback.seekTo(10);
+
+    const seekRequest = vi.mocked(playbackApi.seekAudio).mock.calls[0]?.[0];
+    expect(seekRequest).toEqual(expect.objectContaining({
+      time: 190,
+    }));
+
+    playerPlayback.handleSeekCompleted({
+      request_id: seekRequest.requestId,
+      time: seekRequest.time,
+    });
+
+    expect(playbackStore.currentTime).toBe(10);
+    playerPlayback.dispose();
+  });
+
   it('strips the file extension when title metadata is missing', async () => {
     const song = makeSong({ name: 'i-dle - Allergy.flac', title: '   ' });
     const playerPlayback = createPlayerPlayback({
