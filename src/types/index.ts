@@ -298,7 +298,7 @@ export type ShortcutActionId =
   | 'toggleMiniMode'
   | 'toggleFavorite'
   | 'toggleDesktopLyrics'
-  | 'toggleLyricTranslation';
+  | 'toggleDesktopLyricsLock';
 
 export interface ShortcutBinding {
   code: string;

@@ -120,28 +120,42 @@ async function getDesktopLyricsWindow() {
   return WebviewWindow.getByLabel(DESKTOP_LYRICS_WINDOW_LABEL);
 }
 
+export function createDesktopLyricsWindowOptions({
+  alwaysOnTop,
+  hasStoredBounds,
+}: {
+  alwaysOnTop: boolean;
+  hasStoredBounds: boolean;
+}) {
+  return {
+    url: '/',
+    title: 'Lycia Desktop Lyrics',
+    width: DESKTOP_LYRICS_WINDOW_DEFAULT_WIDTH,
+    height: DESKTOP_LYRICS_WINDOW_DEFAULT_HEIGHT,
+    minWidth: DESKTOP_LYRICS_WINDOW_MIN_WIDTH,
+    minHeight: DESKTOP_LYRICS_WINDOW_MIN_HEIGHT,
+    visible: false,
+    decorations: false,
+    transparent: true,
+    shadow: false,
+    skipTaskbar: true,
+    alwaysOnTop,
+    focus: false,
+    focusable: true,
+    center: !hasStoredBounds,
+  };
+}
+
 async function ensureDesktopLyricsWindow(alwaysOnTop: boolean) {
   const existing = await getDesktopLyricsWindow();
   if (existing) return existing;
 
   if (!desktopLyricsWindowPromise) {
     const bounds = await resolveDesktopLyricsBounds();
-    const windowInstance = new WebviewWindow(DESKTOP_LYRICS_WINDOW_LABEL, {
-      url: '/',
-      title: 'Lycia Desktop Lyrics',
-      width: DESKTOP_LYRICS_WINDOW_DEFAULT_WIDTH,
-      height: DESKTOP_LYRICS_WINDOW_DEFAULT_HEIGHT,
-      minWidth: DESKTOP_LYRICS_WINDOW_MIN_WIDTH,
-      minHeight: DESKTOP_LYRICS_WINDOW_MIN_HEIGHT,
-      visible: false,
-      decorations: false,
-      transparent: true,
-      shadow: false,
-      skipTaskbar: true,
+    const windowInstance = new WebviewWindow(DESKTOP_LYRICS_WINDOW_LABEL, createDesktopLyricsWindowOptions({
       alwaysOnTop,
-      focusable: true,
-      center: !bounds,
-    });
+      hasStoredBounds: !!bounds,
+    }));
 
     desktopLyricsWindowPromise = new Promise<WebviewWindow>((resolve, reject) => {
       let settled = false;

@@ -5,12 +5,30 @@ import {
   getShortcutBindingFromEvent,
   isSystemReservedShortcutEvent,
   matchesShortcutEvent,
+  shortcutActionLabels,
+  shortcutActionOrder,
   toGlobalShortcutAccelerator,
 } from './shortcuts';
 
 describe('shortcut settings helpers', () => {
   it('keeps global shortcuts disabled by default', () => {
     expect(createDefaultShortcutSettings().globalEnabled).toBe(false);
+  });
+
+  it('offers desktop lyrics lock shortcuts instead of lyric translation shortcuts', () => {
+    const defaults = createDefaultShortcutSettings();
+
+    expect(shortcutActionOrder).toContain('toggleDesktopLyricsLock');
+    expect(shortcutActionOrder).not.toContain('toggleLyricTranslation');
+    expect(shortcutActionLabels.toggleDesktopLyricsLock).toBe('锁定/解锁桌面歌词');
+    expect(defaults.local.toggleDesktopLyricsLock).toEqual({
+      code: 'KeyD',
+      ctrl: true,
+      alt: false,
+      shift: true,
+      meta: false,
+    });
+    expect(defaults.global.toggleDesktopLyricsLock).toBeNull();
   });
 
   it('converts shortcut bindings to tauri global accelerators', () => {
