@@ -251,6 +251,18 @@ pub fn pause_audio(state: tauri::State<PlayerState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn stop_audio(state: tauri::State<PlayerState>) -> Result<(), String> {
+    let tx = state.tx.lock().map_err(|e| e.to_string())?;
+    tx.send(AudioCommand::Stop).map_err(|e| e.to_string())?;
+    if let Ok(mut controls) = state.controls.lock() {
+        if let Some(mc) = controls.as_mut() {
+            let _ = mc.set_playback(MediaPlayback::Stopped);
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn resume_audio(state: tauri::State<PlayerState>) -> Result<(), String> {
     let tx = state.tx.lock().map_err(|e| e.to_string())?;
     tx.send(AudioCommand::Resume).map_err(|e| e.to_string())?;

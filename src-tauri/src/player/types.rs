@@ -149,6 +149,7 @@ pub enum AudioCommand {
         start_offset_ms: Option<u64>,
     },
     Pause,
+    Stop,
     Resume,
     Seek {
         time: f64,

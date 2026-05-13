@@ -52,4 +52,10 @@ describe('playbackApi', () => {
       outputMode: 'wasapiExclusive',
     });
   });
+
+  it('calls stop_audio without payload', () => {
+    playbackApi.stopAudio();
+
+    expect(tauriInvoke).toHaveBeenCalledWith('stop_audio');
+  });
 });

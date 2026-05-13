@@ -26,6 +26,7 @@ export const playbackApi = {
   updatePlaybackMetadata: (options: UpdatePlaybackMetadataOptions): Promise<void> =>
     tauriInvoke('update_playback_metadata', options),
   pauseAudio: (): Promise<void> => tauriInvoke('pause_audio'),
+  stopAudio: (): Promise<void> => tauriInvoke('stop_audio'),
   resumeAudio: (): Promise<void> => tauriInvoke('resume_audio'),
   seekAudio: (options: SeekAudioOptions): Promise<void> => tauriInvoke('seek_audio', options),
   setAudioOutputMode: (outputMode: PlayAudioOptions['outputMode']): Promise<void> =>

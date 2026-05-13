@@ -704,6 +704,17 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                             sink.pause();
                         }
                     }
+                    AudioCommand::Stop => {
+                        is_playing_flag = false;
+                        current_path.clear();
+                        reset_playback_progress(&thread_progress);
+                        if let Some(sink) = &current_sink {
+                            sink.stop();
+                        }
+                        current_sink = None;
+                        #[cfg(target_os = "windows")]
+                        stop_exclusive_playback(&mut exclusive_playback);
+                    }
                     AudioCommand::Resume => {
                         is_playing_flag = true;
                         #[cfg(target_os = "windows")]

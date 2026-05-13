@@ -31,7 +31,7 @@ use music::{
 use player::{
     get_audio_visualizer_samples, get_current_output_device, get_output_devices,
     get_playback_progress, pause_audio, play_audio, resume_audio, seek_audio,
-    set_audio_output_mode, set_output_device, set_volume, update_playback_metadata,
+    set_audio_output_mode, set_output_device, set_volume, stop_audio, update_playback_metadata,
 };
 use remote::{
     add_remote_source, clear_remote_cache, get_remote_cache_usage, get_remote_sources,
@@ -44,7 +44,7 @@ use statistics::{
     get_format_distribution, get_library_stats, get_quality_distribution, get_recent_album_catalog,
     get_recent_history, get_recent_playlist_catalog, get_recent_song_paths_view,
     import_recent_history, import_statistics_file, preview_statistics_import, record_play,
-    remove_from_recent_history,
+    remove_from_recent_history, remove_songs_from_history_and_statistics,
 };
 use system_fonts::get_system_fonts;
 use toolbox::{apply_rename, open_external_program, preview_rename, refresh_folder_songs};
@@ -83,6 +83,7 @@ pub fn run() {
             play_audio,
             update_playback_metadata,
             pause_audio,
+            stop_audio,
             resume_audio,
             seek_audio,
             set_volume,
@@ -142,6 +143,7 @@ pub fn run() {
             preview_statistics_import,
             import_statistics_file,
             remove_from_recent_history,
+            remove_songs_from_history_and_statistics,
             clear_recent_history,
             get_behavior_stats,
             get_quality_distribution,

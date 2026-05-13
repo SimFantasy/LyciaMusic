@@ -246,6 +246,7 @@ export interface TauriCommandMap {
   play_audio: { payload: PlayAudioOptions; response: void };
   update_playback_metadata: { payload: UpdatePlaybackMetadataOptions; response: void };
   pause_audio: { payload: undefined; response: void };
+  stop_audio: { payload: undefined; response: void };
   resume_audio: { payload: undefined; response: void };
   seek_audio: { payload: SeekAudioOptions; response: void };
   set_audio_output_mode: { payload: { outputMode: AudioOutputMode }; response: void };
@@ -254,6 +255,7 @@ export interface TauriCommandMap {
   get_current_output_device: { payload: undefined; response: AudioOutputStatus };
   add_to_history: { payload: { songPath: string }; response: void };
   remove_from_recent_history: { payload: { songPaths: string[] }; response: void };
+  remove_songs_from_history_and_statistics: { payload: { songPaths: string[] }; response: void };
   clear_recent_history: { payload: undefined; response: void };
   get_recent_history: { payload: { limit: number }; response: RecentHistoryRecord[] };
   get_favorite_artist_catalog: { payload: { favoritePaths: string[] }; response: ArtistCatalogItem[] };
