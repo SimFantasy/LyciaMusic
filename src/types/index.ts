@@ -262,6 +262,7 @@ export interface DesktopLyricsSettings {
   isAlwaysOnTop: boolean;
   alwaysShowShadowBackground: boolean;
   autoHideWhenFullscreen: boolean;
+  autoHideWhenPaused: boolean;
   showDoubleLine: boolean;
   enableWordEffect: boolean;
   isLocked: boolean;

@@ -35,6 +35,7 @@ function createPayload(enableWordEffect: boolean): DesktopLyricsStatePayload {
       isAlwaysOnTop: false,
       alwaysShowShadowBackground: false,
       autoHideWhenFullscreen: true,
+      autoHideWhenPaused: false,
       showDoubleLine: false,
       enableWordEffect,
       isLocked: false,

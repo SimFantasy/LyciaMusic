@@ -98,6 +98,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     isAlwaysOnTop: false,
     alwaysShowShadowBackground: false,
     autoHideWhenFullscreen: true,
+    autoHideWhenPaused: false,
     showDoubleLine: false,
     enableWordEffect: true,
     isLocked: false,

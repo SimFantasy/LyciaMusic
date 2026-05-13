@@ -433,6 +433,19 @@ onUnmounted(() => {
         <button
           type="button"
           class="desktop-setting-row"
+          @click="desktopLyricsSettings.autoHideWhenPaused = !desktopLyricsSettings.autoHideWhenPaused"
+        >
+          <div>
+            <div class="text-sm font-medium text-gray-800 dark:text-gray-200">暂停时自动隐藏</div>
+          </div>
+          <span class="desktop-switch" :class="desktopLyricsSettings.autoHideWhenPaused ? 'desktop-switch--on' : ''">
+            <span class="desktop-switch-thumb" :class="desktopLyricsSettings.autoHideWhenPaused ? 'translate-x-5' : ''" />
+          </span>
+        </button>
+
+        <button
+          type="button"
+          class="desktop-setting-row"
           @click="desktopLyricsSettings.enableWordEffect = !desktopLyricsSettings.enableWordEffect"
         >
           <div>

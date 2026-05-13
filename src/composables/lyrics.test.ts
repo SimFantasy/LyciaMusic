@@ -997,6 +997,12 @@ describe('lyrics settings normalization', async () => {
     expect(normalized.autoHideWhenFullscreen).toBe(true);
   });
 
+  it('defaults desktop auto-hide on pause to disabled', () => {
+    const normalized = normalizeDesktopLyricsSettingsPatch({});
+
+    expect(normalized.autoHideWhenPaused).toBe(false);
+  });
+
   it('defaults desktop double line display to disabled', () => {
     const normalized = normalizeDesktopLyricsSettingsPatch({});
 
@@ -1029,6 +1035,14 @@ describe('lyrics settings normalization', async () => {
     });
 
     expect(normalized.autoHideWhenFullscreen).toBe(false);
+  });
+
+  it('restores desktop auto-hide on pause from persisted values', () => {
+    const normalized = normalizeDesktopLyricsSettingsPatch({
+      autoHideWhenPaused: true,
+    });
+
+    expect(normalized.autoHideWhenPaused).toBe(true);
   });
 
   it('restores desktop double line display from migrated values', () => {

@@ -107,6 +107,7 @@ export const defaultDesktopLyricsSettings: DesktopLyricsSettings = {
   isAlwaysOnTop: false,
   alwaysShowShadowBackground: false,
   autoHideWhenFullscreen: true,
+  autoHideWhenPaused: false,
   showDoubleLine: false,
   enableWordEffect: true,
   isLocked: false,
@@ -270,6 +271,9 @@ export function normalizeDesktopLyricsSettingsPatch(
     autoHideWhenFullscreen: typeof patch.autoHideWhenFullscreen === 'boolean'
       ? patch.autoHideWhenFullscreen
       : defaultDesktopLyricsSettings.autoHideWhenFullscreen,
+    autoHideWhenPaused: typeof patch.autoHideWhenPaused === 'boolean'
+      ? patch.autoHideWhenPaused
+      : defaultDesktopLyricsSettings.autoHideWhenPaused,
     showDoubleLine: typeof patch.showDoubleLine === 'boolean'
       ? patch.showDoubleLine
       : defaultDesktopLyricsSettings.showDoubleLine,
