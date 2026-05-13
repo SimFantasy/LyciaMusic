@@ -38,7 +38,7 @@ const emit = defineEmits<{
   (e: 'play', song: Song): void;
   (e: 'contextmenu', event: MouseEvent, song: Song): void;
   (e: 'update:selectedPaths', newSet: Set<string>): void;
-  (e: 'drag-start', payload: { event: MouseEvent; song: Song; index: number }): void;
+  (e: 'drag-start', payload: { event: PointerEvent; song: Song; index: number }): void;
 }>();
 
 const {
@@ -286,7 +286,7 @@ const showScrollbarDuringScroll = () => {
   }, 900);
 };
 
-const syncScrollbarHotZone = (event: MouseEvent) => {
+const syncScrollbarHotZone = (event: MouseEvent | PointerEvent) => {
   if (!containerRef.value) {
     isScrollbarHot.value = false;
     return;
@@ -296,7 +296,7 @@ const syncScrollbarHotZone = (event: MouseEvent) => {
   isScrollbarHot.value = isPointerNearVerticalScrollbar(event.clientX, rect, DEFAULT_SCROLLBAR_HOT_ZONE_PX);
 };
 
-const handleSongTableMouseMove = (event: MouseEvent) => {
+const handleSongTablePointerMove = (event: PointerEvent) => {
   handleRootMouseMove(event);
   syncScrollbarHotZone(event);
 };
@@ -372,8 +372,8 @@ watch(
   { immediate: true },
 );
 
-const handleMouseDown = (event: MouseEvent, song: Song, index: number) => {
-  if (event.button !== 0) {
+const handlePointerDown = (event: PointerEvent, song: Song, index: number) => {
+  if (event.pointerType === 'mouse' && event.button !== 0) {
     return;
   }
   emit('drag-start', { event, song, index });
@@ -561,7 +561,7 @@ const getRowStyle = (songIndex: number, songPath: string) => {
   <div
     ref="rootRef"
     class="flex-1 min-h-0 min-w-0 relative overflow-x-hidden"
-    @mousemove="handleSongTableMouseMove"
+    @pointermove="handleSongTablePointerMove"
     @mouseleave="handleSongTableMouseLeave"
   >
     <div
@@ -577,11 +577,11 @@ const getRowStyle = (songIndex: number, songPath: string) => {
           v-for="song in virtualItems"
           :key="song.path"
           :data-index="song.virtualIndex"
-          @mousedown="handleMouseDown($event, song, song.virtualIndex)"
+          @pointerdown="handlePointerDown($event, song, song.virtualIndex)"
           @dblclick="!isBatchMode && emit('play', song)"
           @contextmenu.prevent="emit('contextmenu', $event, song)"
           @dragstart.prevent
-          class="group w-full min-w-0 border-b border-black/5 dark:border-white/5 hover:bg-black/5 dark:hover:bg-white/5 select-none cursor-default relative flex items-center px-2 gap-3"
+          class="group w-full min-w-0 border-b border-black/5 dark:border-white/5 hover:bg-black/5 dark:hover:bg-white/5 select-none cursor-default relative flex items-center px-2 gap-3 [touch-action:none]"
           :class="{ 'bg-red-500/10 dark:bg-red-500/20': selectedPaths.has(song.path) }"
           :style="getRowStyle(song.virtualIndex, song.path)"
         >

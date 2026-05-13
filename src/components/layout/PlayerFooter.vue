@@ -93,21 +93,26 @@ const progressThumbClass = computed(() => (
 
 const progressVisualState = computed(() => getProgressVisualState(isProgressHidden.value, isDraggingProgress.value));
 
-const startProgressDrag = (e: MouseEvent) => { 
+const startProgressDrag = (e: PointerEvent) => { 
   if (!currentSong.value || currentSong.value.duration <= 0) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  e.preventDefault();
+  (e.currentTarget as HTMLElement | null)?.setPointerCapture?.(e.pointerId);
   isDraggingProgress.value = true; 
   updateProgressFromEvent(e); 
 };
 
-const stopProgressDrag = async () => { 
+const stopProgressDrag = async (commit = true) => { 
   if (isDraggingProgress.value) { 
     const targetTime = dragTime.value;
     isDraggingProgress.value = false; 
-    await seekTo(targetTime); 
+    if (commit) {
+      await seekTo(targetTime);
+    }
   } 
 };
 
-const updateProgressFromEvent = (e: MouseEvent) => {
+const updateProgressFromEvent = (e: PointerEvent) => {
   if (!progressBarRef.value || !currentSong.value || currentSong.value.duration <= 0) return;
   const rect = progressBarRef.value.getBoundingClientRect();
   const offsetX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
@@ -144,17 +149,26 @@ const updateVolume = (clientY: number) => {
   handleVolume({ target: { value: newVol.toString() } } as any);
 };
 
-const startDrag = (e: MouseEvent) => { isDraggingVolume.value = true; updateVolume(e.clientY); };
+const startDrag = (e: PointerEvent) => {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  e.preventDefault();
+  (e.currentTarget as HTMLElement | null)?.setPointerCapture?.(e.pointerId);
+  isDraggingVolume.value = true;
+  updateVolume(e.clientY);
+};
 
-const onGlobalMouseMove = (e: MouseEvent) => {
+const onGlobalPointerMove = (e: PointerEvent) => {
   if (isDraggingVolume.value) { e.preventDefault(); updateVolume(e.clientY); }
   if (isDraggingProgress.value) { e.preventDefault(); updateProgressFromEvent(e); }
 };
 
-const onGlobalMouseUp = () => {
+const onGlobalPointerEnd = (commitProgress = true) => {
   isDraggingVolume.value = false;
-  stopProgressDrag();
+  stopProgressDrag(commitProgress);
 };
+
+const onGlobalPointerUp = () => onGlobalPointerEnd(true);
+const onGlobalPointerCancel = () => onGlobalPointerEnd(false);
 
 // --- 音量滑块显示逻辑 ---
 const showVolumeSlider = ref(false);
@@ -217,16 +231,18 @@ const handleFooterMouseLeave = () => {
 };
 
 onMounted(async () => { 
-  window.addEventListener('mousemove', onGlobalMouseMove); 
-  window.addEventListener('mouseup', onGlobalMouseUp); 
+  window.addEventListener('pointermove', onGlobalPointerMove); 
+  window.addEventListener('pointerup', onGlobalPointerUp); 
+  window.addEventListener('pointercancel', onGlobalPointerCancel); 
   startIdleTimer(); // Start initial idle timer
   unlistenRemoteDownload = await listen<RemoteDownloadProgress>('remote-download-progress', event => {
     remoteDownloadProgress.value = event.payload;
   });
 });
 onUnmounted(() => { 
-  window.removeEventListener('mousemove', onGlobalMouseMove); 
-  window.removeEventListener('mouseup', onGlobalMouseUp); 
+  window.removeEventListener('pointermove', onGlobalPointerMove); 
+  window.removeEventListener('pointerup', onGlobalPointerUp); 
+  window.removeEventListener('pointercancel', onGlobalPointerCancel); 
   if (idleTimer) clearTimeout(idleTimer);
   unlistenRemoteDownload?.();
   unlistenRemoteDownload = null;
@@ -255,8 +271,8 @@ onUnmounted(() => {
 
     <div 
       ref="progressBarRef"
-      class="absolute top-[-10px] left-0 w-full h-[22px] cursor-pointer group/progress z-50"
-      @mousedown="startProgressDrag"
+      class="absolute top-[-10px] left-0 w-full h-[22px] cursor-pointer group/progress z-50 [touch-action:none]"
+      @pointerdown="startProgressDrag"
     >
       <div class="absolute inset-y-0 left-0 right-0 flex items-center">
         <div
@@ -415,9 +431,9 @@ onUnmounted(() => {
             <div class="text-[10px] font-bold select-none transition-colors"
               :class="showPlayerDetail ? 'text-white/60' : 'text-gray-500 dark:text-white/60'"
             >{{ volume }}%</div>
-            <div ref="volumeBarRef" class="relative flex-1 w-1.5 rounded-full cursor-pointer my-1 transition-colors" 
+            <div ref="volumeBarRef" class="relative flex-1 w-1.5 rounded-full cursor-pointer my-1 transition-colors [touch-action:none]" 
                  :class="showPlayerDetail ? 'bg-white/20' : 'bg-gray-200 dark:bg-white/20'"
-                 @mousedown="startDrag">
+                 @pointerdown="startDrag">
                <div class="absolute bottom-0 w-full bg-[#EC4141] rounded-full" :style="{ height: volume + '%' }"></div>
                <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-white rounded-full shadow-sm cursor-grab active:cursor-grabbing" :style="{ bottom: `calc(${volume}% - 7px)` }"></div>
             </div>
