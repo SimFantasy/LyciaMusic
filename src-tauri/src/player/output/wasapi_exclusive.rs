@@ -138,6 +138,7 @@ struct ExclusiveSource {
 enum ExclusiveSampleFormat {
     Float32,
     Int32,
+    Int32Valid24,
     Int24,
     Int16,
 }
@@ -232,6 +233,10 @@ fn push_sample_bytes(output: &mut Vec<u8>, sample: f32, sample_format: Exclusive
             let value = (sample * i32::MAX as f32).round() as i32;
             output.extend_from_slice(&value.to_le_bytes());
         }
+        ExclusiveSampleFormat::Int32Valid24 => {
+            let value = ((sample * 8_388_607.0).round() as i32) << 8;
+            output.extend_from_slice(&value.to_le_bytes());
+        }
         ExclusiveSampleFormat::Int24 => {
             let value = (sample * 8_388_607.0).round() as i32;
             output.extend_from_slice(&value.to_le_bytes()[..3]);
@@ -243,19 +248,22 @@ fn push_sample_bytes(output: &mut Vec<u8>, sample: f32, sample_format: Exclusive
     }
 }
 
+fn exclusive_format_candidates() -> [(usize, usize, SampleType, ExclusiveSampleFormat); 5] {
+    [
+        (32, 32, SampleType::Float, ExclusiveSampleFormat::Float32),
+        (32, 24, SampleType::Int, ExclusiveSampleFormat::Int32Valid24),
+        (24, 24, SampleType::Int, ExclusiveSampleFormat::Int24),
+        (32, 32, SampleType::Int, ExclusiveSampleFormat::Int32),
+        (16, 16, SampleType::Int, ExclusiveSampleFormat::Int16),
+    ]
+}
+
 fn negotiate_exclusive_format(
     audio_client: &wasapi::AudioClient,
     sample_rate: u32,
     channels: u16,
 ) -> Result<ExclusiveOutputFormat, String> {
-    let candidates = [
-        (32, 32, SampleType::Float, ExclusiveSampleFormat::Float32),
-        (32, 32, SampleType::Int, ExclusiveSampleFormat::Int32),
-        (24, 24, SampleType::Int, ExclusiveSampleFormat::Int24),
-        (16, 16, SampleType::Int, ExclusiveSampleFormat::Int16),
-    ];
-
-    for (store_bits, valid_bits, sample_type, sample_format) in candidates {
+    for (store_bits, valid_bits, sample_type, sample_format) in exclusive_format_candidates() {
         let requested_format = WaveFormat::new(
             store_bits,
             valid_bits,
@@ -313,7 +321,11 @@ fn run_exclusive_playback(
         .map_err(|error| error.to_string())?;
     let exclusive_format = negotiate_exclusive_format(&audio_client, sample_rate, channels)?;
     let period_hns = audio_client
-        .calculate_aligned_period_near(EXCLUSIVE_PERIOD_HNS, None, &exclusive_format.wave_format)
+        .calculate_aligned_period_near(
+            EXCLUSIVE_PERIOD_HNS,
+            Some(128),
+            &exclusive_format.wave_format,
+        )
         .unwrap_or(EXCLUSIVE_PERIOD_HNS);
     let mode = StreamMode::PollingExclusive {
         buffer_duration_hns: period_hns * EXCLUSIVE_BUFFER_MULTIPLIER,
@@ -437,5 +449,31 @@ fn run_exclusive_playback(
             let _ = audio_client.stop_stream();
             return Ok(());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn int32_valid24_samples_are_left_aligned_in_32_bit_container() {
+        let mut output = Vec::new();
+
+        push_sample_bytes(&mut output, 0.5, ExclusiveSampleFormat::Int32Valid24);
+
+        assert_eq!(output, vec![0x00, 0x00, 0x00, 0x40]);
+    }
+
+    #[test]
+    fn format_candidates_prefer_32_bit_container_with_24_valid_bits() {
+        let candidates = exclusive_format_candidates();
+
+        assert_eq!(candidates[1].0, 32);
+        assert_eq!(candidates[1].1, 24);
+        assert!(matches!(
+            candidates[1].3,
+            ExclusiveSampleFormat::Int32Valid24
+        ));
     }
 }
