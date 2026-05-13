@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createDefaultShortcutSettings,
+  getShortcutBindingFromEvent,
+  isSystemReservedShortcutEvent,
+  matchesShortcutEvent,
   toGlobalShortcutAccelerator,
 } from './shortcuts';
 
@@ -25,10 +28,43 @@ describe('shortcut settings helpers', () => {
       alt: false,
       shift: true,
       meta: true,
-    })).toBe('shift+super+ArrowLeft');
+    })).toBeNull();
   });
 
   it('returns null for empty bindings', () => {
     expect(toGlobalShortcutAccelerator(null)).toBeNull();
+  });
+
+  it('does not capture Windows/Meta key combinations', () => {
+    expect(getShortcutBindingFromEvent({
+      code: 'KeyJ',
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      metaKey: true,
+    } as KeyboardEvent)).toBeNull();
+  });
+
+  it('identifies Windows/Meta key events as system reserved', () => {
+    expect(isSystemReservedShortcutEvent({
+      code: 'KeyJ',
+      metaKey: true,
+    } as KeyboardEvent)).toBe(true);
+  });
+
+  it('does not match legacy Windows/Meta shortcut bindings', () => {
+    expect(matchesShortcutEvent({
+      code: 'KeyJ',
+      ctrl: false,
+      alt: false,
+      shift: false,
+      meta: true,
+    }, {
+      code: 'KeyJ',
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+      metaKey: true,
+    } as KeyboardEvent)).toBe(false);
   });
 });

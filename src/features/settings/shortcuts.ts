@@ -201,6 +201,8 @@ const modifierCodes = new Set([
   'MetaRight',
 ]);
 
+export const isSystemReservedShortcutEvent = (event: KeyboardEvent) => event.metaKey;
+
 export const formatShortcutCode = (code: string) => {
   if (shortcutCodeLabels[code]) {
     return shortcutCodeLabels[code];
@@ -236,7 +238,7 @@ export const formatShortcutBinding = (binding: ShortcutBinding | null, emptyLabe
 };
 
 export const toGlobalShortcutAccelerator = (binding: ShortcutBinding | null) => {
-  if (!binding) {
+  if (!binding || binding.meta) {
     return null;
   }
 
@@ -244,7 +246,6 @@ export const toGlobalShortcutAccelerator = (binding: ShortcutBinding | null) => 
   if (binding.shift) parts.push('shift');
   if (binding.ctrl) parts.push('control');
   if (binding.alt) parts.push('alt');
-  if (binding.meta) parts.push('super');
   parts.push(binding.code);
 
   return parts.join('+');
@@ -270,7 +271,7 @@ export const areShortcutBindingsEqual = (
 };
 
 export const getShortcutBindingFromEvent = (event: KeyboardEvent): ShortcutBinding | null => {
-  if (!event.code || modifierCodes.has(event.code)) {
+  if (!event.code || isSystemReservedShortcutEvent(event) || modifierCodes.has(event.code)) {
     return null;
   }
 
@@ -278,12 +279,12 @@ export const getShortcutBindingFromEvent = (event: KeyboardEvent): ShortcutBindi
     ctrl: event.ctrlKey,
     alt: event.altKey,
     shift: event.shiftKey,
-    meta: event.metaKey,
+    meta: false,
   });
 };
 
 export const matchesShortcutEvent = (binding: ShortcutBinding | null, event: KeyboardEvent) => {
-  if (!binding) {
+  if (!binding || binding.meta || isSystemReservedShortcutEvent(event)) {
     return false;
   }
 
