@@ -25,3 +25,14 @@ describe('SongInfoModal lyrics editor theme', () => {
     expect(source).not.toContain(':global(.dark) .modal-action-button');
   });
 });
+
+describe('SongInfoModal responsive layout', () => {
+  it('lets the song info body keep its content height when the modal stacks on narrow windows', () => {
+    const narrowWindowStyles = source.slice(source.indexOf('@media (max-width: 1100px)'));
+
+    expect(narrowWindowStyles).toContain('.song-info-main {');
+    expect(narrowWindowStyles).toContain('flex: 0 0 auto;');
+    expect(narrowWindowStyles).toContain('.song-info-content {');
+    expect(narrowWindowStyles).toContain('overflow: visible;');
+  });
+});

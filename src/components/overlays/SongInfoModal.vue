@@ -1361,9 +1361,17 @@ const formatTime = (timestampSeconds?: number) => {
     --song-info-viewport-y: clamp(120px, 20vh, 190px);
     flex-direction: column;
     overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     width: min(100%, calc(100vw - var(--song-info-viewport-x)));
     height: calc(100dvh - var(--song-info-viewport-y));
     max-height: calc(100dvh - var(--song-info-viewport-y));
+  }
+
+  .song-info-stage::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 
   .modal-external-actions {
@@ -1390,6 +1398,16 @@ const formatTime = (timestampSeconds?: number) => {
     flex: 0 0 auto;
     width: 100%;
     height: auto;
+  }
+
+  .song-info-main {
+    flex: 0 0 auto;
+    height: auto;
+    overflow: visible;
+  }
+
+  .song-info-content {
+    overflow: visible;
   }
 
   .lyrics-editor-column,
