@@ -23,6 +23,7 @@ export interface LyricLine {
   translation: string;
   romaji: string;
   words?: LyricWord[];
+  romajiWords?: LyricWord[];
   secondary?: string[];
 }
 

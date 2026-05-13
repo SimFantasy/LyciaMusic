@@ -246,6 +246,8 @@ pub struct LyricLinePayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub words: Option<Vec<LyricWordPayload>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub romaji_words: Option<Vec<LyricWordPayload>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub secondary: Option<Vec<String>>,
 }
 
@@ -2472,7 +2474,7 @@ fn build_aligned_roman_words(
     let main_words = main_line.words.as_ref()?;
     let roman_words = roman_line?.words.as_ref()?;
     if main_words.len() != roman_words.len() {
-        return None;
+        return Some(roman_words.clone());
     }
 
     let aligned = main_words
@@ -2486,7 +2488,7 @@ fn build_aligned_roman_words(
     if aligned {
         Some(roman_words.clone())
     } else {
-        None
+        Some(roman_words.clone())
     }
 }
 
@@ -2515,8 +2517,11 @@ fn should_use_line_as_romaji(
     if candidate_track.role == LyricTrackRole::Romanization {
         return true;
     }
-    if candidate_line.script_profile.dominant_script != DominantScript::Latin
-        || main_line.script_profile.dominant_script == DominantScript::Latin
+    if candidate_line.script_profile.dominant_script != DominantScript::Latin {
+        return false;
+    }
+    if main_line.script_profile.dominant_script == DominantScript::Latin
+        && !is_japanese_like(&main_line.script_profile)
     {
         return false;
     }
@@ -2527,6 +2532,13 @@ fn should_use_line_as_romaji(
     romanization >= englishness
         || (candidate_line.source_index < main_line.source_index
             && romanization + 0.08 >= englishness)
+}
+
+fn is_auxiliary_role_repair_track(track: &LyricTrack) -> bool {
+    matches!(
+        track.role,
+        LyricTrackRole::Unknown | LyricTrackRole::Secondary | LyricTrackRole::AlternateMain
+    )
 }
 
 fn should_use_line_as_translation(
@@ -2558,6 +2570,16 @@ fn should_use_line_as_translation(
 
     candidate_line.script_profile.dominant_script == DominantScript::Han
         && is_japanese_like(&main_line.script_profile)
+}
+
+fn should_promote_japanese_auxiliary_as_main(
+    current_main_line: &LyricTrackLine,
+    candidate_line: &LyricTrackLine,
+) -> bool {
+    current_main_line.script_profile.dominant_script == DominantScript::Latin
+        && is_japanese_like(&candidate_line.script_profile)
+        && current_main_line.cluster_index.is_some()
+        && current_main_line.cluster_index == candidate_line.cluster_index
 }
 
 fn merge_auxiliary_line_into_semantic(
@@ -3042,7 +3064,7 @@ pub fn lyric_document_to_semantic_lines(document: &LyricDocument) -> Vec<Semanti
         .tracks
         .iter()
         .enumerate()
-        .filter(|(_, track)| track.role == LyricTrackRole::Secondary)
+        .filter(|(_, track)| is_auxiliary_role_repair_track(track))
         .collect::<Vec<_>>();
 
     let mut attached_line_keys: Vec<(usize, usize)> = Vec::new();
@@ -3089,7 +3111,7 @@ pub fn lyric_document_to_semantic_lines(document: &LyricDocument) -> Vec<Semanti
             attached_line_keys.push((track_index, aux_index));
             document.tracks[track_index].lines.get(aux_index)
         });
-        let (display_main_line, display_translation_line, display_roman_line) =
+        let (mut display_main_line, display_translation_line, mut display_roman_line) =
             resolve_display_line_roles(main_line, translation_line, roman_line);
 
         let mut fallback_translation_line: Option<&LyricTrackLine> = None;
@@ -3118,6 +3140,13 @@ pub fn lyric_document_to_semantic_lines(document: &LyricDocument) -> Vec<Semanti
                 && should_use_line_as_translation(display_main_line, track, line)
             {
                 fallback_translation_line = Some(line);
+            } else if should_promote_japanese_auxiliary_as_main(display_main_line, line) {
+                display_roman_line = Some(display_main_line);
+                display_main_line = line;
+            } else if display_roman_line.is_none()
+                && should_use_line_as_romaji(display_main_line, track, line)
+            {
+                display_roman_line = Some(line);
             } else {
                 secondary_texts.push(line.text.clone());
             }
@@ -3270,6 +3299,21 @@ pub fn semantic_line_to_lyric_line(line: &SemanticLine) -> LyricLinePayload {
         translation: line.translation_text.clone().unwrap_or_default(),
         romaji: build_romaji_text(line),
         words,
+        romaji_words: line
+            .roman_words
+            .as_ref()
+            .map(|roman_words| {
+                roman_words
+                    .iter()
+                    .map(|word| LyricWordPayload {
+                        text: word.text.clone(),
+                        start: word.start_ms as f64 / 1000.0,
+                        end: word.end_ms as f64 / 1000.0,
+                        romaji: None,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .filter(|words| !words.is_empty()),
         secondary: line.secondary_texts.clone(),
     }
 }

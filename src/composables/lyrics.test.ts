@@ -1347,8 +1347,24 @@ describe('raw lyrics samples from the common formats checklist', async () => {
 
     const amlLines = convertLyricsToAmlLines(lines, true, true);
     expect(amlLines).toHaveLength(1);
-    expect(amlLines[0]?.romanLyric).toBe('');
-    expect(amlLines[0]?.words.map((word) => normalizeWhitespace(word.romanWord || ''))).toEqual([
+    expect(amlLines[0]?.romanLyric).not.toBe('');
+    expect(amlLines[0]?.words.map((word) => word.romanWord || '')).toEqual([
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+    ]);
+    expect((amlLines[0] as typeof amlLines[number] & {
+      romajiWords?: Array<{ text: string }>;
+    })?.romajiWords?.map((word) => normalizeWhitespace(word.text))).toEqual([
       'a o',
       'i',
       'da',

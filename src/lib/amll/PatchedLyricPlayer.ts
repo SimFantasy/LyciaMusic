@@ -4,7 +4,25 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  * Upstream project: https://github.com/amll-dev/applemusic-like-lyrics
  */
-import { DomLyricPlayer } from '@applemusic-like-lyrics/core';
+import { DomLyricPlayer, type LyricLine } from '@applemusic-like-lyrics/core';
+
+import {
+  TIMED_ROMAJI_BASE_OPACITY,
+  TIMED_ROMAJI_HIGHLIGHT_OPACITY,
+  TIMED_ROMAJI_SUBLINE_OPACITY,
+  getTimedRomajiFillProgress,
+  shouldRebuildTimedRomajiDom,
+} from './timedRomaji';
+
+type TimedRomajiWord = {
+  text: string;
+  startTime: number;
+  endTime: number;
+};
+
+type LyricLineWithTimedRomaji = LyricLine & {
+  romajiWords?: TimedRomajiWord[];
+};
 
 export class PatchedLyricPlayer extends DomLyricPlayer {
   private lineGap = 1;
@@ -141,6 +159,88 @@ export class PatchedLyricPlayer extends DomLyricPlayer {
   ): HTMLElement | null {
     const getElement = (lineObj as unknown as { getElement?: () => HTMLElement }).getElement;
     return typeof getElement === 'function' ? getElement.call(lineObj) : null;
+  }
+
+  private getRomanSubLineElement(lineElement: HTMLElement, line: LyricLineWithTimedRomaji) {
+    if (!line.romanLyric.trim()) return null;
+
+    const roman = lineElement.children[2];
+    return roman instanceof HTMLElement ? roman : null;
+  }
+
+  private syncTimedRomajiWordsToDom() {
+    for (const lineObj of this.currentLyricLineObjects) {
+      const line = lineObj.getLine() as LyricLineWithTimedRomaji;
+      const romajiWords = line.romajiWords?.filter((word) => (
+        word.text.length > 0
+        && Number.isFinite(word.startTime)
+        && Number.isFinite(word.endTime)
+      ));
+      if (!romajiWords || romajiWords.length === 0) continue;
+
+      const lineElement = this.getLineElement(lineObj);
+      if (!lineElement) continue;
+
+      const romanSubLine = this.getRomanSubLineElement(lineElement, line);
+      if (!romanSubLine) continue;
+      romanSubLine.style.opacity = TIMED_ROMAJI_SUBLINE_OPACITY;
+
+      const signature = romajiWords
+        .map((word) => `${word.startTime}:${word.endTime}:${word.text}`)
+        .join('|');
+
+      const currentWordElements = romanSubLine.querySelectorAll<HTMLElement>('.lycia-timed-romaji-word');
+      if (shouldRebuildTimedRomajiDom(
+        romanSubLine.dataset.lyciaTimedRomajiSignature,
+        signature,
+        currentWordElements.length,
+        romajiWords.length,
+      )) {
+        romanSubLine.textContent = '';
+        romanSubLine.style.whiteSpace = 'pre-wrap';
+
+        for (const word of romajiWords) {
+          const wordElement = document.createElement('span');
+          wordElement.className = 'lycia-timed-romaji-word';
+          wordElement.dataset.startTime = String(word.startTime);
+          wordElement.dataset.endTime = String(word.endTime);
+          wordElement.style.display = 'inline-block';
+          wordElement.style.position = 'relative';
+          wordElement.style.whiteSpace = 'pre';
+
+          const baseElement = document.createElement('span');
+          baseElement.textContent = word.text;
+          baseElement.style.opacity = TIMED_ROMAJI_BASE_OPACITY;
+
+          const fillElement = document.createElement('span');
+          fillElement.className = 'lycia-timed-romaji-fill';
+          fillElement.textContent = word.text;
+          fillElement.style.position = 'absolute';
+          fillElement.style.inset = '0 auto 0 0';
+          fillElement.style.overflow = 'hidden';
+          fillElement.style.whiteSpace = 'pre';
+          fillElement.style.pointerEvents = 'none';
+          fillElement.style.opacity = TIMED_ROMAJI_HIGHLIGHT_OPACITY;
+          fillElement.style.width = '0%';
+
+          wordElement.appendChild(baseElement);
+          wordElement.appendChild(fillElement);
+          romanSubLine.appendChild(wordElement);
+        }
+
+        romanSubLine.dataset.lyciaTimedRomajiSignature = signature;
+      }
+
+      for (const wordElement of romanSubLine.querySelectorAll<HTMLElement>('.lycia-timed-romaji-word')) {
+        const startTime = Number(wordElement.dataset.startTime);
+        const endTime = Number(wordElement.dataset.endTime);
+        const progress = getTimedRomajiFillProgress(this.currentTime, line.endTime, startTime, endTime);
+        const fillElement = wordElement.querySelector<HTMLElement>('.lycia-timed-romaji-fill');
+        if (fillElement) {
+          fillElement.style.width = `${(progress * 100).toFixed(2)}%`;
+        }
+      }
+    }
   }
 
   private patchLineElementLayout() {
@@ -423,12 +523,19 @@ export class PatchedLyricPlayer extends DomLyricPlayer {
   override setLyricLines(...args: Parameters<DomLyricPlayer['setLyricLines']>): void {
     super.setLyricLines(...args);
     this.patchLineElementLayout();
+    this.syncTimedRomajiWordsToDom();
     this.syncLineTransformsToDom();
     this.syncAuxiliaryTransformsToDom();
   }
 
+  override setCurrentTime(...args: Parameters<DomLyricPlayer['setCurrentTime']>): void {
+    super.setCurrentTime(...args);
+    this.syncTimedRomajiWordsToDom();
+  }
+
   override update(delta = 0): void {
     super.update(delta);
+    this.syncTimedRomajiWordsToDom();
     this.syncLineTransformsToDom();
     this.syncAuxiliaryTransformsToDom();
   }
@@ -573,6 +680,7 @@ export class PatchedLyricPlayer extends DomLyricPlayer {
     this.onResize();
     void this.calcLayout(true);
     this.update(0);
+    this.syncTimedRomajiWordsToDom();
     this.syncLineTransformsToDom();
     this.syncAuxiliaryTransformsToDom();
   }

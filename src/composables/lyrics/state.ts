@@ -101,6 +101,10 @@ export async function loadLyrics() {
         ...word,
         romaji: word.romaji || '',
       })),
+      romajiWords: line.romajiWords?.map((word) => ({
+        ...word,
+        romaji: word.romaji || '',
+      })),
       secondary: line.secondary ? [...line.secondary] : undefined,
     })) as LyricLine[];
     lyricsStatus.value = parsedLyrics.value.length > 0 ? 'ready' : 'empty';

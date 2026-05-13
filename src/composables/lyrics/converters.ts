@@ -17,6 +17,14 @@ const MAX_AML_LINE_LEAD_IN_MS = 300;
 const AML_LINE_LEAD_IN_RATIO = 0.25;
 const MIN_AML_LINE_DURATION_MS = 40;
 
+type AmlLineWithTimedRomaji = CoreAmlLyricLine & {
+  romajiWords?: Array<{
+    text: string;
+    startTime: number;
+    endTime: number;
+  }>;
+};
+
 function getAdaptiveAmlLineLeadInMs(currentStartTime: number, nextStartTime: number): number {
   const gap = nextStartTime - currentStartTime;
   if (gap <= 0) return 0;
@@ -96,6 +104,11 @@ export function semanticLineToLyricLine(line: SemanticLine): LyricLine {
     translation: line.translationText || '',
     romaji: buildRomajiText(line),
     words: words.length > 0 ? words : undefined,
+    romajiWords: line.romanWords?.map((word) => ({
+      text: word.text,
+      start: word.startMs / 1000,
+      end: word.endMs / 1000,
+    })),
     secondary: line.secondaryTexts ? [...line.secondaryTexts] : undefined,
   };
 }
@@ -117,6 +130,8 @@ export function convertLyricsToAmlLines(
   showRomaji: boolean,
 ): CoreAmlLyricLine[] {
   return lines.map((line, lineIndex) => {
+    const hasIndependentRomajiWords = showRomaji
+      && Boolean(line.romajiWords && line.romajiWords.length > 0);
     const renderLine = {
       startMs: toMs(line.time),
       endMs: toMs(line.endTime || line.time),
@@ -127,7 +142,9 @@ export function convertLyricsToAmlLines(
       })) ?? [{ text: line.text }],
       translation: showTranslation && line.translation ? [{ text: line.translation }] : undefined,
       roman: showRomaji && line.romaji
-        ? (line.words?.every((word) => Boolean(word.romaji))
+        ? (hasIndependentRomajiWords
+          ? [{ text: line.romaji }]
+          : line.words?.every((word) => Boolean(word.romaji))
           ? line.words.map((word) => ({
             text: word.romaji || '',
             startMs: toMs(word.start),
@@ -162,7 +179,7 @@ export function convertLyricsToAmlLines(
         word: word.text,
         startTime: wordStart,
         endTime: wordEnd,
-        romanWord: showRomaji ? (word.romaji || '') : '',
+        romanWord: showRomaji && !hasIndependentRomajiWords ? (word.romaji || '') : '',
         obscene: false,
       };
     }).filter((word) => word.word.trim().length > 0);
@@ -178,7 +195,7 @@ export function convertLyricsToAmlLines(
           obscene: false,
         }];
 
-    return {
+    const amlLine: AmlLineWithTimedRomaji = {
       words,
       translatedLyric: renderLine.translation?.[0]?.text || '',
       romanLyric: showRomaji && !hasTimedRomaji ? (renderLine.roman?.[0]?.text || '') : '',
@@ -187,6 +204,16 @@ export function convertLyricsToAmlLines(
       isBG: false,
       isDuet: false,
     };
+
+    if (showRomaji && line.romajiWords && line.romajiWords.length > 0) {
+      amlLine.romajiWords = line.romajiWords.map((word) => ({
+        text: word.text,
+        startTime: toMs(word.start),
+        endTime: toMs(word.end),
+      }));
+    }
+
+    return amlLine;
   });
 }
 
@@ -201,13 +228,15 @@ export function getCurrentLyricDisplayLines(
   }];
 
   if (showRomaji && line.romaji) {
-    const romajiWords = (line.words ?? [])
-      .filter((word) => (word.romaji || '').length > 0)
-      .map((word) => ({
-        text: word.romaji || '',
-        start: word.start,
-        end: word.end,
-      }));
+    const romajiWords = line.romajiWords && line.romajiWords.length > 0
+      ? line.romajiWords
+      : (line.words ?? [])
+        .filter((word) => (word.romaji || '').length > 0)
+        .map((word) => ({
+          text: word.romaji || '',
+          start: word.start,
+          end: word.end,
+        }));
 
     displayLines.push({
       kind: 'romaji',
