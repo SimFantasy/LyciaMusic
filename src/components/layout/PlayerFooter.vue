@@ -485,7 +485,7 @@ onUnmounted(() => {
 
           :y="contextMenuY" 
 
-          :path="currentSong?.path || ''"
+          :song="currentSong"
 
           @close="showContextMenu = false"
 
