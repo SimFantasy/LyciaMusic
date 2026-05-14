@@ -40,6 +40,15 @@ fn reset_playback_progress(progress: &Arc<SharedProgress>) {
     progress.visualizer.reset();
 }
 
+fn should_restore_for_default_device_change(
+    selected_device_name: &Option<String>,
+    last_default_device_name: &Option<String>,
+    next_default_device_name: &Option<String>,
+    _active_device_name: &Option<String>,
+) -> bool {
+    selected_device_name.is_none() && next_default_device_name != last_default_device_name
+}
+
 #[cfg(target_os = "windows")]
 fn stop_exclusive_playback(exclusive_playback: &mut Option<WasapiExclusivePlayback>) {
     if let Some(mut playback) = exclusive_playback.take() {
@@ -567,6 +576,7 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
         let mut requested_output_mode = AudioOutputMode::Shared;
         let mut active_output_mode = AudioOutputMode::Shared;
         let mut fallback_reason: Option<String> = None;
+        let mut last_default_device_name = default_output_device_name(&host);
         let mut active_device_name = output
             .as_ref()
             .map(|output| output.active_device_name().to_string());
@@ -617,6 +627,10 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                                 &thread_progress,
                             ) {
                                 Ok(playback) => {
+                                    if selected_device_name.is_none() {
+                                        last_default_device_name =
+                                            default_output_device_name(&host);
+                                    }
                                     active_device_name =
                                         Some(playback.active_device_name().to_string());
                                     active_output_mode = AudioOutputMode::WasapiExclusive;
@@ -663,6 +677,9 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                             output =
                                 SharedOutputBackend::open(&host, selected_device_name.as_deref())
                                     .ok();
+                            if selected_device_name.is_none() {
+                                last_default_device_name = default_output_device_name(&host);
+                            }
                             active_device_name = output
                                 .as_ref()
                                 .map(|output| output.active_device_name().to_string());
@@ -798,6 +815,9 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                             is_playing_flag,
                             &thread_progress,
                         );
+                        if selected_device_name.is_none() {
+                            last_default_device_name = default_output_device_name(&host);
+                        }
 
                         emit_output_status(
                             &thread_app_handle,
@@ -835,6 +855,9 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                             is_playing_flag,
                             &thread_progress,
                         );
+                        if selected_device_name.is_none() {
+                            last_default_device_name = default_output_device_name(&host);
+                        }
 
                         emit_output_status(
                             &thread_app_handle,
@@ -869,6 +892,9 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                                 is_playing_flag,
                                 &thread_progress,
                             );
+                            if selected_device_name.is_none() {
+                                last_default_device_name = default_output_device_name(&host);
+                            }
 
                             emit_output_status(
                                 &thread_app_handle,
@@ -884,7 +910,13 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
 
                     if selected_device_name.is_none() {
                         let next_default_name = default_output_device_name(&host);
-                        if next_default_name != active_device_name {
+                        if should_restore_for_default_device_change(
+                            &selected_device_name,
+                            &last_default_device_name,
+                            &next_default_name,
+                            &active_device_name,
+                        ) {
+                            last_default_device_name = next_default_name;
                             if let Some(sink) = &current_sink {
                                 sink.stop();
                             }
@@ -970,5 +1002,20 @@ mod tests {
         );
 
         assert_eq!(progress.samples_played.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn default_device_monitor_ignores_active_output_display_name() {
+        let selected_device_name = None;
+        let last_default_device_name = Some("CPAL default device".to_string());
+        let next_default_device_name = Some("CPAL default device".to_string());
+        let active_device_name = Some("WASAPI friendly device".to_string());
+
+        assert!(!should_restore_for_default_device_change(
+            &selected_device_name,
+            &last_default_device_name,
+            &next_default_device_name,
+            &active_device_name,
+        ));
     }
 }
