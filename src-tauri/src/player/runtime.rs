@@ -392,9 +392,7 @@ fn append_decoded_source<R>(
                 progress.visualizer.reset();
             }
 
-            let skipped_source = source
-                .convert_samples::<f32>()
-                .skip_duration(offset);
+            let skipped_source = source.convert_samples::<f32>().skip_duration(offset);
 
             let timed_source = TimedSource::new(
                 skipped_source,
@@ -608,8 +606,8 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
 
                         #[cfg(target_os = "windows")]
                         if output_mode == AudioOutputMode::WasapiExclusive && !source_is_remote {
-                            let exclusive_start = start_offset_ms
-                                .map_or(Duration::ZERO, Duration::from_millis);
+                            let exclusive_start =
+                                start_offset_ms.map_or(Duration::ZERO, Duration::from_millis);
                             match start_exclusive_playback(
                                 display_path.clone(),
                                 selected_device_name.clone(),

@@ -154,18 +154,12 @@ fn migrate_song_columns(conn: &Connection) -> Result<(), String> {
             .ok();
     }
     if !columns.iter().any(|column| column == "cue_start_offset") {
-        conn.execute(
-            "ALTER TABLE songs ADD COLUMN cue_start_offset INTEGER",
-            [],
-        )
-        .ok();
+        conn.execute("ALTER TABLE songs ADD COLUMN cue_start_offset INTEGER", [])
+            .ok();
     }
     if !columns.iter().any(|column| column == "cue_end_offset") {
-        conn.execute(
-            "ALTER TABLE songs ADD COLUMN cue_end_offset INTEGER",
-            [],
-        )
-        .ok();
+        conn.execute("ALTER TABLE songs ADD COLUMN cue_end_offset INTEGER", [])
+            .ok();
     }
 
     Ok(())

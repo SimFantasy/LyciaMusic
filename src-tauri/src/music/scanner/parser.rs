@@ -525,7 +525,13 @@ fn probe_flac_for_cue_metadata(
         .map(|b| b as u8);
     let codec_name = None;
 
-    (cover_thumb_path, bitrate, sample_rate, bit_depth, codec_name)
+    (
+        cover_thumb_path,
+        bitrate,
+        sample_rate,
+        bit_depth,
+        codec_name,
+    )
 }
 
 pub(super) fn enrich_album_groups(songs: &mut [Song]) {

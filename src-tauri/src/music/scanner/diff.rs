@@ -127,9 +127,7 @@ pub(super) fn load_db_snapshot_for_folder(
                             added_at: i64_to_u64_opt(added_at_i64),
                             file_modified_at: i64_to_u64_opt(file_modified_at_i64),
                             cue_source_path: row.get::<_, Option<String>>(24)?,
-                            cue_start_offset: row
-                                .get::<_, Option<i64>>(25)?
-                                .map(|v| v as u32),
+                            cue_start_offset: row.get::<_, Option<i64>>(25)?.map(|v| v as u32),
                             cue_end_offset: row.get::<_, Option<i64>>(26)?.map(|v| v as u32),
                         },
                     },
@@ -233,10 +231,7 @@ fn collect_disk_candidates(
             .and_then(|m| m.modified().ok())
             .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
             .map(|duration| duration.as_secs() as i64);
-        let cue_file_size = entry
-            .metadata()
-            .map(|m| m.len() as i64)
-            .unwrap_or(0);
+        let cue_file_size = entry.metadata().map(|m| m.len() as i64).unwrap_or(0);
 
         let cue_path_str = normalize_path(&path.to_string_lossy().to_string());
 
@@ -245,8 +240,7 @@ fn collect_disk_candidates(
             cue_referenced_audio.push(resolved);
 
             for track in &sheet.tracks {
-                let synthetic_path =
-                    format!("{}::track{:02}", cue_path_str, track.track_number);
+                let synthetic_path = format!("{}::track{:02}", cue_path_str, track.track_number);
                 candidates.push(DiskCandidate {
                     path: PathBuf::from(&synthetic_path),
                     path_str: synthetic_path,
@@ -356,10 +350,7 @@ fn process_cue_parse_tasks(tasks: &[ParseTask]) -> Vec<ParsedTaskResult> {
     for task in tasks {
         // Extract CUE file path from synthetic path: "{cue_path}::track{NN}"
         if let Some(cue_path) = task.path_str.split("::track").next() {
-            grouped
-                .entry(cue_path.to_string())
-                .or_default()
-                .push(task);
+            grouped.entry(cue_path.to_string()).or_default().push(task);
         }
     }
 
