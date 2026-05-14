@@ -5,6 +5,8 @@ import {
   DEFAULT_DESKTOP_PLAYER_ALIGNMENT,
   DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR,
   DEFAULT_DESKTOP_CUSTOM_ROMAJI_COLOR,
+  DEFAULT_DESKTOP_CUSTOM_ROMAJI_PLAYED_COLOR,
+  DEFAULT_DESKTOP_CUSTOM_ROMAJI_UNPLAYED_COLOR,
   DEFAULT_DESKTOP_CUSTOM_TRANSLATION_COLOR,
   DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR,
   DEFAULT_DESKTOP_TEXT_OPACITY,
@@ -107,6 +109,8 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     colorScheme: 'auto',
     customPlayedColor: DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR,
     customUnplayedColor: DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR,
+    customRomajiPlayedColor: DEFAULT_DESKTOP_CUSTOM_ROMAJI_PLAYED_COLOR,
+    customRomajiUnplayedColor: DEFAULT_DESKTOP_CUSTOM_ROMAJI_UNPLAYED_COLOR,
     customRomajiColor: DEFAULT_DESKTOP_CUSTOM_ROMAJI_COLOR,
     customTranslationColor: DEFAULT_DESKTOP_CUSTOM_TRANSLATION_COLOR,
     textOpacity: DEFAULT_DESKTOP_TEXT_OPACITY,
@@ -414,8 +418,14 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
       '--desktop-text-secondary': 'rgba(255, 255, 255, 0.88)',
       '--desktop-text-tertiary': 'rgba(255, 255, 255, 0.76)',
       '--desktop-romaji-color': settings.value.colorScheme === 'custom'
-        ? settings.value.customRomajiColor
+        ? settings.value.customRomajiUnplayedColor
         : 'color-mix(in srgb, var(--desktop-accent-d) 42%, var(--desktop-text-secondary))',
+      '--desktop-romaji-played-color': settings.value.colorScheme === 'custom'
+        ? settings.value.customRomajiPlayedColor
+        : 'color-mix(in srgb, var(--desktop-accent-b) 58%, var(--desktop-romaji-color))',
+      '--desktop-romaji-unplayed-color': settings.value.colorScheme === 'custom'
+        ? settings.value.customRomajiUnplayedColor
+        : 'var(--desktop-romaji-color)',
       '--desktop-translation-color': settings.value.colorScheme === 'custom'
         ? settings.value.customTranslationColor
         : 'color-mix(in srgb, var(--desktop-accent-c) 28%, var(--desktop-text-tertiary))',
@@ -545,6 +555,48 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     };
   }
 
+  function getRomajiWordStyle(start: number, end: number): CSSProperties {
+    const duration = Math.max(0.001, end - start);
+    const progress = Math.max(0, Math.min(1, (syncedCurrentTime.value - start) / duration));
+
+    if (progress <= 0) {
+      return { color: 'var(--desktop-romaji-unplayed-color)' };
+    }
+
+    const highlightStop = `${Math.round(progress * 100)}%`;
+
+    return {
+      backgroundImage: `linear-gradient(90deg, var(--desktop-romaji-played-color) 0%, var(--desktop-romaji-played-color) ${highlightStop}, var(--desktop-romaji-unplayed-color) ${highlightStop}, var(--desktop-romaji-unplayed-color) 100%)`,
+      WebkitBackgroundClip: 'text',
+      backgroundClip: 'text',
+      color: 'transparent',
+      WebkitTextFillColor: 'transparent',
+    };
+  }
+
+  function getRomajiLineStyle(line: LyricLine, lineIndex: number): CSSProperties {
+    const start = Number.isFinite(line.time) ? line.time : 0;
+    const end = Math.max(start + 0.001, getPseudoWordEnd(line, lineIndex, start));
+    const duration = Math.max(0.001, end - start);
+    const progress = Math.max(0, Math.min(1, (syncedCurrentTime.value - start) / duration));
+
+    if (progress <= 0) {
+      return { color: 'var(--desktop-romaji-unplayed-color)' };
+    }
+
+    const highlightStop = `${Math.round(progress * 100)}%`;
+
+    return {
+      backgroundImage: `linear-gradient(90deg, var(--desktop-romaji-played-color) 0%, var(--desktop-romaji-played-color) ${highlightStop}, var(--desktop-romaji-unplayed-color) ${highlightStop}, var(--desktop-romaji-unplayed-color) 100%)`,
+      WebkitBackgroundClip: 'text',
+      backgroundClip: 'text',
+      color: 'transparent',
+      WebkitTextFillColor: 'transparent',
+      filter: progress > 0 && progress < 1 ? 'drop-shadow(0 0 10px color-mix(in srgb, var(--desktop-romaji-played-color) 28%, transparent))' : 'none',
+      transition: 'filter 120ms linear',
+    };
+  }
+
   return {
     playbackTime,
     isPlaying,
@@ -569,5 +621,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     patchSettings,
     emitAction,
     getWordStyle,
+    getRomajiWordStyle,
+    getRomajiLineStyle,
   };
 }

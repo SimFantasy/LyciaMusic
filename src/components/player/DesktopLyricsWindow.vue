@@ -23,6 +23,8 @@ const {
   handlePlaybackPayload,
   emitAction,
   getWordStyle,
+  getRomajiWordStyle,
+  getRomajiLineStyle,
 } = useDesktopLyricsDisplay(showDragShadow);
 
 const {
@@ -116,6 +118,7 @@ const {
                               <span
                                 v-if="displayLine.hasAlignedRomaji"
                                 class="desktop-lyric-word-romaji"
+                                :style="displayLine.active ? getRomajiWordStyle(word.start, word.end) : undefined"
                               >
                                 {{ word.romaji?.trim() }}
                               </span>
@@ -131,6 +134,9 @@ const {
                           :key="`${displayLine.lineIndex}:${secondaryLine.kind}:${secondaryLine.text}`"
                           class="desktop-lyric-sub"
                           :class="`desktop-lyric-sub--${secondaryLine.kind}`"
+                          :style="secondaryLine.kind === 'romaji' && displayLine.active
+                            ? getRomajiLineStyle(displayLine.line, displayLine.lineIndex)
+                            : undefined"
                         >
                           {{ secondaryLine.text }}
                         </div>
@@ -378,7 +384,7 @@ const {
 .desktop-lyric-word-romaji {
   display: block;
   margin-top: 0.08em;
-  color: var(--desktop-romaji-color);
+  color: var(--desktop-romaji-unplayed-color);
   font-size: 0.46em;
   font-weight: 650;
   line-height: 1.05;
@@ -387,7 +393,7 @@ const {
   text-shadow:
     0 1px 2px rgb(var(--desktop-text-shadow-color, 0 0 0) / calc(var(--desktop-first-line-text-shadow-alpha, 0) * 0.48)),
     0 0 calc(var(--desktop-first-line-text-shadow-blur, 0px) * 0.86) rgb(var(--desktop-text-shadow-color, 0 0 0) / calc(var(--desktop-first-line-text-shadow-alpha, 0) * 0.86)),
-    0 0 16px color-mix(in srgb, var(--desktop-romaji-color) 20%, transparent);
+    0 0 16px color-mix(in srgb, var(--desktop-romaji-unplayed-color) 20%, transparent);
 }
 
 .desktop-lyric-sub {
@@ -405,11 +411,11 @@ const {
 }
 
 .desktop-lyric-sub--romaji {
-  color: var(--desktop-romaji-color);
+  color: var(--desktop-romaji-unplayed-color);
   text-shadow:
     0 1px 2px rgb(var(--desktop-text-shadow-color, 0 0 0) / calc(var(--desktop-first-line-text-shadow-alpha, 0) * 0.48)),
     0 0 calc(var(--desktop-first-line-text-shadow-blur, 0px) * 0.86) rgb(var(--desktop-text-shadow-color, 0 0 0) / calc(var(--desktop-first-line-text-shadow-alpha, 0) * 0.86)),
-    0 0 16px color-mix(in srgb, var(--desktop-romaji-color) 20%, transparent);
+    0 0 16px color-mix(in srgb, var(--desktop-romaji-unplayed-color) 20%, transparent);
 }
 
 .desktop-lyric-sub--translation {
@@ -424,7 +430,7 @@ const {
   text-shadow:
     0 1px 2px rgb(var(--desktop-second-line-text-shadow-color, var(--desktop-text-shadow-color, 0 0 0)) / calc(var(--desktop-second-line-text-shadow-alpha, 0) * 0.48)),
     0 0 calc(var(--desktop-second-line-text-shadow-blur, 0px) * 0.86) rgb(var(--desktop-second-line-text-shadow-color, var(--desktop-text-shadow-color, 0 0 0)) / calc(var(--desktop-second-line-text-shadow-alpha, 0) * 0.86)),
-    0 0 16px color-mix(in srgb, var(--desktop-romaji-color) 20%, transparent);
+    0 0 16px color-mix(in srgb, var(--desktop-romaji-unplayed-color) 20%, transparent);
 }
 
 .desktop-lyric-row--second-line .desktop-lyric-sub--translation {

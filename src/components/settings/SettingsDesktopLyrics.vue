@@ -5,7 +5,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 
 import {
   DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR,
-  DEFAULT_DESKTOP_CUSTOM_ROMAJI_COLOR,
+  DEFAULT_DESKTOP_CUSTOM_ROMAJI_PLAYED_COLOR,
+  DEFAULT_DESKTOP_CUSTOM_ROMAJI_UNPLAYED_COLOR,
   DEFAULT_DESKTOP_CUSTOM_TRANSLATION_COLOR,
   DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR,
   DEFAULT_DESKTOP_TEXT_OPACITY,
@@ -87,6 +88,18 @@ const fontPresetMenuStyle = ref<Record<string, string>>({});
 const showLyricsSyncOffsetPanel = ref(false);
 const isResettingWindowBounds = ref(false);
 const isCustomColorModalOpen = ref(false);
+type DesktopCustomColorKind = 'played' | 'unplayed' | 'romajiPlayed' | 'romajiUnplayed' | 'translation';
+const activeCustomColorKind = ref<DesktopCustomColorKind | null>(null);
+const customPickerHue = ref(0);
+const customPickerSaturation = ref(100);
+const customPickerValue = ref(100);
+const customPreviewRef = ref<HTMLElement | null>(null);
+const customColorPanelRef = ref<HTMLElement | null>(null);
+const customColorPanelStyle = ref<Record<string, string>>({});
+const CUSTOM_COLOR_PANEL_WIDTH = 340;
+const CUSTOM_COLOR_PANEL_HEIGHT = 400;
+const CUSTOM_COLOR_PANEL_GAP = 20;
+const CUSTOM_COLOR_PANEL_LEFT_SHIFT = 425;
 
 const availableFontOptions = computed(() => [
   ...LYRICS_FONT_OPTIONS,
@@ -127,9 +140,20 @@ const customPreviewCurrentStyle = computed(() => ({
 const customPreviewUnplayedStyle = computed(() => ({
   color: desktopLyricsSettings.customUnplayedColor,
 }));
-const customPreviewRomajiStyle = computed(() => ({
-  color: desktopLyricsSettings.customRomajiColor,
-  textShadow: `0 0 12px ${desktopLyricsSettings.customRomajiColor}44`,
+const customPreviewRomajiPlayedStyle = computed(() => ({
+  color: desktopLyricsSettings.customRomajiPlayedColor,
+  textShadow: `0 0 12px ${desktopLyricsSettings.customRomajiPlayedColor}44`,
+}));
+const customPreviewRomajiCurrentStyle = computed(() => ({
+  backgroundImage: `linear-gradient(90deg, ${desktopLyricsSettings.customRomajiPlayedColor} 0%, ${desktopLyricsSettings.customRomajiPlayedColor} 56%, ${desktopLyricsSettings.customRomajiUnplayedColor} 56%, ${desktopLyricsSettings.customRomajiUnplayedColor} 100%)`,
+  WebkitBackgroundClip: 'text',
+  backgroundClip: 'text',
+  color: 'transparent',
+  WebkitTextFillColor: 'transparent',
+  filter: `drop-shadow(0 0 10px ${desktopLyricsSettings.customRomajiPlayedColor}44)`,
+}));
+const customPreviewRomajiUnplayedStyle = computed(() => ({
+  color: desktopLyricsSettings.customRomajiUnplayedColor,
 }));
 const customPreviewTranslationStyle = computed(() => ({
   color: desktopLyricsSettings.customTranslationColor,
@@ -149,6 +173,23 @@ const lyricsSyncOffsetLabel = computed(() => {
   if (offset === 0) return '0 ms';
   return `${offset > 0 ? '+' : ''}${offset} ms`;
 });
+const activeCustomColorLabel = computed(() => {
+  const labels: Record<DesktopCustomColorKind, string> = {
+    played: '主歌词 已播放',
+    unplayed: '主歌词 未播放',
+    romajiPlayed: '罗马音 已播放',
+    romajiUnplayed: '罗马音 未播放',
+    translation: '翻译',
+  };
+  return activeCustomColorKind.value ? labels[activeCustomColorKind.value] : '';
+});
+const customPickerHueColor = computed(() => hsvToHex(customPickerHue.value, 100, 100));
+const customPickerColor = computed(() => hsvToHex(
+  customPickerHue.value,
+  customPickerSaturation.value,
+  customPickerValue.value,
+));
+const customPickerRgb = computed(() => hexToRgb(customPickerColor.value));
 
 function clampFontScale(value: number) {
   return Math.min(MAX_PLAYER_FONT_SCALE, Math.max(MIN_PLAYER_FONT_SCALE, value));
@@ -181,6 +222,89 @@ function clampLyricsSyncOffset(value: number) {
 
 function formatOffsetValue(value: number) {
   return `${value > 0 ? '+' : ''}${Math.round(value)}%`;
+}
+
+function clampPercent(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, value));
+}
+
+function clampRgb(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(255, Math.max(0, Math.round(value)));
+}
+
+function hexToRgb(value: string) {
+  const normalized = normalizeHexColor(value, '#000000');
+  return {
+    r: Number.parseInt(normalized.slice(1, 3), 16),
+    g: Number.parseInt(normalized.slice(3, 5), 16),
+    b: Number.parseInt(normalized.slice(5, 7), 16),
+  };
+}
+
+function rgbToHex(r: number, g: number, b: number) {
+  return `#${[r, g, b].map((channel) => clampRgb(channel).toString(16).padStart(2, '0')).join('')}`.toUpperCase();
+}
+
+function rgbToHsv(r: number, g: number, b: number) {
+  const red = clampRgb(r) / 255;
+  const green = clampRgb(g) / 255;
+  const blue = clampRgb(b) / 255;
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const delta = max - min;
+  let hue = 0;
+
+  if (delta !== 0) {
+    if (max === red) {
+      hue = 60 * (((green - blue) / delta) % 6);
+    } else if (max === green) {
+      hue = 60 * ((blue - red) / delta + 2);
+    } else {
+      hue = 60 * ((red - green) / delta + 4);
+    }
+  }
+
+  if (hue < 0) hue += 360;
+
+  return {
+    h: Math.round(hue),
+    s: max === 0 ? 0 : Math.round((delta / max) * 100),
+    v: Math.round(max * 100),
+  };
+}
+
+function hsvToHex(h: number, s: number, v: number) {
+  const hue = ((h % 360) + 360) % 360;
+  const saturation = clampPercent(s) / 100;
+  const value = clampPercent(v) / 100;
+  const chroma = value * saturation;
+  const x = chroma * (1 - Math.abs((hue / 60) % 2 - 1));
+  const match = value - chroma;
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+
+  if (hue < 60) {
+    red = chroma; green = x;
+  } else if (hue < 120) {
+    red = x; green = chroma;
+  } else if (hue < 180) {
+    green = chroma; blue = x;
+  } else if (hue < 240) {
+    green = x; blue = chroma;
+  } else if (hue < 300) {
+    red = x; blue = chroma;
+  } else {
+    red = chroma; blue = x;
+  }
+
+  return rgbToHex(
+    (red + match) * 255,
+    (green + match) * 255,
+    (blue + match) * 255,
+  );
 }
 
 function setDesktopFontScale(value: number) {
@@ -236,11 +360,12 @@ function selectDesktopColorScheme(value: LyricsColorScheme) {
   setDesktopColorScheme(value);
 }
 
-function setDesktopCustomColor(kind: 'played' | 'unplayed' | 'romaji' | 'translation', value: string) {
+function setDesktopCustomColor(kind: DesktopCustomColorKind, value: string) {
   const fallbackMap = {
     played: DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR,
     unplayed: DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR,
-    romaji: DEFAULT_DESKTOP_CUSTOM_ROMAJI_COLOR,
+    romajiPlayed: DEFAULT_DESKTOP_CUSTOM_ROMAJI_PLAYED_COLOR,
+    romajiUnplayed: DEFAULT_DESKTOP_CUSTOM_ROMAJI_UNPLAYED_COLOR,
     translation: DEFAULT_DESKTOP_CUSTOM_TRANSLATION_COLOR,
   };
   const fallback = fallbackMap[kind];
@@ -250,7 +375,10 @@ function setDesktopCustomColor(kind: 'played' | 'unplayed' | 'romaji' | 'transla
     desktopLyricsSettings.customPlayedColor = normalized;
   } else if (kind === 'unplayed') {
     desktopLyricsSettings.customUnplayedColor = normalized;
-  } else if (kind === 'romaji') {
+  } else if (kind === 'romajiPlayed') {
+    desktopLyricsSettings.customRomajiPlayedColor = normalized;
+  } else if (kind === 'romajiUnplayed') {
+    desktopLyricsSettings.customRomajiUnplayedColor = normalized;
     desktopLyricsSettings.customRomajiColor = normalized;
   } else {
     desktopLyricsSettings.customTranslationColor = normalized;
@@ -259,13 +387,98 @@ function setDesktopCustomColor(kind: 'played' | 'unplayed' | 'romaji' | 'transla
   desktopLyricsSettings.colorScheme = 'custom';
 }
 
+function getDesktopCustomColor(kind: DesktopCustomColorKind) {
+  if (kind === 'played') return desktopLyricsSettings.customPlayedColor;
+  if (kind === 'unplayed') return desktopLyricsSettings.customUnplayedColor;
+  if (kind === 'romajiPlayed') return desktopLyricsSettings.customRomajiPlayedColor;
+  if (kind === 'romajiUnplayed') return desktopLyricsSettings.customRomajiUnplayedColor;
+  return desktopLyricsSettings.customTranslationColor;
+}
+
+function syncCustomPickerFromColor(color: string) {
+  const rgb = hexToRgb(color);
+  const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+  customPickerHue.value = hsv.h;
+  customPickerSaturation.value = hsv.s;
+  customPickerValue.value = hsv.v;
+}
+
+function updateCustomColorPanelPosition(anchor: HTMLElement) {
+  const rect = anchor.getBoundingClientRect();
+  const viewportPadding = 16;
+  const panelWidth = Math.min(CUSTOM_COLOR_PANEL_WIDTH, window.innerWidth - viewportPadding * 2);
+  const previewTop = customPreviewRef.value?.getBoundingClientRect().top ?? window.innerHeight - viewportPadding;
+  const maxTopBeforePreview = previewTop - CUSTOM_COLOR_PANEL_HEIGHT - CUSTOM_COLOR_PANEL_GAP;
+  const maxViewportTop = window.innerHeight - CUSTOM_COLOR_PANEL_HEIGHT - viewportPadding;
+  const maxTop = Math.max(viewportPadding, Math.min(maxTopBeforePreview, maxViewportTop));
+  const preferredTop = rect.top;
+  const preferredLeft = rect.right + CUSTOM_COLOR_PANEL_GAP - CUSTOM_COLOR_PANEL_LEFT_SHIFT;
+  const left = Math.min(
+    Math.max(viewportPadding, preferredLeft),
+    window.innerWidth - panelWidth - viewportPadding,
+  );
+  const top = Math.max(viewportPadding, Math.min(preferredTop, maxTop));
+
+  customColorPanelStyle.value = {
+    left: `${Math.round(left)}px`,
+    top: `${Math.round(top)}px`,
+    width: `${Math.round(panelWidth)}px`,
+  };
+}
+
+function openCustomColorPicker(kind: DesktopCustomColorKind, event: MouseEvent) {
+  const anchor = event.currentTarget as HTMLElement | null;
+  activeCustomColorKind.value = kind;
+  syncCustomPickerFromColor(getDesktopCustomColor(kind));
+  desktopLyricsSettings.colorScheme = 'custom';
+  if (anchor) {
+    updateCustomColorPanelPosition(anchor);
+  }
+}
+
+function applyCustomPickerColor() {
+  if (!activeCustomColorKind.value) return;
+  setDesktopCustomColor(activeCustomColorKind.value, customPickerColor.value);
+}
+
+function setCustomPickerHue(value: number | string) {
+  const nextHue = typeof value === 'string' ? Number(value) : value;
+  customPickerHue.value = Number.isFinite(nextHue) ? Math.min(359, Math.max(0, Math.round(nextHue))) : 0;
+  applyCustomPickerColor();
+}
+
+function updateCustomPickerArea(event: PointerEvent) {
+  const target = event.currentTarget as HTMLElement;
+  const rect = target.getBoundingClientRect();
+  customPickerSaturation.value = clampPercent(((event.clientX - rect.left) / rect.width) * 100);
+  customPickerValue.value = clampPercent(100 - ((event.clientY - rect.top) / rect.height) * 100);
+  applyCustomPickerColor();
+}
+
+function dragCustomPickerArea(event: PointerEvent) {
+  if (event.buttons !== 1) return;
+  updateCustomPickerArea(event);
+}
+
+function setCustomPickerRgb(channel: 'r' | 'g' | 'b', value: number | string) {
+  const rgb = customPickerRgb.value;
+  const next = {
+    ...rgb,
+    [channel]: clampRgb(typeof value === 'string' ? Number(value) : value),
+  };
+  syncCustomPickerFromColor(rgbToHex(next.r, next.g, next.b));
+  applyCustomPickerColor();
+}
+
 function openCustomColorModal() {
   desktopLyricsSettings.colorScheme = 'custom';
+  activeCustomColorKind.value = null;
   isCustomColorModalOpen.value = true;
 }
 
 function closeCustomColorModal() {
   isCustomColorModalOpen.value = false;
+  activeCustomColorKind.value = null;
 }
 
 function resetLyricsSyncOffset() {
@@ -346,6 +559,9 @@ function handlePointerDownOutside(event: MouseEvent) {
   if (!target) return;
   if (fontPresetFieldRef.value?.contains(target)) return;
   if (fontPresetMenuRef.value?.contains(target)) return;
+  if (customColorPanelRef.value?.contains(target)) return;
+  if ((target as Element | null)?.closest?.('.desktop-color-input-shell')) return;
+  activeCustomColorKind.value = null;
   closeFontPresetMenu();
 }
 
@@ -999,56 +1215,155 @@ onUnmounted(() => {
         >
           <div class="desktop-custom-modal" role="dialog" aria-modal="true" aria-label="自定义桌面歌词配色">
             <div class="desktop-custom-color-row">
-              <label class="desktop-color-picker">
-                <input
-                  type="color"
-                  :value="desktopLyricsSettings.customPlayedColor"
-                  aria-label="已播放颜色"
-                  @input="setDesktopCustomColor('played', ($event.target as HTMLInputElement).value)"
+              <div
+                class="desktop-color-picker"
+                :class="{ 'desktop-color-picker--active': activeCustomColorKind === 'played' }"
+              >
+                <span>主歌词 已播放</span>
+                <button
+                  type="button"
+                  class="desktop-color-input-shell"
+                  aria-label="主歌词 已播放"
+                  @click="openCustomColorPicker('played', $event)"
                 >
-                <span class="desktop-color-swatch" :style="{ backgroundColor: desktopLyricsSettings.customPlayedColor }"></span>
-                <span>已播放</span>
-              </label>
-              <label class="desktop-color-picker">
-                <input
-                  type="color"
-                  :value="desktopLyricsSettings.customUnplayedColor"
-                  aria-label="未播放颜色"
-                  @input="setDesktopCustomColor('unplayed', ($event.target as HTMLInputElement).value)"
+                  <span class="desktop-color-swatch" :style="{ backgroundColor: desktopLyricsSettings.customPlayedColor }"></span>
+                </button>
+              </div>
+              <div
+                class="desktop-color-picker"
+                :class="{ 'desktop-color-picker--active': activeCustomColorKind === 'unplayed' }"
+              >
+                <span>主歌词 未播放</span>
+                <button
+                  type="button"
+                  class="desktop-color-input-shell"
+                  aria-label="主歌词 未播放"
+                  @click="openCustomColorPicker('unplayed', $event)"
                 >
-                <span class="desktop-color-swatch" :style="{ backgroundColor: desktopLyricsSettings.customUnplayedColor }"></span>
-                <span>未播放</span>
-              </label>
-              <label class="desktop-color-picker">
-                <input
-                  type="color"
-                  :value="desktopLyricsSettings.customRomajiColor"
-                  aria-label="罗马音颜色"
-                  @input="setDesktopCustomColor('romaji', ($event.target as HTMLInputElement).value)"
+                  <span class="desktop-color-swatch" :style="{ backgroundColor: desktopLyricsSettings.customUnplayedColor }"></span>
+                </button>
+              </div>
+              <div
+                class="desktop-color-picker"
+                :class="{ 'desktop-color-picker--active': activeCustomColorKind === 'romajiPlayed' }"
+              >
+                <span>罗马音 已播放</span>
+                <button
+                  type="button"
+                  class="desktop-color-input-shell"
+                  aria-label="罗马音 已播放"
+                  @click="openCustomColorPicker('romajiPlayed', $event)"
                 >
-                <span class="desktop-color-swatch" :style="{ backgroundColor: desktopLyricsSettings.customRomajiColor }"></span>
-                <span>罗马音</span>
-              </label>
-              <label class="desktop-color-picker">
-                <input
-                  type="color"
-                  :value="desktopLyricsSettings.customTranslationColor"
-                  aria-label="翻译颜色"
-                  @input="setDesktopCustomColor('translation', ($event.target as HTMLInputElement).value)"
+                  <span class="desktop-color-swatch" :style="{ backgroundColor: desktopLyricsSettings.customRomajiPlayedColor }"></span>
+                </button>
+              </div>
+              <div
+                class="desktop-color-picker"
+                :class="{ 'desktop-color-picker--active': activeCustomColorKind === 'romajiUnplayed' }"
+              >
+                <span>罗马音 未播放</span>
+                <button
+                  type="button"
+                  class="desktop-color-input-shell"
+                  aria-label="罗马音 未播放"
+                  @click="openCustomColorPicker('romajiUnplayed', $event)"
                 >
-                <span class="desktop-color-swatch" :style="{ backgroundColor: desktopLyricsSettings.customTranslationColor }"></span>
+                  <span class="desktop-color-swatch" :style="{ backgroundColor: desktopLyricsSettings.customRomajiUnplayedColor }"></span>
+                </button>
+              </div>
+              <div
+                class="desktop-color-picker"
+                :class="{ 'desktop-color-picker--active': activeCustomColorKind === 'translation' }"
+              >
                 <span>翻译</span>
-              </label>
+                <button
+                  type="button"
+                  class="desktop-color-input-shell"
+                  aria-label="翻译"
+                  @click="openCustomColorPicker('translation', $event)"
+                >
+                  <span class="desktop-color-swatch" :style="{ backgroundColor: desktopLyricsSettings.customTranslationColor }"></span>
+                </button>
+              </div>
             </div>
 
-            <div class="desktop-custom-preview">
+            <div
+              v-if="activeCustomColorKind"
+              ref="customColorPanelRef"
+              class="desktop-custom-color-panel"
+              :style="customColorPanelStyle"
+            >
+              <div class="desktop-custom-color-panel-title">{{ activeCustomColorLabel }}</div>
+              <div
+                class="desktop-custom-color-area"
+                :style="{ backgroundColor: customPickerHueColor }"
+                @pointerdown="updateCustomPickerArea"
+                @pointermove="dragCustomPickerArea"
+              >
+                <span
+                  class="desktop-custom-color-thumb"
+                  :style="{
+                    left: `${customPickerSaturation}%`,
+                    top: `${100 - customPickerValue}%`,
+                  }"
+                ></span>
+              </div>
+              <div class="desktop-custom-hue-row">
+                <span class="desktop-custom-current-color" :style="{ backgroundColor: customPickerColor }"></span>
+                <input
+                  class="desktop-custom-hue-slider"
+                  type="range"
+                  min="0"
+                  max="359"
+                  :value="customPickerHue"
+                  aria-label="色相"
+                  @input="setCustomPickerHue(($event.target as HTMLInputElement).value)"
+                >
+              </div>
+              <div class="desktop-custom-rgb-row">
+                <label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="255"
+                    :value="customPickerRgb.r"
+                    @input="setCustomPickerRgb('r', ($event.target as HTMLInputElement).value)"
+                  >
+                  <span>R</span>
+                </label>
+                <label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="255"
+                    :value="customPickerRgb.g"
+                    @input="setCustomPickerRgb('g', ($event.target as HTMLInputElement).value)"
+                  >
+                  <span>G</span>
+                </label>
+                <label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="255"
+                    :value="customPickerRgb.b"
+                    @input="setCustomPickerRgb('b', ($event.target as HTMLInputElement).value)"
+                  >
+                  <span>B</span>
+                </label>
+              </div>
+            </div>
+
+            <div ref="customPreviewRef" class="desktop-custom-preview">
               <div class="desktop-custom-preview-line">
                 <span :style="customPreviewPlayedStyle">初めての</span>
                 <span :style="customPreviewCurrentStyle">ルーブル</span>
                 <span :style="customPreviewUnplayedStyle">は</span>
               </div>
-              <div class="desktop-custom-preview-sub" :style="customPreviewRomajiStyle">
-                ha ji me te no ru u bu ru wa
+              <div class="desktop-custom-preview-sub">
+                <span :style="customPreviewRomajiPlayedStyle">ha ji me te no</span>
+                <span :style="customPreviewRomajiCurrentStyle">ru u bu ru</span>
+                <span :style="customPreviewRomajiUnplayedStyle">wa</span>
               </div>
               <div class="desktop-custom-preview-sub desktop-custom-preview-translation" :style="customPreviewTranslationStyle">
                 第一次参观卢浮宫
@@ -1056,7 +1371,7 @@ onUnmounted(() => {
             </div>
 
             <div class="desktop-custom-modal-actions">
-              <button type="button" class="desktop-action-button" @click="closeCustomColorModal">完成</button>
+              <button type="button" class="desktop-action-button desktop-custom-done-button" @click="closeCustomColorModal">完成</button>
             </div>
           </div>
         </div>
@@ -1547,11 +1862,13 @@ onUnmounted(() => {
 }
 
 .desktop-custom-modal {
-  width: min(560px, 100%);
+  width: min(720px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
   border: 1px solid rgba(255, 255, 255, 0.42);
-  border-radius: 20px;
+  border-radius: 24px;
   background: rgba(255, 255, 255, 0.9);
-  padding: 18px;
+  padding: 28px;
   box-shadow: 0 26px 70px rgba(15, 23, 42, 0.22);
 }
 
@@ -1561,36 +1878,38 @@ onUnmounted(() => {
 }
 
 .desktop-custom-color-row {
-  display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .desktop-color-picker {
   position: relative;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 18px;
   min-width: 0;
-  padding: 8px 10px;
+  min-height: 62px;
+  padding: 10px 14px 10px 18px;
   border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.5);
   color: rgb(31 41 55);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
+  font-size: 15px;
+  font-weight: 700;
   transition: border-color 160ms ease, background-color 160ms ease;
 }
 
-.desktop-color-picker span:last-child {
+.desktop-color-picker > span:first-child {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: keep-all;
 }
 
 :global(.dark) .desktop-color-picker {
   border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
   color: rgba(255, 255, 255, 0.88);
 }
 
@@ -1599,13 +1918,161 @@ onUnmounted(() => {
   background: rgba(236, 65, 65, 0.06);
 }
 
-.desktop-color-picker input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
+.desktop-color-picker--active {
+  border-color: rgba(236, 65, 65, 0.45);
+  background: rgba(236, 65, 65, 0.08);
+}
+
+.desktop-color-input-shell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   cursor: pointer;
+  flex-shrink: 0;
+}
+
+.desktop-custom-color-panel {
+  position: fixed;
+  z-index: 155;
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.24);
+}
+
+:global(.dark) .desktop-custom-color-panel {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(18, 18, 20, 0.96);
+}
+
+.desktop-custom-color-panel-title {
+  padding: 14px 16px 12px;
+  color: rgb(31 41 55);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+:global(.dark) .desktop-custom-color-panel-title {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.desktop-custom-color-area {
+  position: relative;
+  height: 218px;
+  cursor: crosshair;
+  touch-action: none;
+  background-image:
+    linear-gradient(90deg, #fff, rgba(255, 255, 255, 0)),
+    linear-gradient(0deg, #000, rgba(0, 0, 0, 0));
+}
+
+.desktop-custom-color-thumb {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border: 3px solid #fff;
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.75),
+    0 2px 8px rgba(15, 23, 42, 0.26);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.desktop-custom-hue-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px 10px;
+}
+
+.desktop-custom-current-color {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 0 0 1px rgba(15, 23, 42, 0.08),
+    0 4px 12px rgba(15, 23, 42, 0.14);
+}
+
+.desktop-custom-hue-slider {
+  width: 100%;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  appearance: none;
+  cursor: pointer;
+}
+
+.desktop-custom-hue-slider::-webkit-slider-thumb {
+  width: 22px;
+  height: 22px;
+  border: 3px solid #fff;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.2),
+    0 2px 8px rgba(15, 23, 42, 0.22);
+  appearance: none;
+}
+
+.desktop-custom-hue-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border: 3px solid #fff;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.2),
+    0 2px 8px rgba(15, 23, 42, 0.22);
+}
+
+.desktop-custom-rgb-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 18px 16px;
+}
+
+.desktop-custom-rgb-row label {
+  display: grid;
+  gap: 6px;
+  text-align: center;
+  color: rgb(31 41 55);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+:global(.dark) .desktop-custom-rgb-row label {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.desktop-custom-rgb-row input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 8px 6px;
+  text-align: center;
+  color: rgb(17 24 39);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+:global(.dark) .desktop-custom-rgb-row input {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .desktop-shadow-custom-chip {
@@ -1638,28 +2105,28 @@ onUnmounted(() => {
 }
 
 .desktop-color-swatch {
-  width: 32px;
-  height: 32px;
+  width: 100%;
+  height: 100%;
   border: 1px solid rgba(255, 255, 255, 0.72);
-  border-radius: 10px;
+  border-radius: 14px;
   box-shadow:
     inset 0 0 0 1px rgba(15, 23, 42, 0.08),
     0 4px 12px rgba(15, 23, 42, 0.14);
 }
 
 .desktop-custom-preview {
-  margin-top: 14px;
-  min-height: 180px;
+  margin-top: 18px;
+  min-height: 220px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 14px;
-  border-radius: 16px;
+  border-radius: 18px;
   background:
     radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.12), transparent 42%),
     linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(3, 7, 18, 0.96));
-  padding: 24px;
+  padding: 30px;
   text-align: center;
 }
 
@@ -1685,7 +2152,15 @@ onUnmounted(() => {
 .desktop-custom-modal-actions {
   display: flex;
   justify-content: flex-end;
-  margin-top: 14px;
+  margin-top: 18px;
+}
+
+.desktop-custom-done-button {
+  min-width: 108px;
+  min-height: 44px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .desktop-custom-modal-enter-active,
@@ -1723,8 +2198,18 @@ onUnmounted(() => {
     width: 100%;
   }
 
-  .desktop-custom-color-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .desktop-custom-modal {
+    padding: 18px;
+  }
+
+  .desktop-color-picker {
+    min-height: 58px;
+    padding: 9px 12px 9px 14px;
+  }
+
+  .desktop-color-input-shell {
+    width: 42px;
+    height: 42px;
   }
 
   .desktop-custom-preview-line {

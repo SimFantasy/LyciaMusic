@@ -181,4 +181,18 @@ describe('settings store', () => {
     expect(settingsStore.settings.desktopLyrics.colorScheme).toBe('pink');
     expect(settingsStore.settings.desktopLyrics.playerAlignment).toBe('center');
   });
+
+  it('merges desktop romaji played and unplayed custom colors independently', () => {
+    const settingsStore = useSettingsStore();
+
+    settingsStore.patchSettings({
+      desktopLyrics: {
+        customRomajiPlayedColor: '#123456',
+        customRomajiUnplayedColor: '#ABCDEF',
+      },
+    });
+
+    expect(settingsStore.settings.desktopLyrics.customRomajiPlayedColor).toBe('#123456');
+    expect(settingsStore.settings.desktopLyrics.customRomajiUnplayedColor).toBe('#ABCDEF');
+  });
 });

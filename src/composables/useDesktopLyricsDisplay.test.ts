@@ -43,6 +43,8 @@ function createPayload(enableWordEffect: boolean): DesktopLyricsStatePayload {
       colorScheme: 'auto',
       customPlayedColor: '#EC4141',
       customUnplayedColor: '#FFFFFF',
+      customRomajiPlayedColor: '#BFDBFE',
+      customRomajiUnplayedColor: '#FFFFFF',
       customRomajiColor: '#BFDBFE',
       customTranslationColor: '#FBCFE8',
       textOpacity: 1,
@@ -92,6 +94,29 @@ describe('useDesktopLyricsDisplay', () => {
       '--desktop-second-line-text-shadow-alpha': '0.75',
       '--desktop-second-line-text-shadow-blur': '18px',
     });
+  });
+
+  it('exposes independent desktop romaji played and unplayed colors in custom schemes', () => {
+    const display = useDesktopLyricsDisplay(ref(false));
+    const payload = createPayload(true);
+
+    display.handlePayload({
+      ...payload,
+      playbackTime: 2,
+      settings: {
+        ...payload.settings,
+        colorScheme: 'custom',
+        customRomajiPlayedColor: '#123456',
+        customRomajiUnplayedColor: '#ABCDEF',
+      } as any,
+    });
+
+    expect(display.widgetStyle.value).toMatchObject({
+      '--desktop-romaji-played-color': '#123456',
+      '--desktop-romaji-unplayed-color': '#ABCDEF',
+    });
+    expect(display.getRomajiWordStyle(1, 3).backgroundImage).toContain('var(--desktop-romaji-played-color) 0%');
+    expect(display.getRomajiWordStyle(1, 3).backgroundImage).toContain('var(--desktop-romaji-unplayed-color) 50%');
   });
 
   it('uses word-level romaji on desktop only when every displayed word has romaji', () => {

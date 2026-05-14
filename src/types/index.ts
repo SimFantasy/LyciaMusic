@@ -270,6 +270,8 @@ export interface DesktopLyricsSettings {
   colorScheme: LyricsColorScheme;
   customPlayedColor: string;
   customUnplayedColor: string;
+  customRomajiPlayedColor: string;
+  customRomajiUnplayedColor: string;
   customRomajiColor: string;
   customTranslationColor: string;
   textOpacity: number;

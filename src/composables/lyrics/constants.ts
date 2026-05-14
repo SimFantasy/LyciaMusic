@@ -27,6 +27,8 @@ export const DEFAULT_DESKTOP_PLAYER_ALIGNMENT: DesktopLyricsPlayerAlignment = 'c
 export const DEFAULT_PLAYER_FONT_PRESET: LyricsFontPreset = 'system';
 export const DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR = '#EC4141';
 export const DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR = '#FFFFFF';
+export const DEFAULT_DESKTOP_CUSTOM_ROMAJI_PLAYED_COLOR = '#BFDBFE';
+export const DEFAULT_DESKTOP_CUSTOM_ROMAJI_UNPLAYED_COLOR = '#FFFFFF';
 export const DEFAULT_DESKTOP_CUSTOM_ROMAJI_COLOR = '#BFDBFE';
 export const DEFAULT_DESKTOP_CUSTOM_TRANSLATION_COLOR = '#FBCFE8';
 export const DEFAULT_DESKTOP_TEXT_OPACITY = 1;
@@ -115,6 +117,8 @@ export const defaultDesktopLyricsSettings: DesktopLyricsSettings = {
   colorScheme: 'auto',
   customPlayedColor: DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR,
   customUnplayedColor: DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR,
+  customRomajiPlayedColor: DEFAULT_DESKTOP_CUSTOM_ROMAJI_PLAYED_COLOR,
+  customRomajiUnplayedColor: DEFAULT_DESKTOP_CUSTOM_ROMAJI_UNPLAYED_COLOR,
   customRomajiColor: DEFAULT_DESKTOP_CUSTOM_ROMAJI_COLOR,
   customTranslationColor: DEFAULT_DESKTOP_CUSTOM_TRANSLATION_COLOR,
   textOpacity: DEFAULT_DESKTOP_TEXT_OPACITY,
@@ -256,8 +260,12 @@ export function normalizeLyricsSettingsPatch(patch: Partial<LyricsSettings>): Ly
 export function normalizeDesktopLyricsSettingsPatch(
   patch: Partial<DesktopLyricsSettings>,
 ): DesktopLyricsSettings {
-  const legacyPatch = patch as Partial<DesktopLyricsSettings> & { textShadowStrength?: number };
+  const legacyPatch = patch as Partial<DesktopLyricsSettings> & {
+    textShadowStrength?: number;
+    customRomajiColor?: string;
+  };
   const legacyTextShadowStrength = legacyPatch.textShadowStrength;
+  const legacyRomajiColor = legacyPatch.customRomajiColor;
 
   return {
     ...defaultDesktopLyricsSettings,
@@ -294,6 +302,14 @@ export function normalizeDesktopLyricsSettingsPatch(
     customUnplayedColor: normalizeHexColor(
       patch.customUnplayedColor,
       defaultDesktopLyricsSettings.customUnplayedColor,
+    ),
+    customRomajiPlayedColor: normalizeHexColor(
+      patch.customRomajiPlayedColor ?? legacyRomajiColor,
+      defaultDesktopLyricsSettings.customRomajiPlayedColor,
+    ),
+    customRomajiUnplayedColor: normalizeHexColor(
+      patch.customRomajiUnplayedColor ?? legacyRomajiColor,
+      defaultDesktopLyricsSettings.customRomajiUnplayedColor,
     ),
     customRomajiColor: normalizeHexColor(
       patch.customRomajiColor,
