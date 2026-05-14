@@ -770,6 +770,8 @@ const formatTime = (timestampSeconds?: number) => {
   width: min(1360px, calc(100vw - var(--song-info-viewport-x)));
   height: min(1040px, calc(100dvh - var(--song-info-viewport-y)));
   max-height: min(1040px, calc(100dvh - var(--song-info-viewport-y)));
+  -webkit-user-select: text;
+  user-select: text;
   transform-origin: center center;
   transition:
     gap 360ms cubic-bezier(0.4, 0, 0.2, 1),

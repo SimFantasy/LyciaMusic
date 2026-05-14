@@ -9,6 +9,14 @@ describe('SongInfoModal window drag area', () => {
   });
 });
 
+describe('SongInfoModal text selection', () => {
+  it('opts the song information page back into browser text selection', () => {
+    expect(source).toContain('.song-info-stage {');
+    expect(source).toContain('-webkit-user-select: text;');
+    expect(source).toContain('user-select: text;');
+  });
+});
+
 describe('SongInfoModal lyrics editor theme', () => {
   it('defines dark surface tokens for the lyrics editor panel', () => {
     expect(source).toContain('--lyrics-editor-panel-bg: rgba(255, 255, 255, 0.82);');

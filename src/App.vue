@@ -28,3 +28,19 @@ const isTrayMenuWindow = currentWindowLabel === TRAY_MENU_WINDOW_LABEL;
   <TrayMenuWindow v-else-if="isTrayMenuWindow" />
   <MainShell v-else />
 </template>
+
+<style>
+html,
+body,
+#app {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+</style>
