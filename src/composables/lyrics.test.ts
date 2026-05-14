@@ -1361,24 +1361,8 @@ describe('raw lyrics samples from the common formats checklist', async () => {
 
     const amlLines = convertLyricsToAmlLines(lines, true, true);
     expect(amlLines).toHaveLength(1);
-    expect(amlLines[0]?.romanLyric).not.toBe('');
+    expect(amlLines[0]?.romanLyric).toBe('');
     expect(amlLines[0]?.words.map((word) => word.romanWord || '')).toEqual([
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-    ]);
-    expect((amlLines[0] as typeof amlLines[number] & {
-      romajiWords?: Array<{ text: string }>;
-    })?.romajiWords?.map((word) => normalizeWhitespace(word.text))).toEqual([
       'a o',
       'i',
       'da',
@@ -1391,6 +1375,42 @@ describe('raw lyrics samples from the common formats checklist', async () => {
       'ru',
       'ka',
       'ra',
+    ]);
+  });
+
+  it('falls back to whole-line romaji when timed romaji cannot cover every Japanese word', async () => {
+    const lines = await parseRawToLyricLines([
+      '[00:12.651]<00:12.651>ka <00:12.884>yo <00:13.267>wa <00:13.476>i <00:13.678>hi <00:14.126>ka <00:14.543>ri <00:18.056>',
+      '[00:12.651]<00:12.651>か<00:12.884>弱<00:13.476>い<00:13.678>光<00:14.553>が<00:14.897>指<00:15.616>差<00:16.936>す<00:17.007>先<00:18.056>',
+      '[00:12.651]<00:12.651>追寻着那道微弱光线所指的方向<00:18.920>',
+    ].join('\n'));
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.romaji).toBe('ka yo wa i hi ka ri');
+    expect(lines[0]?.words?.map((word) => normalizeWhitespace(word.romaji || ''))).toEqual([
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+    ]);
+
+    const amlLines = convertLyricsToAmlLines(lines, true, true);
+    expect(amlLines[0]?.romanLyric).toBe('ka yo wa i hi ka ri');
+    expect(amlLines[0]?.words.map((word) => word.romanWord || '')).toEqual([
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
     ]);
   });
 

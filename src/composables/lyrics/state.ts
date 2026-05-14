@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { usePlaybackStore } from '../../features/playback/store';
 import { useSettingsStore } from '../../features/settings/store';
 import { useLyricsSettingsStore } from '../../features/lyricsSettings/store';
-import { getCurrentLyricDisplayLines } from './converters';
+import { getCurrentLyricDisplayLines, semanticLineToLyricLine } from './converters';
 import type {
   CurrentLyricDisplayState,
   DesktopLyricsSettings,
@@ -93,7 +93,11 @@ export async function loadLyrics() {
     rawLyrics.value = payload?.rawLyrics || '';
     lyricDocument.value = payload?.document ?? null;
     semanticLyrics.value = payload?.semanticLines ?? [];
-    parsedLyrics.value = (payload?.displayLines ?? []).map((line) => ({
+
+    const sourceLines = semanticLyrics.value.length > 0
+      ? semanticLyrics.value.map((line) => semanticLineToLyricLine(line))
+      : (payload?.displayLines ?? []);
+    parsedLyrics.value = sourceLines.map((line) => ({
       ...line,
       translation: line.translation || '',
       romaji: line.romaji || '',

@@ -105,9 +105,20 @@ const {
                               v-for="(word, index) in displayLine.words"
                               :key="`${word.start}-${word.end}-${index}`"
                               class="desktop-lyric-word"
-                              :style="displayLine.active ? getWordStyle(word.start, word.end) : undefined"
+                              :class="{ 'desktop-lyric-word--with-romaji': displayLine.hasAlignedRomaji }"
                             >
-                              {{ word.text }}
+                              <span
+                                class="desktop-lyric-word-main"
+                                :style="displayLine.active ? getWordStyle(word.start, word.end) : undefined"
+                              >
+                                {{ word.text }}
+                              </span>
+                              <span
+                                v-if="displayLine.hasAlignedRomaji"
+                                class="desktop-lyric-word-romaji"
+                              >
+                                {{ word.romaji?.trim() }}
+                              </span>
                             </span>
                           </template>
                           <template v-else>
@@ -347,6 +358,36 @@ const {
     opacity 420ms ease,
     filter 260ms linear,
     text-shadow 260ms linear;
+}
+
+.desktop-lyric-word--with-romaji {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  text-align: center;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.desktop-lyric-word-main {
+  display: inline-block;
+  white-space: pre-wrap;
+}
+
+.desktop-lyric-word-romaji {
+  display: block;
+  margin-top: 0.08em;
+  color: var(--desktop-romaji-color);
+  font-size: 0.46em;
+  font-weight: 650;
+  line-height: 1.05;
+  letter-spacing: 0;
+  white-space: pre;
+  text-shadow:
+    0 1px 2px rgb(var(--desktop-text-shadow-color, 0 0 0) / calc(var(--desktop-first-line-text-shadow-alpha, 0) * 0.48)),
+    0 0 calc(var(--desktop-first-line-text-shadow-blur, 0px) * 0.86) rgb(var(--desktop-text-shadow-color, 0 0 0) / calc(var(--desktop-first-line-text-shadow-alpha, 0) * 0.86)),
+    0 0 16px color-mix(in srgb, var(--desktop-romaji-color) 20%, transparent);
 }
 
 .desktop-lyric-sub {

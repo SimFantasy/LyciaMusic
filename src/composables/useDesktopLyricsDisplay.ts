@@ -79,6 +79,7 @@ interface DesktopLyricDisplayLine {
   lineIndex: number;
   active: boolean;
   words: LyricWord[];
+  hasAlignedRomaji: boolean;
   secondaryLines: DesktopLyricSecondaryLine[];
 }
 
@@ -262,9 +263,16 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     return answer;
   }
 
-  function getSecondaryLines(line: LyricLine): DesktopLyricSecondaryLine[] {
+  function hasCompleteWordRomaji(words: LyricWord[]): boolean {
+    if (words.length === 0) return false;
+    const relevantWords = words.filter((word) => word.text.trim().length > 0 && word.end > word.start);
+    return relevantWords.length > 0
+      && relevantWords.every((word) => Boolean(word.romaji && word.romaji.trim().length > 0));
+  }
+
+  function getSecondaryLines(line: LyricLine, hasAlignedRomaji: boolean): DesktopLyricSecondaryLine[] {
     const secondary: DesktopLyricSecondaryLine[] = [];
-    if (settings.value.showRomaji && line.romaji) {
+    if (settings.value.showRomaji && line.romaji && !hasAlignedRomaji) {
       secondary.push({ kind: 'romaji', text: line.romaji });
     }
     if (settings.value.showTranslation && line.translation) {
@@ -491,12 +499,16 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
       const line = parsedLyrics.value[lineIndex];
       if (!line) continue;
 
+      const words = getMainDisplayWords(line, lineIndex);
+      const hasAlignedRomaji = settings.value.showRomaji && hasCompleteWordRomaji(words);
+
       lines.push({
         line,
         lineIndex,
         active: activeLyricIndex.value >= 0 ? lineIndex === activeLyricIndex.value : lineIndex === 0,
-        words: getMainDisplayWords(line, lineIndex),
-        secondaryLines: getSecondaryLines(line),
+        words,
+        hasAlignedRomaji,
+        secondaryLines: getSecondaryLines(line, hasAlignedRomaji),
       });
     }
 

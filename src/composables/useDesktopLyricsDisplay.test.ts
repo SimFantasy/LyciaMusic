@@ -94,6 +94,69 @@ describe('useDesktopLyricsDisplay', () => {
     });
   });
 
+  it('uses word-level romaji on desktop only when every displayed word has romaji', () => {
+    const display = useDesktopLyricsDisplay(ref(false));
+    const payload = createPayload(true);
+
+    display.handlePayload({
+      ...payload,
+      parsedLyrics: [{
+        time: 12.651,
+        endTime: 18.056,
+        text: 'か弱い光が指差す先',
+        translation: '追寻着那道微弱光线所指的方向',
+        romaji: 'ka yo wa i hi ka ri ga yu bi sa su sa ki',
+        words: [
+          { text: 'か', start: 12.651, end: 12.884, romaji: 'ka' },
+          { text: '弱', start: 12.884, end: 13.476, romaji: 'yo wa' },
+          { text: 'い', start: 13.476, end: 13.678, romaji: 'i' },
+        ],
+      }],
+      settings: {
+        ...payload.settings,
+        showRomaji: true,
+        showTranslation: true,
+      },
+    });
+
+    expect(display.visibleLyricLines.value[0]?.hasAlignedRomaji).toBe(true);
+    expect(display.visibleLyricLines.value[0]?.secondaryLines).toEqual([
+      { kind: 'translation', text: '追寻着那道微弱光线所指的方向' },
+    ]);
+  });
+
+  it('falls back to a desktop romaji secondary line when word romaji is incomplete', () => {
+    const display = useDesktopLyricsDisplay(ref(false));
+    const payload = createPayload(true);
+
+    display.handlePayload({
+      ...payload,
+      parsedLyrics: [{
+        time: 12.651,
+        endTime: 18.056,
+        text: 'か弱い',
+        translation: '微弱',
+        romaji: 'ka yo wa i',
+        words: [
+          { text: 'か', start: 12.651, end: 12.884, romaji: 'ka' },
+          { text: '弱', start: 12.884, end: 13.476, romaji: '' },
+          { text: 'い', start: 13.476, end: 13.678, romaji: 'i' },
+        ],
+      }],
+      settings: {
+        ...payload.settings,
+        showRomaji: true,
+        showTranslation: true,
+      },
+    });
+
+    expect(display.visibleLyricLines.value[0]?.hasAlignedRomaji).toBe(false);
+    expect(display.visibleLyricLines.value[0]?.secondaryLines).toEqual([
+      { kind: 'romaji', text: 'ka yo wa i' },
+      { kind: 'translation', text: '微弱' },
+    ]);
+  });
+
   it('exposes split-corner alignment only for desktop double-line placement', () => {
     const display = useDesktopLyricsDisplay(ref(false));
     const payload = createPayload(true);
