@@ -45,6 +45,8 @@ scripts/bump-version.js
 src-tauri/examples/*_probe.rs
 
 .codex/
+.superpowers/
+.worktrees/
 
 tools/
 
