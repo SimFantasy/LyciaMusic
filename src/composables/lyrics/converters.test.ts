@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { convertLyricsToAmlLines, getCurrentLyricDisplayLines, semanticLineToLyricLine } from './converters';
 import type { LyricLine, SemanticLine } from './types';
 
+function stripAmlRomajiSeparators(text: string) {
+  return text.replace(/\u00a0/g, '');
+}
+
 describe('convertLyricsToAmlLines', () => {
   it('limits plain lyric lead-in before dense bilingual lines', () => {
     const lines: LyricLine[] = [
@@ -86,6 +90,49 @@ describe('convertLyricsToAmlLines', () => {
     expect(amlLines[0]?.words.map((word) => word.romanWord)).toEqual(['ho n ', 'to u ', 'no ']);
   });
 
+  it('adds visual separators between adjacent AML ruby romaji fragments', () => {
+    const separator = '\u00a0';
+    const lines = [
+      {
+        time: 54.353,
+        endTime: 59.487,
+        text: '本当の世界で笑えるか?',
+        translation: '在现实世界里还能够展颜欢笑吗',
+        romaji: 'ho n to u no se ka i de wa ra e ru ka',
+        words: [
+          { text: '本', start: 54.664, end: 54.944, romaji: 'ho n' },
+          { text: '当', start: 54.944, end: 54.981, romaji: 'to u' },
+          { text: 'の', start: 54.981, end: 55.597, romaji: 'no' },
+          { text: '世', start: 55.597, end: 56.024, romaji: 'se' },
+          { text: '界', start: 56.024, end: 56.514, romaji: 'ka i' },
+          { text: 'で', start: 56.514, end: 56.932, romaji: 'de' },
+          { text: '笑', start: 56.932, end: 57.538, romaji: 'wa ra' },
+          { text: 'え', start: 57.538, end: 58.094, romaji: 'e' },
+          { text: 'る', start: 58.094, end: 58.703, romaji: 'ru' },
+          { text: 'か', start: 58.703, end: 59.104, romaji: 'ka' },
+          { text: '?', start: 59.104, end: 59.487, romaji: '?' },
+        ],
+      },
+    ] as LyricLine[];
+
+    const amlLines = convertLyricsToAmlLines(lines, true, true);
+
+    expect(amlLines[0]?.romanLyric).toBe('');
+    expect(amlLines[0]?.words.map((word) => word.romanWord)).toEqual([
+      `ho n${separator}`,
+      `to u${separator}`,
+      `no${separator}`,
+      `se${separator}`,
+      `ka i${separator}`,
+      `de${separator}`,
+      `wa ra${separator}`,
+      `e${separator}`,
+      `ru${separator}`,
+      `ka${separator}`,
+      '?',
+    ]);
+  });
+
   it('falls back to line-level roman lyric when any main word is missing romaji', () => {
     const lines = [
       {
@@ -106,6 +153,54 @@ describe('convertLyricsToAmlLines', () => {
 
     expect(amlLines[0]?.romanLyric).toBe('ka yo wa i hi ka ri ga yu bi sa su sa ki');
     expect(amlLines[0]?.words.map((word) => word.romanWord || '')).toEqual(['', '', '']);
+  });
+
+  it('falls back to line-level romaji for numeric main words that break AML ruby layout', () => {
+    const lines = [
+      {
+        time: 25.014,
+        endTime: 30.710,
+        text: '6/8のリズム 掻き乱される',
+        translation: '八六原本平和的旋律开始被打乱',
+        romaji: 'ha chi ro ku no ri zu mu ka ki mi da sa re ru',
+        words: [
+          { text: '6', start: 25.014, end: 25.654, romaji: 'ha chi' },
+          { text: '/', start: 25.654, end: 25.654, romaji: '' },
+          { text: '8', start: 25.654, end: 26.056, romaji: 'ro ku' },
+          { text: 'の', start: 26.056, end: 26.459, romaji: 'no' },
+          { text: 'リ', start: 26.459, end: 26.471, romaji: 'ri' },
+          { text: 'ズ', start: 26.471, end: 26.799, romaji: 'zu' },
+          { text: 'ム', start: 26.799, end: 27.199, romaji: 'mu' },
+          { text: ' ', start: 27.199, end: 27.199, romaji: '' },
+          { text: '掻', start: 27.199, end: 27.551, romaji: 'ka' },
+          { text: 'き', start: 27.551, end: 27.572, romaji: 'ki' },
+          { text: '乱', start: 27.572, end: 29.186, romaji: 'mi da' },
+          { text: 'さ', start: 29.186, end: 29.450, romaji: 'sa' },
+          { text: 'れ', start: 29.450, end: 29.921, romaji: 're' },
+          { text: 'る', start: 29.921, end: 30.428, romaji: 'ru' },
+        ],
+      },
+    ] as LyricLine[];
+
+    const amlLines = convertLyricsToAmlLines(lines, true, true);
+
+    expect(amlLines[0]?.romanLyric).toBe('ha chi ro ku no ri zu mu ka ki mi da sa re ru');
+    expect(amlLines[0]?.words.map((word) => word.romanWord || '')).toEqual([
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+    ]);
   });
 
   it('produces complete per-word romaji for the Avid LRC line', () => {
@@ -163,7 +258,10 @@ describe('convertLyricsToAmlLines', () => {
     // Per-word romaji mode — romanLyric should be empty
     expect(aml.romanLyric).toBe('');
     // Each word carries its romanWord
-    const amlWordData = aml.words.map((w) => ({ word: w.word, romanWord: w.romanWord }));
+    const amlWordData = aml.words.map((w) => ({
+      word: w.word,
+      romanWord: stripAmlRomajiSeparators(w.romanWord),
+    }));
     // Whitespace word preserved for segmenter word-boundary detection
     expect(amlWordData).toEqual([
       { word: 'あ', romanWord: 'a' },

@@ -1336,6 +1336,54 @@ describe('raw lyrics samples from the common formats checklist', async () => {
     ]);
   });
 
+  it('keeps numeric-prefixed japanese enhanced lines as main and avoids duplicate romaji rendering', async () => {
+    const lines = await parseRawToLyricLines([
+      '[00:25.014]<00:25.014>ha <00:25.260><00:25.653>chi <00:25.653>ro <00:25.725><00:25.726>ku <00:26.055>no <00:26.457><00:26.458>ri <00:26.470><00:26.471>zu <00:26.798>mu <00:27.197><00:27.198><00:27.198>ka <00:27.550><00:27.551>ki <00:27.571><00:27.572>mi <00:28.073>da <00:29.185><00:29.186>sa <00:29.449><00:29.450>re <00:29.920>ru <00:30.426>',
+      '[00:25.014]<00:25.014>6<00:25.654>/<00:25.654>8<00:26.056>の<00:26.459>リ<00:26.471>ズ<00:26.799>ム<00:27.199> <00:27.199>掻<00:27.551>き<00:27.572>乱<00:29.186>さ<00:29.450>れ<00:29.921>る<00:30.428>',
+      '[00:25.014]<00:25.014>八六原本平和的旋律开始被打乱<00:30.710>',
+    ].join('\n'));
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.text).toBe('6/8のリズム 掻き乱される');
+    expect(normalizeWhitespace(lines[0]?.romaji || '')).toBe('ha chi ro ku no ri zu mu ka ki mi da sa re ru');
+    expect(lines[0]?.translation).toBe('八六原本平和的旋律开始被打乱');
+
+    const amlLines = convertLyricsToAmlLines(lines, true, true);
+    expect(amlLines[0]?.romanLyric).toBe('ha chi ro ku no ri zu mu ka ki mi da sa re ru');
+    expect(amlLines[0]?.words.map((word) => word.word)).toEqual([
+      '6',
+      '/',
+      '8',
+      'の',
+      'リ',
+      'ズ',
+      'ム',
+      ' ',
+      '掻',
+      'き',
+      '乱',
+      'さ',
+      'れ',
+      'る',
+    ]);
+    expect(amlLines[0]?.words.map((word) => word.romanWord || '')).toEqual([
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+    ]);
+  });
+
   it('aggregates multi-syllable romaji fragments into timed AML karaoke words', async () => {
     const lines = await parseRawToLyricLines([
       '[01:06.435]<01:06.435>a <01:06.534><01:06.535>o <01:06.718><01:06.719>i <01:06.934>da <01:07.206><01:07.207>so <01:07.535>ra <01:08.127>ga <01:09.118><01:09.119>i <01:09.582><01:09.583>ro <01:10.166>wo <01:10.765><01:10.766>ka <01:11.039><01:11.040>e <01:11.247>ru <01:11.446>ka <01:11.852><01:11.853>ra <01:12.159>',
@@ -1362,7 +1410,7 @@ describe('raw lyrics samples from the common formats checklist', async () => {
     const amlLines = convertLyricsToAmlLines(lines, true, true);
     expect(amlLines).toHaveLength(1);
     expect(amlLines[0]?.romanLyric).toBe('');
-    expect(amlLines[0]?.words.map((word) => word.romanWord || '')).toEqual([
+    expect(amlLines[0]?.words.map((word) => normalizeWhitespace(word.romanWord || ''))).toEqual([
       'a o',
       'i',
       'da',
