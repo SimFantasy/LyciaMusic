@@ -12,11 +12,13 @@ import { useHomeRouteSync } from './useHomeRouteSync';
 import { usePlayerViewState } from './usePlayerViewState';
 import { usePlayerLibraryView } from '../features/library/usePlayerLibraryView';
 import { useRoute, useRouter } from 'vue-router';
+import { shouldShowPlayerFooter } from './appShellFooterState';
 
 export function useAppShell() {
   const {
     init,
     playQueue,
+    currentSong,
     isMiniMode,
     showPlayerDetail,
     handleExternalPaths,
@@ -64,7 +66,7 @@ export function useAppShell() {
 
   init();
 
-  const isFooterVisible = computed(() => playQueue.value.length > 0);
+  const isFooterVisible = computed(() => shouldShowPlayerFooter(playQueue.value, currentSong.value));
   const libraryScanPercent = computed(() => {
     if (!libraryScanProgress.value) return 0;
     if (libraryScanProgress.value.total <= 0) return 8;
