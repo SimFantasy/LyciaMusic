@@ -126,6 +126,28 @@ describe('settings store', () => {
     expect(settingsStore.settings.enableScrollToTopButton).toBe(true);
   });
 
+  it('disables short audio exclusion by default and preserves persisted threshold', () => {
+    const settingsStore = useSettingsStore();
+
+    expect(settingsStore.settings.libraryMinDurationSeconds).toBe(0);
+
+    const merged = mergeAppSettings(settingsStore.settings, {
+      libraryMinDurationSeconds: 12,
+    });
+
+    expect(merged.libraryMinDurationSeconds).toBe(12);
+  });
+
+  it('normalizes invalid short audio thresholds to disabled', () => {
+    const settingsStore = useSettingsStore();
+
+    const merged = mergeAppSettings(settingsStore.settings, {
+      libraryMinDurationSeconds: -5,
+    });
+
+    expect(merged.libraryMinDurationSeconds).toBe(0);
+  });
+
   it('remembers whether desktop lyrics were open', () => {
     const settingsStore = useSettingsStore();
 

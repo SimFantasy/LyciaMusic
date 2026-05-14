@@ -184,7 +184,10 @@ export interface TauriCommandMap {
   // Deprecated compat command. Main folder-tree flow must use get_library_hierarchy.
   get_sidebar_hierarchy: { payload: undefined; response: FolderNode[] };
   create_folder: { payload: { parentPath: string; folderName: string }; response: string };
-  refresh_folder_songs: { payload: { folderPath: string }; response: void };
+  refresh_folder_songs: {
+    payload: { folderPath: string; minimumDurationSeconds?: number };
+    response: void;
+  };
   delete_folder: { payload: { path: string }; response: void };
   move_file_to_folder: {
     payload: { sourcePath: string; targetFolder: string };
@@ -198,12 +201,18 @@ export interface TauriCommandMap {
     payload: { folderPath: string };
     response: string | null;
   };
-  scan_music_folder: { payload: { folderPath: string }; response: Song[] };
+  scan_music_folder: {
+    payload: { folderPath: string; minimumDurationSeconds?: number };
+    response: Song[];
+  };
   move_music_file: { payload: { oldPath: string; newPath: string }; response: void };
   show_in_folder: { payload: { path: string }; response: void };
   delete_music_file: { payload: { path: string }; response: void };
   is_directory: { payload: { path: string }; response: boolean };
-  parse_audio_files: { payload: { paths: string[] }; response: Song[] };
+  parse_audio_files: {
+    payload: { paths: string[]; minimumDurationSeconds?: number };
+    response: Song[];
+  };
   set_volume: { payload: { volume: number }; response: void };
   get_playback_progress: { payload: undefined; response: number };
   get_audio_visualizer_samples: { payload: undefined; response: number[] };

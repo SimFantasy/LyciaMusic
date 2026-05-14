@@ -34,6 +34,19 @@ pub(super) const LIBRARY_SCAN_BATCH_EVENT: &str = "library-scan-batch";
 pub(super) const UNKNOWN_ARTIST: &str = "未知歌手";
 pub(super) const UNKNOWN_ALBUM: &str = "未知专辑";
 
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct ScanOptions {
+    pub(crate) minimum_duration_seconds: u32,
+}
+
+impl ScanOptions {
+    pub(crate) fn from_minimum_duration_seconds(value: Option<u32>) -> Self {
+        Self {
+            minimum_duration_seconds: value.unwrap_or(0),
+        }
+    }
+}
+
 pub(super) fn clamp_i64_to_u32(v: i64) -> u32 {
     if v <= 0 {
         0
@@ -190,7 +203,9 @@ mod tests {
         preferred_parse_workers_for_available, song_identity_missing, song_metadata_incomplete,
     };
     use super::repository::apply_scan_changes;
+    use super::ScanOptions;
     use crate::music::types::Song;
+    use crate::music::utils::normalize_path;
     use rusqlite::{params, Connection};
     use std::collections::HashMap;
     use std::fs;
@@ -349,13 +364,68 @@ mod tests {
             },
         );
 
-        let diff = collect_scan_diff(&normalized_folder, db_snapshot, None).expect("collect diff");
+        let diff = collect_scan_diff(
+            &normalized_folder,
+            db_snapshot,
+            None,
+            ScanOptions::default(),
+        )
+        .expect("collect diff");
 
         assert_eq!(diff.songs.len(), 0);
         assert_eq!(diff.to_add.len(), 0);
         assert_eq!(diff.to_update.len(), 0);
         assert_eq!(diff.to_delete, vec![normalized_song_path]);
         assert!(!diff.has_disk_songs);
+
+        fs::remove_dir_all(temp_dir).expect("remove temp dir");
+    }
+
+    #[test]
+    fn collect_scan_diff_deletes_existing_songs_below_minimum_duration() {
+        let temp_dir = create_empty_temp_dir();
+        let short_path = temp_dir.join("short.flac");
+        fs::write(&short_path, b"fake flac").expect("write short audio placeholder");
+
+        let normalized_folder = normalize_path(&temp_dir.to_string_lossy());
+        let normalized_song_path = normalize_path(&short_path.to_string_lossy());
+        let metadata = fs::metadata(&short_path).expect("read placeholder metadata");
+        let disk_mtime = metadata
+            .modified()
+            .ok()
+            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+            .map(|duration| duration.as_secs() as i64);
+
+        let mut short_song = make_song(&normalized_song_path);
+        short_song.duration = 4;
+        short_song.file_size = metadata.len();
+        short_song.file_modified_at = disk_mtime.map(|value| value as u64);
+
+        let mut db_snapshot = HashMap::new();
+        db_snapshot.insert(
+            normalized_song_path.clone(),
+            DbSongSnapshot {
+                song: short_song,
+                file_modified_at: disk_mtime,
+                file_size: metadata.len() as i64,
+            },
+        );
+
+        let diff = collect_scan_diff(
+            &normalized_folder,
+            db_snapshot,
+            None,
+            ScanOptions {
+                minimum_duration_seconds: 10,
+            },
+        )
+        .expect("collect diff");
+
+        assert!(diff.songs.is_empty());
+        assert!(diff.to_add.is_empty());
+        assert!(diff.to_update.is_empty());
+        assert_eq!(diff.to_delete, vec![normalized_song_path]);
+        assert!(diff.has_disk_songs);
 
         fs::remove_dir_all(temp_dir).expect("remove temp dir");
     }
@@ -384,8 +454,13 @@ mod tests {
         )
         .expect("write cue");
 
-        let diff =
-            collect_scan_diff(&normalized_folder, HashMap::new(), None).expect("collect diff");
+        let diff = collect_scan_diff(
+            &normalized_folder,
+            HashMap::new(),
+            None,
+            ScanOptions::default(),
+        )
+        .expect("collect diff");
 
         assert_eq!(diff.songs.len(), 2);
         assert_eq!(diff.to_add.len(), 2);

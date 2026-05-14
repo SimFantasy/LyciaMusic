@@ -4,6 +4,7 @@ use super::diff::{collect_scan_diff, load_db_snapshot_for_folder};
 use super::parser::parse_audio_files_internal;
 use super::progress::ScanProgressReporter;
 use super::repository::apply_scan_changes;
+use super::ScanOptions;
 use crate::database::DbState;
 use rusqlite::{params, OptionalExtension};
 use std::collections::HashMap;
@@ -18,6 +19,7 @@ pub fn scan_single_directory_internal(
     app: Option<AppHandle>,
     folder_index: usize,
     folder_total: usize,
+    options: ScanOptions,
 ) -> Result<Vec<Song>, String> {
     let normalized_folder = normalize_path(&folder_path);
     let reporter = app.map(|app| {
@@ -30,7 +32,7 @@ pub fn scan_single_directory_internal(
     };
 
     let original_db_count = db_snapshot.len();
-    let scan_diff = collect_scan_diff(&normalized_folder, db_snapshot, reporter.as_ref())?;
+    let scan_diff = collect_scan_diff(&normalized_folder, db_snapshot, reporter.as_ref(), options)?;
 
     let folder_is_accessible =
         Path::new(&normalized_folder).is_dir() && fs::read_dir(&normalized_folder).is_ok();
@@ -76,23 +78,30 @@ pub fn scan_single_directory_internal(
 #[tauri::command]
 pub async fn scan_music_folder(
     folder_path: String,
+    minimum_duration_seconds: Option<u32>,
     app: AppHandle,
     db_state: State<'_, DbState>,
 ) -> Result<Vec<Song>, String> {
     let db_conn = db_state.conn.clone();
+    let options = ScanOptions::from_minimum_duration_seconds(minimum_duration_seconds);
 
     tauri::async_runtime::spawn_blocking(move || {
-        scan_single_directory_internal(folder_path, db_conn, Some(app), 1, 1)
+        scan_single_directory_internal(folder_path, db_conn, Some(app), 1, 1, options)
     })
     .await
     .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub async fn parse_audio_files(paths: Vec<String>) -> Result<Vec<Song>, String> {
-    let result = tauri::async_runtime::spawn_blocking(move || parse_audio_files_internal(paths))
-        .await
-        .map_err(|error| error.to_string())?;
+pub async fn parse_audio_files(
+    paths: Vec<String>,
+    minimum_duration_seconds: Option<u32>,
+) -> Result<Vec<Song>, String> {
+    let options = ScanOptions::from_minimum_duration_seconds(minimum_duration_seconds);
+    let result =
+        tauri::async_runtime::spawn_blocking(move || parse_audio_files_internal(paths, options))
+            .await
+            .map_err(|error| error.to_string())?;
 
     Ok(result)
 }
@@ -100,10 +109,12 @@ pub async fn parse_audio_files(paths: Vec<String>) -> Result<Vec<Song>, String> 
 #[tauri::command]
 pub async fn scan_folder_as_playlists(
     root_path: String,
+    minimum_duration_seconds: Option<u32>,
     app: AppHandle,
     db_state: State<'_, DbState>,
 ) -> Result<Vec<GeneratedFolder>, String> {
-    let songs = scan_music_folder(root_path.clone(), app, db_state).await?;
+    let songs =
+        scan_music_folder(root_path.clone(), minimum_duration_seconds, app, db_state).await?;
 
     let mut grouped: HashMap<PathBuf, Vec<Song>> = HashMap::new();
     for song in songs {

@@ -16,6 +16,7 @@ import { useLibraryAllSongPathCache } from './useLibraryAllSongPathCache';
 import { useLibraryCollectionSongPathCache } from './useLibraryCollectionSongPathCache';
 import { useLibraryDetailSongPathCache } from './useLibraryDetailSongPathCache';
 import { useLibraryFolderSongPathCache } from './useLibraryFolderSongPathCache';
+import { useSettingsStore } from '../features/settings/store';
 import { useLibraryStore } from '../features/library/store';
 
 let hasBootstrappedLibrary = false;
@@ -54,6 +55,7 @@ export const createPlayerLibraryRuntime = ({
   onSilentScanError,
 }: CreatePlayerLibraryRuntimeDeps) => {
   const libraryStore = useLibraryStore();
+  const settingsStore = useSettingsStore();
   const { clearLibraryAllSongPathCache } = useLibraryAllSongPathCache();
   const { clearLibraryCollectionSongPathCache } = useLibraryCollectionSongPathCache();
   const { clearLibraryDetailSongPathCache } = useLibraryDetailSongPathCache();
@@ -175,7 +177,9 @@ export const createPlayerLibraryRuntime = ({
     libraryRefreshPromise = (async () => {
       try {
         flushBufferedLibraryScanBatch();
-        const songs = await invoke<LibrarySong[]>('scan_library');
+        const songs = await invoke<LibrarySong[]>('scan_library', {
+          minimumDurationSeconds: settingsStore.settings.libraryMinDurationSeconds,
+        });
         libraryStore.setLibrarySongs(songs);
         libraryStore.setSourceSongs(songs);
         clearLibraryPathCaches();

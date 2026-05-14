@@ -235,6 +235,7 @@ pub fn open_external_program(path: String, args: Vec<String>) -> Result<(), Stri
 #[tauri::command]
 pub fn refresh_folder_songs(
     folder_path: String,
+    minimum_duration_seconds: Option<u32>,
     db_state: tauri::State<'_, crate::database::DbState>,
 ) -> Result<Vec<crate::music::types::Song>, String> {
     // 复用现有的扫描逻辑
@@ -244,5 +245,6 @@ pub fn refresh_folder_songs(
         None,
         1,
         1,
+        crate::music::scanner::ScanOptions::from_minimum_duration_seconds(minimum_duration_seconds),
     )
 }

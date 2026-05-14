@@ -4,7 +4,8 @@ use super::super::types::Song;
 use super::super::utils::{is_supported_library_extension, normalize_path};
 use super::{
     build_album_key, fill_text_fields_from_tags, normalize_album_key_part, primary_artist_name,
-    split_artist_names, UNKNOWN_ALBUM, UNKNOWN_ARTIST, VARIOUS_ARTISTS, VARIOUS_ARTISTS_THRESHOLD,
+    split_artist_names, ScanOptions, UNKNOWN_ALBUM, UNKNOWN_ARTIST, VARIOUS_ARTISTS,
+    VARIOUS_ARTISTS_THRESHOLD,
 };
 use lofty::file::FileType;
 use lofty::prelude::*;
@@ -210,7 +211,7 @@ pub(crate) fn parse_song_from_file(path: &Path, path_str: &str, format: &str) ->
     })
 }
 
-pub(super) fn parse_audio_files_internal(paths: Vec<String>) -> Vec<Song> {
+pub(super) fn parse_audio_files_internal(paths: Vec<String>, options: ScanOptions) -> Vec<Song> {
     let mut songs = Vec::new();
     let mut seen_paths = HashSet::new();
 
@@ -239,6 +240,12 @@ pub(super) fn parse_audio_files_internal(paths: Vec<String>) -> Vec<Song> {
         }
 
         if let Some(song) = parse_song_from_file(&path, &normalized_path, &extension) {
+            if options.minimum_duration_seconds > 0
+                && song.duration < options.minimum_duration_seconds
+            {
+                continue;
+            }
+
             songs.push(song);
         }
     }

@@ -91,6 +91,7 @@ export const defaultAppSettings: AppSettings = {
   showDesktopLyrics: false,
   showQualityBadges: true,
   enableScrollToTopButton: true,
+  libraryMinDurationSeconds: 0,
   // Deprecated compat field. Main folder-source behavior no longer depends on it.
   linkFoldersToLibrary: false,
   lyricsSyncOffset: 0,
@@ -119,6 +120,17 @@ export const createDefaultSidebarSettings = (): SidebarSettings => ({
 export const createDefaultAudioSettings = (): AudioSettings => ({
   ...defaultAudioSettings,
 });
+
+export const normalizeLibraryMinDurationSeconds = (
+  value: number | null | undefined,
+): number => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return 0;
+  }
+
+  return Math.round(numericValue);
+};
 
 export const createDefaultAppSettings = (): AppSettings => ({
   ...defaultAppSettings,
@@ -168,17 +180,28 @@ export const mergeAudioSettings = (
 export const mergeAppSettings = (
   base: AppSettings,
   patch: DeprecatedAppSettingsPatch,
-): AppSettings => ({
-  // Ignore removed legacy fields that may still exist in persisted settings.
-  ...base,
-  ...((({ minimizeToTray: _deprecated, ...rest }) => rest)(patch)),
-  lyrics: mergeLyricsSettings(base.lyrics, patch.lyrics ?? {}),
-  desktopLyrics: mergeDesktopLyricsSettings(base.desktopLyrics, patch.desktopLyrics ?? {}),
-  audio: mergeAudioSettings(base.audio ?? createDefaultAudioSettings(), patch.audio ?? {}),
-  theme: mergeThemeSettings(base.theme, patch.theme ?? {}),
-  sidebar: mergeSidebarSettings(base.sidebar, patch.sidebar ?? {}),
-  shortcuts: mergeShortcutSettings(base.shortcuts, patch.shortcuts ?? {}),
-});
+): AppSettings => {
+  const {
+    minimizeToTray: _deprecated,
+    libraryMinDurationSeconds,
+    ...rest
+  } = patch;
+
+  return {
+    // Ignore removed legacy fields that may still exist in persisted settings.
+    ...base,
+    ...rest,
+    libraryMinDurationSeconds: normalizeLibraryMinDurationSeconds(
+      libraryMinDurationSeconds ?? base.libraryMinDurationSeconds,
+    ),
+    lyrics: mergeLyricsSettings(base.lyrics, patch.lyrics ?? {}),
+    desktopLyrics: mergeDesktopLyricsSettings(base.desktopLyrics, patch.desktopLyrics ?? {}),
+    audio: mergeAudioSettings(base.audio ?? createDefaultAudioSettings(), patch.audio ?? {}),
+    theme: mergeThemeSettings(base.theme, patch.theme ?? {}),
+    sidebar: mergeSidebarSettings(base.sidebar, patch.sidebar ?? {}),
+    shortcuts: mergeShortcutSettings(base.shortcuts, patch.shortcuts ?? {}),
+  };
+};
 
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<AppSettings>(createDefaultAppSettings());

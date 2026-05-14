@@ -1,5 +1,6 @@
 // music/library.rs - 音乐库管理命令
 
+use super::scanner::ScanOptions;
 use super::scanner::{scan_folder_recursive, scan_single_directory_internal};
 use super::types::{AlbumCatalogItem, ArtistCatalogItem, FolderNode, LibraryFolder, LibrarySong};
 use super::utils::{descendant_like_patterns, normalize_path};
@@ -800,10 +801,12 @@ pub async fn get_library_song_paths_for_folder_view(
 
 #[tauri::command]
 pub async fn scan_library(
+    minimum_duration_seconds: Option<u32>,
     app: AppHandle,
     db_state: State<'_, DbState>,
 ) -> Result<Vec<LibrarySong>, String> {
     let db_conn = db_state.conn.clone();
+    let options = ScanOptions::from_minimum_duration_seconds(minimum_duration_seconds);
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         let folder_paths: Vec<String> = {
@@ -827,6 +830,7 @@ pub async fn scan_library(
                 Some(app.clone()),
                 index + 1,
                 folder_total.max(1),
+                options,
             );
         }
 
