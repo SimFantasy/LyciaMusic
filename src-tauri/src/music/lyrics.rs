@@ -2863,6 +2863,137 @@ fn normalize_semantic_line_display_roles(mut line: SemanticLine) -> SemanticLine
     line
 }
 
+fn is_han_only_line(line: &LyricTrackLine) -> bool {
+    line.script_profile.han_count > 0
+        && line.script_profile.latin_count == 0
+        && line.script_profile.kana_count == 0
+        && line.script_profile.hangul_count == 0
+}
+
+fn is_han_latin_mixed_line(line: &LyricTrackLine) -> bool {
+    line.script_profile.han_count > 0
+        && line.script_profile.latin_count > 0
+        && line.script_profile.kana_count == 0
+        && line.script_profile.hangul_count == 0
+}
+
+fn is_latin_only_line(line: &LyricTrackLine) -> bool {
+    line.script_profile.latin_count > 0
+        && line.script_profile.han_count == 0
+        && line.script_profile.kana_count == 0
+        && line.script_profile.hangul_count == 0
+}
+
+fn build_hard_role_semantic_line(
+    main_line: &LyricTrackLine,
+    translation_line: Option<&LyricTrackLine>,
+    roman_line: Option<&LyricTrackLine>,
+) -> SemanticLine {
+    SemanticLine {
+        start_ms: main_line.start_ms,
+        end_ms: main_line.end_ms,
+        main_text: main_line.text.clone(),
+        main_words: main_line.words.clone(),
+        translation_text: translation_line.map(|line| line.text.clone()),
+        roman_text: roman_line.map(|line| line.text.clone()),
+        roman_words: build_aligned_roman_words(main_line, roman_line),
+        secondary_texts: None,
+        confidence: resolve_semantic_confidence(&[Some(main_line), translation_line, roman_line]),
+    }
+}
+
+fn build_hard_role_semantic_line_from_cluster(
+    group: &[(usize, usize, LyricTrackLine)],
+) -> Option<SemanticLine> {
+    let mut lines = group
+        .iter()
+        .map(|(_, _, line)| line)
+        .collect::<Vec<&LyricTrackLine>>();
+    lines.sort_by(|left, right| {
+        left.slot_index
+            .unwrap_or(usize::MAX)
+            .cmp(&right.slot_index.unwrap_or(usize::MAX))
+            .then_with(|| compare_source_index(left.source_index, right.source_index))
+            .then_with(|| left.start_ms.cmp(&right.start_ms))
+    });
+
+    match lines.as_slice() {
+        [main_line] => Some(build_hard_role_semantic_line(main_line, None, None)),
+        [first_line, second_line] => {
+            let (main_line, translation_line) =
+                if is_han_only_line(first_line) && !is_han_only_line(second_line) {
+                    (*second_line, *first_line)
+                } else if is_han_only_line(second_line) && !is_han_only_line(first_line) {
+                    (*first_line, *second_line)
+                } else if is_han_latin_mixed_line(first_line) && is_latin_only_line(second_line) {
+                    (*second_line, *first_line)
+                } else if is_han_latin_mixed_line(second_line) && is_latin_only_line(first_line) {
+                    (*first_line, *second_line)
+                } else {
+                    (*first_line, *second_line)
+                };
+
+            Some(build_hard_role_semantic_line(
+                main_line,
+                Some(translation_line),
+                None,
+            ))
+        }
+        [roman_line, main_line, translation_line] => Some(build_hard_role_semantic_line(
+            main_line,
+            Some(translation_line),
+            Some(roman_line),
+        )),
+        _ => None,
+    }
+}
+
+fn try_build_hard_role_semantic_lines(document: &LyricDocument) -> Option<Vec<SemanticLine>> {
+    let mut grouped_lines = BTreeMap::<usize, Vec<(usize, usize, LyricTrackLine)>>::new();
+    let mut clustered_line_count = 0usize;
+    let total_line_count = document
+        .tracks
+        .iter()
+        .map(|track| track.lines.len())
+        .sum::<usize>();
+
+    for (track_index, track) in document.tracks.iter().enumerate() {
+        for (line_index, line) in track.lines.iter().enumerate() {
+            let Some(cluster_index) = line.cluster_index else {
+                continue;
+            };
+            clustered_line_count += 1;
+            grouped_lines.entry(cluster_index).or_default().push((
+                track_index,
+                line_index,
+                line.clone(),
+            ));
+        }
+    }
+
+    if grouped_lines.is_empty()
+        || clustered_line_count != total_line_count
+        || !grouped_lines
+            .values()
+            .any(|group| matches!(group.len(), 2 | 3))
+        || grouped_lines.values().any(|group| group.len() > 3)
+    {
+        return None;
+    }
+
+    let mut semantic_lines = grouped_lines
+        .values()
+        .map(|group| build_hard_role_semantic_line_from_cluster(group))
+        .collect::<Option<Vec<_>>>()?;
+
+    semantic_lines.sort_by(|left, right| {
+        left.start_ms
+            .cmp(&right.start_ms)
+            .then_with(|| left.end_ms.cmp(&right.end_ms))
+    });
+    Some(semantic_lines)
+}
+
 pub fn build_lyric_document(parsed_lines: &[ParsedLine]) -> Option<LyricDocument> {
     let candidate_lines = build_candidate_lines(parsed_lines);
     if candidate_lines.is_empty() {
@@ -3028,6 +3159,10 @@ pub fn build_lyric_document(parsed_lines: &[ParsedLine]) -> Option<LyricDocument
 }
 
 pub fn lyric_document_to_semantic_lines(document: &LyricDocument) -> Vec<SemanticLine> {
+    if let Some(semantic_lines) = try_build_hard_role_semantic_lines(document) {
+        return semantic_lines;
+    }
+
     let Some(main_track) = document
         .tracks
         .iter()
@@ -3353,6 +3488,73 @@ mod tests {
 
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].text, "如果当时 - 许嵩");
+    }
+
+    #[test]
+    fn hard_role_rules_keep_single_line_as_main() {
+        let payload = build_structured_lyrics_payload("[00:01.000]Hello darling".to_string());
+
+        assert_eq!(payload.display_lines.len(), 1);
+        assert_eq!(payload.display_lines[0].text, "Hello darling");
+        assert_eq!(payload.display_lines[0].translation, "");
+        assert_eq!(payload.display_lines[0].romaji, "");
+    }
+
+    #[test]
+    fn hard_role_rules_treat_han_only_line_as_translation_for_two_lines() {
+        let payload = build_structured_lyrics_payload(
+            ["[00:01.000]你知道你爱我", "[00:01.000]You know you love me"].join("\n"),
+        );
+
+        assert_eq!(payload.display_lines.len(), 1);
+        assert_eq!(payload.display_lines[0].text, "You know you love me");
+        assert_eq!(payload.display_lines[0].translation, "你知道你爱我");
+        assert_eq!(payload.display_lines[0].romaji, "");
+    }
+
+    #[test]
+    fn hard_role_rules_treat_mixed_han_latin_as_translation_for_two_lines() {
+        let payload = build_structured_lyrics_payload(
+            ["[00:01.000]你好 darling", "[00:01.000]hello darling"].join("\n"),
+        );
+
+        assert_eq!(payload.display_lines.len(), 1);
+        assert_eq!(payload.display_lines[0].text, "hello darling");
+        assert_eq!(payload.display_lines[0].translation, "你好 darling");
+        assert_eq!(payload.display_lines[0].romaji, "");
+    }
+
+    #[test]
+    fn hard_role_rules_fall_back_to_first_main_second_translation_for_two_lines() {
+        let payload = build_structured_lyrics_payload(
+            [
+                "[00:01.000]first latin line",
+                "[00:01.000]second latin line",
+            ]
+            .join("\n"),
+        );
+
+        assert_eq!(payload.display_lines.len(), 1);
+        assert_eq!(payload.display_lines[0].text, "first latin line");
+        assert_eq!(payload.display_lines[0].translation, "second latin line");
+        assert_eq!(payload.display_lines[0].romaji, "");
+    }
+
+    #[test]
+    fn hard_role_rules_use_fixed_roman_main_translation_order_for_three_lines() {
+        let payload = build_structured_lyrics_payload(
+            [
+                "[00:01.000]wa su re ta ku na i ko to",
+                "[00:01.000]忘れたくないこと",
+                "[00:01.000]我不愿遗忘",
+            ]
+            .join("\n"),
+        );
+
+        assert_eq!(payload.display_lines.len(), 1);
+        assert_eq!(payload.display_lines[0].text, "忘れたくないこと");
+        assert_eq!(payload.display_lines[0].translation, "我不愿遗忘");
+        assert_eq!(payload.display_lines[0].romaji, "wa su re ta ku na i ko to");
     }
 
     #[test]
