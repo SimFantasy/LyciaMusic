@@ -60,6 +60,8 @@ const FIXED_PALETTES = {
 const PSEUDO_WORD_FINISH_LEAD_SECONDS = 0.08;
 const DEFAULT_PSEUDO_WORD_DURATION_SECONDS = 3;
 const DEFAULT_SHADOW_RGB = '0 0 0';
+const LATIN_WORD_CHARACTER_PATTERN = /[\p{Script=Latin}\p{Number}'’_-]/u;
+const WHITESPACE_PATTERN = /\s/u;
 const FIRST_LINE_TEXT_SHADOW = [
   '0 1px 2px rgb(var(--desktop-text-shadow-color) / calc(var(--desktop-first-line-text-shadow-alpha) * 0.55))',
   '0 0 var(--desktop-first-line-text-shadow-blur) rgb(var(--desktop-text-shadow-color) / var(--desktop-first-line-text-shadow-alpha))',
@@ -302,6 +304,59 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     return parsedEnd;
   }
 
+  function getPseudoWordSegments(text: string): string[] {
+    const segments: string[] = [];
+    let latinWord = '';
+
+    const flushLatinWord = () => {
+      if (!latinWord) return;
+      segments.push(latinWord);
+      latinWord = '';
+    };
+
+    for (const character of Array.from(text)) {
+      if (LATIN_WORD_CHARACTER_PATTERN.test(character)) {
+        latinWord += character;
+        continue;
+      }
+
+      flushLatinWord();
+
+      if (WHITESPACE_PATTERN.test(character) && segments.length > 0) {
+        segments[segments.length - 1] += character;
+        continue;
+      }
+
+      segments.push(character);
+    }
+
+    flushLatinWord();
+
+    return segments;
+  }
+
+  function createPseudoWords(text: string, start: number, end: number): LyricWord[] {
+    const segments = getPseudoWordSegments(text);
+    if (segments.length === 0) return [];
+
+    const duration = Math.max(0.001, end - start);
+    const segmentDuration = duration / segments.length;
+
+    return segments.map((segment, index) => {
+      const segmentStart = start + segmentDuration * index;
+      const segmentEnd = index === segments.length - 1
+        ? end
+        : start + segmentDuration * (index + 1);
+
+      return {
+        text: segment,
+        start: segmentStart,
+        end: segmentEnd,
+        romaji: '',
+      };
+    });
+  }
+
   function getMainDisplayWords(line: LyricLine, lineIndex: number): LyricWord[] {
     if (!settings.value.enableWordEffect) {
       return [];
@@ -321,12 +376,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     const start = Number.isFinite(line.time) ? line.time : 0;
     const end = Math.max(start + 0.001, getPseudoWordEnd(line, lineIndex, start));
 
-    return [{
-      text,
-      start,
-      end,
-      romaji: '',
-    }];
+    return createPseudoWords(text, start, end);
   }
 
   function formatOffset(value: number) {

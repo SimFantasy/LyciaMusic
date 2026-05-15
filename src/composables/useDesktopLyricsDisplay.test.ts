@@ -71,6 +71,51 @@ describe('useDesktopLyricsDisplay', () => {
     expect(display.visibleLyricLines.value[0]?.words).toEqual([]);
   });
 
+  it('splits untimed CJK desktop lyrics into sequential pseudo word segments', () => {
+    const display = useDesktopLyricsDisplay(ref(false));
+    const payload = createPayload(true);
+
+    display.handlePayload({
+      ...payload,
+      parsedLyrics: [{
+        time: 1,
+        endTime: 3,
+        text: '你我',
+        translation: '',
+        romaji: '',
+        words: [],
+      }],
+    });
+
+    expect(display.visibleLyricLines.value[0]?.words).toEqual([
+      { text: '你', start: 1, end: 2, romaji: '' },
+      { text: '我', start: 2, end: 3, romaji: '' },
+    ]);
+  });
+
+  it('keeps latin words intact when creating pseudo word segments', () => {
+    const display = useDesktopLyricsDisplay(ref(false));
+    const payload = createPayload(true);
+
+    display.handlePayload({
+      ...payload,
+      parsedLyrics: [{
+        time: 1,
+        endTime: 4,
+        text: 'into the mall',
+        translation: '',
+        romaji: '',
+        words: [],
+      }],
+    });
+
+    expect(display.visibleLyricLines.value[0]?.words.map((word) => word.text)).toEqual([
+      'into ',
+      'the ',
+      'mall',
+    ]);
+  });
+
   it('exposes desktop readability settings as CSS variables', () => {
     const display = useDesktopLyricsDisplay(ref(false));
     const payload = createPayload(true);
