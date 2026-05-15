@@ -1,5 +1,6 @@
 import type {
   DesktopLyricsSettings,
+  ImportedLyricsFont,
   LyricsStatus,
   LyricLine,
 } from '../../composables/lyrics';
@@ -70,6 +71,7 @@ export interface DesktopLyricsStatePayload {
   isPlaying: boolean;
   audioDelay: number;
   settings: DesktopLyricsWindowSettings;
+  customLyricsFonts: ImportedLyricsFont[];
   themeColors: string[];
 }
 

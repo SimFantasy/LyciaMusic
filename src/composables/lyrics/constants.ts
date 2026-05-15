@@ -1,5 +1,6 @@
 import type {
   DesktopLyricsSettings,
+  ImportedLyricsFont,
   DesktopLyricsPlayerAlignment,
   LyricsColorScheme,
   LyricsFontPreset,
@@ -44,6 +45,7 @@ export interface LyricsFontOption {
   label: string;
   fontFamily: string;
   isSystem?: boolean;
+  isImported?: boolean;
 }
 
 export const LYRICS_FONT_OPTIONS = [
@@ -215,6 +217,33 @@ export function normalizeHexColor(value: unknown, fallback: string): string {
 
 export function normalizeCustomFontName(value: string): string {
   return value.trim().replace(/\s+/g, ' ').slice(0, 160);
+}
+
+export function normalizeImportedLyricsFonts(value: unknown): ImportedLyricsFont[] {
+  if (!Array.isArray(value)) return [];
+
+  const seenFamilies = new Set<string>();
+  const fonts: ImportedLyricsFont[] = [];
+
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const font = item as Partial<ImportedLyricsFont>;
+    const id = typeof font.id === 'string' ? normalizeCustomFontName(font.id) : '';
+    const name = typeof font.name === 'string' ? normalizeCustomFontName(font.name) : '';
+    const family = typeof font.family === 'string' ? normalizeCustomFontName(font.family) : '';
+    const filePath = typeof font.filePath === 'string' ? font.filePath.trim() : '';
+    const importedAt = typeof font.importedAt === 'number' && Number.isFinite(font.importedAt)
+      ? font.importedAt
+      : Date.now();
+    const format = font.format === 'opentype' ? 'opentype' : 'truetype';
+    const familyKey = family.toLocaleLowerCase();
+
+    if (!id || !name || !family || !filePath || seenFamilies.has(familyKey)) continue;
+    seenFamilies.add(familyKey);
+    fonts.push({ id, name, family, filePath, importedAt, format });
+  }
+
+  return fonts;
 }
 
 export function escapeFontFamilyName(value: string): string {

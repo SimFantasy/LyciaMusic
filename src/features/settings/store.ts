@@ -5,6 +5,7 @@ import type {
   AppSettings,
   AudioSettings,
   DesktopLyricsSettings,
+  ImportedLyricsFont,
   LyricsSettings,
   SidebarSettings,
   ThemeSettings,
@@ -14,6 +15,7 @@ import {
   createDefaultLyricsSettings,
   mergeDesktopLyricsSettings,
   mergeLyricsSettings,
+  normalizeImportedLyricsFonts,
 } from '../../composables/lyrics/constants';
 import {
   createDefaultShortcutSettings,
@@ -30,15 +32,17 @@ export type SidebarSettingsPatch = Partial<SidebarSettings>;
 export type LyricsSettingsPatch = Partial<LyricsSettings>;
 export type DesktopLyricsSettingsPatch = Partial<DesktopLyricsSettings>;
 export type AudioSettingsPatch = Partial<AudioSettings>;
+export type ImportedLyricsFontsPatch = ImportedLyricsFont[];
 
 export interface AppSettingsPatch
-  extends Partial<Omit<AppSettings, 'theme' | 'sidebar' | 'shortcuts' | 'lyrics' | 'desktopLyrics' | 'audio'>> {
+  extends Partial<Omit<AppSettings, 'theme' | 'sidebar' | 'shortcuts' | 'lyrics' | 'desktopLyrics' | 'audio' | 'customLyricsFonts'>> {
   theme?: ThemeSettingsPatch;
   sidebar?: SidebarSettingsPatch;
   shortcuts?: ShortcutSettingsPatch;
   lyrics?: LyricsSettingsPatch;
   desktopLyrics?: DesktopLyricsSettingsPatch;
   audio?: AudioSettingsPatch;
+  customLyricsFonts?: ImportedLyricsFontsPatch;
 }
 
 export interface DeprecatedAppSettingsPatch extends AppSettingsPatch {
@@ -100,6 +104,7 @@ export const defaultAppSettings: AppSettings = {
   enableAutoOrganize: true,
   organizeRule: '{Artist}/{Album}/{Title}',
   audio: defaultAudioSettings,
+  customLyricsFonts: [],
   lyrics: createDefaultLyricsSettings(),
   desktopLyrics: createDefaultDesktopLyricsSettings(),
   theme: defaultThemeSettings,
@@ -135,6 +140,7 @@ export const normalizeLibraryMinDurationSeconds = (
 
 export const createDefaultAppSettings = (): AppSettings => ({
   ...defaultAppSettings,
+  customLyricsFonts: [],
   lyrics: createDefaultLyricsSettings(),
   desktopLyrics: createDefaultDesktopLyricsSettings(),
   audio: createDefaultAudioSettings(),
@@ -198,6 +204,7 @@ export const mergeAppSettings = (
     lyrics: mergeLyricsSettings(base.lyrics, patch.lyrics ?? {}),
     desktopLyrics: mergeDesktopLyricsSettings(base.desktopLyrics, patch.desktopLyrics ?? {}),
     audio: mergeAudioSettings(base.audio ?? createDefaultAudioSettings(), patch.audio ?? {}),
+    customLyricsFonts: normalizeImportedLyricsFonts(patch.customLyricsFonts ?? base.customLyricsFonts),
     theme: mergeThemeSettings(base.theme, patch.theme ?? {}),
     sidebar: mergeSidebarSettings(base.sidebar, patch.sidebar ?? {}),
     shortcuts: mergeShortcutSettings(base.shortcuts, patch.shortcuts ?? {}),

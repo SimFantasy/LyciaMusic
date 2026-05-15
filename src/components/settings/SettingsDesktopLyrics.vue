@@ -18,6 +18,7 @@ import {
   DEFAULT_PLAYER_LINE_GAP,
   DEFAULT_PLAYER_OFFSET_X,
   DEFAULT_PLAYER_OFFSET_Y,
+  buildImportedLyricsFontOptions,
   LYRICS_FONT_OPTIONS,
   MAX_DESKTOP_TEXT_OPACITY,
   MAX_DESKTOP_TEXT_SHADOW_STRENGTH,
@@ -102,6 +103,7 @@ const CUSTOM_COLOR_PANEL_GAP = 20;
 const CUSTOM_COLOR_PANEL_LEFT_SHIFT = 425;
 
 const availableFontOptions = computed(() => [
+  ...buildImportedLyricsFontOptions(settings.value.customLyricsFonts),
   ...LYRICS_FONT_OPTIONS,
   ...systemLyricsFontOptions.value,
 ]);

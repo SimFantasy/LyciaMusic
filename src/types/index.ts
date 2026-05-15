@@ -248,6 +248,15 @@ export type DesktopLyricsPlayerAlignment = LyricsPlayerAlignment | 'split-corner
 export type LyricsColorScheme = 'auto' | 'default' | 'pink' | 'blue' | 'green' | 'white' | 'custom';
 export type LyricsFontPreset = string;
 
+export interface ImportedLyricsFont {
+  id: string;
+  name: string;
+  family: string;
+  filePath: string;
+  importedAt: number;
+  format: 'truetype' | 'opentype';
+}
+
 export interface LyricsSettings {
   showTranslation: boolean;
   showRomaji: boolean;
@@ -336,6 +345,7 @@ export interface AppSettings {
   enableAutoOrganize: boolean;
   organizeRule: string;
   audio: AudioSettings;
+  customLyricsFonts: ImportedLyricsFont[];
   lyrics: LyricsSettings;
   desktopLyrics: DesktopLyricsSettings;
   theme: ThemeSettings;

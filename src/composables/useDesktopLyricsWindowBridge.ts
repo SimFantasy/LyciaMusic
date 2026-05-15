@@ -251,6 +251,7 @@ export function useDesktopLyricsWindowBridge() {
       playerAlignment: desktopLyricsSettings.playerAlignment,
       playerFontPreset: desktopLyricsSettings.playerFontPreset,
     },
+    customLyricsFonts: [...settingsStore.settings.customLyricsFonts],
     themeColors: [...dominantColors.value],
   });
 
@@ -491,6 +492,7 @@ export function useDesktopLyricsWindowBridge() {
       () => desktopLyricsSettings.playerOffsetY,
       () => desktopLyricsSettings.playerAlignment,
       () => desktopLyricsSettings.playerFontPreset,
+      () => settingsStore.settings.customLyricsFonts,
       dominantColors,
     ],
     () => {

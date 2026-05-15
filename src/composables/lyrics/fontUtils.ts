@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 
 import {
   escapeFontFamilyName,
@@ -9,6 +9,7 @@ import {
   normalizeLyricsFontPreset,
   type LyricsFontOption,
 } from './constants';
+import type { ImportedLyricsFont } from '../../types';
 
 const builtinPrimaryFontFamilies = new Set(
   LYRICS_FONT_OPTIONS
@@ -19,6 +20,44 @@ const builtinPrimaryFontFamilies = new Set(
 export function getLyricsFontFamily(preset: string): string {
   return LYRICS_FONT_OPTIONS.find((option) => option.value === preset)?.fontFamily
     ?? `${escapeFontFamilyName(normalizeLyricsFontPreset(preset))}, system-ui, sans-serif`;
+}
+
+export function buildImportedLyricsFontOptions(fonts: ImportedLyricsFont[]): LyricsFontOption[] {
+  return fonts.map((font) => ({
+    value: font.family,
+    label: font.name,
+    fontFamily: `${escapeFontFamilyName(font.family)}, system-ui, sans-serif`,
+    isImported: true,
+  }));
+}
+
+let importedLyricsFontStyleEl: HTMLStyleElement | null = null;
+
+export function registerImportedLyricsFonts(fonts: ImportedLyricsFont[]) {
+  if (typeof document === 'undefined') return;
+
+  if (!importedLyricsFontStyleEl) {
+    importedLyricsFontStyleEl = document.createElement('style');
+    importedLyricsFontStyleEl.setAttribute('data-lycia-imported-lyrics-fonts', 'true');
+    document.head.appendChild(importedLyricsFontStyleEl);
+  }
+
+  importedLyricsFontStyleEl.textContent = fonts
+    .map((font) => {
+      const sourceUrl = convertFileSrc(font.filePath);
+      return [
+        '@font-face {',
+        `  font-family: ${escapeFontFamilyName(font.family)};`,
+        `  src: url(${JSON.stringify(sourceUrl)}) format("${font.format}");`,
+        '  font-display: swap;',
+        '}',
+      ].join('\n');
+    })
+    .join('\n\n');
+}
+
+export async function importLyricsFontFile(sourcePath: string): Promise<ImportedLyricsFont> {
+  return invoke<ImportedLyricsFont>('import_lyrics_font', { sourcePath });
 }
 
 export const systemLyricsFontOptions = ref<LyricsFontOption[]>([]);

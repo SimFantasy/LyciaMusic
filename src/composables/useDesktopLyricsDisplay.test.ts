@@ -29,6 +29,7 @@ function createPayload(enableWordEffect: boolean): DesktopLyricsStatePayload {
     isPlaying: false,
     audioDelay: 0,
     themeColors: [],
+    customLyricsFonts: [],
     settings: {
       showTranslation: true,
       showRomaji: false,

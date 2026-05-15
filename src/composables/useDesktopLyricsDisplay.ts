@@ -34,6 +34,7 @@ import {
   normalizeHexColor,
   normalizeDesktopPlayerAlignment,
   normalizeLyricsFontPreset,
+  registerImportedLyricsFonts,
   systemLyricsFontOptions,
   type LyricsStatus,
   type LyricLine,
@@ -229,6 +230,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
       ...settings.value,
       ...payload.settings,
     };
+    registerImportedLyricsFonts(payload.customLyricsFonts);
     syncPlaybackClock(payload.playbackTime, payload.isPlaying, payload.syncedAt);
   }
 

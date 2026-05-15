@@ -1,4 +1,5 @@
 mod app_runtime;
+mod custom_fonts;
 mod database;
 pub mod error;
 mod foreground_window;
@@ -14,6 +15,7 @@ mod window_theme;
 mod window_z_order;
 
 use app_runtime::{consume_pending_open_paths, exit_app, handle_single_instance, setup_app};
+use custom_fonts::import_lyrics_font;
 use database::clear_all_app_data;
 use foreground_window::get_foreground_fullscreen_state;
 use music::{
@@ -160,6 +162,7 @@ pub fn run() {
             stop_topmost_guard,
             consume_pending_open_paths,
             get_system_fonts,
+            import_lyrics_font,
             exit_app
         ])
         .run(tauri::generate_context!())

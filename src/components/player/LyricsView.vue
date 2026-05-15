@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { open } from '@tauri-apps/plugin-dialog';
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import type { LyricLine as AmlLyricLine, LyricLineMouseEvent } from '@applemusic-like-lyrics/core';
@@ -10,7 +11,9 @@ import {
   DEFAULT_PLAYER_LINE_GAP,
   DEFAULT_PLAYER_OFFSET_X,
   DEFAULT_PLAYER_OFFSET_Y,
+  buildImportedLyricsFontOptions,
   getLyricsFontFamily,
+  importLyricsFontFile,
   LYRICS_FONT_OPTIONS,
   MAX_PLAYER_FONT_SCALE,
   MAX_PLAYER_LINE_GAP,
@@ -39,11 +42,13 @@ const {
   showLyricsPlayerSettingsPanel,
 } = useLyrics();
 const { seekTo, currentTime } = usePlayer();
-const { audioDelay } = storeToRefs(useSettingsStore());
+const settingsStore = useSettingsStore();
+const { audioDelay } = storeToRefs(settingsStore);
 
 const FONT_SCALE_STEP = 0.05;
 const LINE_GAP_STEP = 0.05;
 const OFFSET_STEP = 1;
+const FONT_FILE_FILTERS = [{ name: 'Font', extensions: ['ttf', 'otf'] }];
 const PLAYER_ALIGNMENT_OPTIONS: Array<{ value: LyricsPlayerAlignment; label: string }> = [
   { value: 'left', label: '靠左' },
   { value: 'center', label: '居中' },
@@ -80,6 +85,7 @@ const lineGapPercent = computed(() => `${Math.round(lyricsSettings.playerLineGap
 const horizontalOffsetPercent = computed(() => formatOffsetValue(lyricsSettings.playerOffsetX));
 const verticalOffsetPercent = computed(() => formatOffsetValue(lyricsSettings.playerOffsetY));
 const availableFontOptions = computed(() => [
+  ...buildImportedLyricsFontOptions(settingsStore.settings.customLyricsFonts),
   ...LYRICS_FONT_OPTIONS,
   ...systemLyricsFontOptions.value,
 ]);
@@ -223,6 +229,33 @@ function handleOffsetYInput(event: Event) {
 
 function selectFontPreset(value: LyricsFontPreset) {
   setPlayerFontPreset(normalizeLyricsFontPreset(value));
+  isFontPresetMenuOpen.value = false;
+}
+
+async function importCustomLyricsFont() {
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: '导入歌词字体',
+    filters: FONT_FILE_FILTERS,
+  });
+
+  if (typeof selected !== 'string') return;
+
+  try {
+    const importedFont = await importLyricsFontFile(selected);
+    const remainingFonts = settingsStore.settings.customLyricsFonts.filter((font) => {
+      return font.family !== importedFont.family && font.filePath !== importedFont.filePath;
+    });
+
+    settingsStore.patchSettings({
+      customLyricsFonts: [importedFont, ...remainingFonts],
+    });
+    setPlayerFontPreset(importedFont.family);
+    isFontPresetMenuOpen.value = false;
+  } catch (error) {
+    console.warn('Failed to import custom lyrics font:', error);
+  }
 }
 
 function updateFontPresetMenuPosition() {
@@ -673,6 +706,14 @@ onUnmounted(() => {
           @mousedown.stop
         >
           <div class="min-h-0 space-y-1 overflow-y-auto pr-1 custom-scrollbar">
+            <button
+              type="button"
+              class="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-medium text-white/85 transition hover:bg-white/[0.07] hover:text-white"
+              @click="importCustomLyricsFont"
+            >
+              <span>自定义</span>
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white/45"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            </button>
             <button
               v-for="option in availableFontOptions"
               :key="option.value"
