@@ -21,6 +21,7 @@ import { useSongTableLibraryState } from '../../features/library/useSongTableLib
 import { useLibraryStore } from '../../features/library/store';
 import { DEFAULT_SCROLLBAR_HOT_ZONE_PX, isPointerNearVerticalScrollbar } from '../../utils/scrollbarActivity';
 import { isRemoteSong } from '../../utils/remoteSong';
+import { useSongDetailCache } from '../../composables/useSongDetailCache';
 
 const { settings } = useSettings();
 const libraryStore = useLibraryStore();
@@ -64,6 +65,7 @@ const router = useRouter();
 const route = useRoute();
 const { openHomeArtist } = useHomeNavigation(router);
 const { coverCache, loadCover, touchCoverPaths, preloadPriorityCovers, primeCoverPath } = useCoverCache();
+const { loadSongDetail } = useSongDetailCache();
 
 const ROW_HEIGHT = 72;
 const OVERSCAN = 20;
@@ -76,6 +78,8 @@ const isScrollbarHot = ref(false);
 const isScrollbarScrolling = ref(false);
 const isScrollbarActive = computed(() => isScrollbarHot.value || isScrollbarScrolling.value);
 const displayedCoverUrls = reactive(new Map<string, string>());
+const songCommentCache = reactive(new Map<string, string>());
+const loadingSongCommentPaths = new Set<string>();
 let visibleCoverPaths = new Set<string>();
 let scrollbarActiveTimer: ReturnType<typeof window.setTimeout> | null = null;
 const resolveListRoutePath = (path: string) =>
@@ -110,6 +114,36 @@ const getDisplayedCoverUrl = (path: string | undefined) => {
   }
 
   return displayedCoverUrls.get(path) ?? coverCache.get(path) ?? '';
+};
+
+const getSongComment = (song: Song) => (
+  song.comment?.trim() || songCommentCache.get(song.path)?.trim() || ''
+);
+
+const hasVisibleSongComment = (song: Song) => settings.value.showSongComments && getSongComment(song).length > 0;
+
+const loadVisibleSongComments = (songs: Song[]) => {
+  if (!settings.value.showSongComments) {
+    return;
+  }
+
+  songs.forEach((song) => {
+    if (!song.path || song.comment?.trim() || songCommentCache.has(song.path) || loadingSongCommentPaths.has(song.path)) {
+      return;
+    }
+
+    loadingSongCommentPaths.add(song.path);
+    void loadSongDetail(song.path)
+      .then((detail) => {
+        songCommentCache.set(song.path, detail?.comment?.trim() ?? '');
+      })
+      .catch(() => {
+        songCommentCache.set(song.path, '');
+      })
+      .finally(() => {
+        loadingSongCommentPaths.delete(song.path);
+      });
+  });
 };
 
 const syncScrollTopFromContainer = () => {
@@ -356,8 +390,18 @@ watch(
     syncVisibleCoverUrls(newItems);
     const paths = newItems.map(song => song.path);
     preloadPriorityCovers(paths);
+    loadVisibleSongComments(newItems);
   },
   { immediate: true },
+);
+
+watch(
+  () => settings.value.showSongComments,
+  (showSongComments) => {
+    if (showSongComments) {
+      loadVisibleSongComments(virtualItems.value);
+    }
+  },
 );
 
 watch(
@@ -498,6 +542,8 @@ onBeforeUnmount(() => {
   saveViewportCoverSnapshot();
   clearScrollbarActiveTimer();
   displayedCoverUrls.clear();
+  songCommentCache.clear();
+  loadingSongCommentPaths.clear();
   visibleCoverPaths = new Set<string>();
 });
 
@@ -626,7 +672,14 @@ const getRowStyle = (songIndex: number, songPath: string) => {
           </div>
 
           <div class="flex-[0_1_40%] min-w-0 flex flex-col justify-center gap-0.5">
-            <span class="text-[15px] text-gray-900 dark:text-gray-100 font-semibold truncate leading-snug">{{ song.title || song.name.replace(/\.[^/.]+$/, '') }}</span>
+            <div class="min-w-0 flex items-baseline gap-1.5 leading-snug">
+              <span class="min-w-0 truncate text-[15px] text-gray-900 dark:text-gray-100 font-semibold">{{ song.title || song.name.replace(/\.[^/.]+$/, '') }}</span>
+              <span
+                v-if="hasVisibleSongComment(song)"
+                class="max-w-[42%] shrink-0 truncate text-xs font-medium text-gray-500 dark:text-white/45"
+                :title="getSongComment(song)"
+              >（{{ getSongComment(song) }}）</span>
+            </div>
             <div class="flex items-center gap-1.5 text-xs text-gray-900 dark:text-gray-100 leading-snug">
               <QualityBadge
                 v-if="settings.showQualityBadges"

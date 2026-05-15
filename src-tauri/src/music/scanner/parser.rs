@@ -108,6 +108,7 @@ pub(crate) fn parse_song_from_file(path: &Path, path_str: &str, format: &str) ->
     let mut file_modified_at: Option<u64> = None;
     let mut track_number: Option<String> = None;
     let mut disc_number: Option<String> = None;
+    let mut comment: Option<String> = None;
     let mut container = Some(normalize_container_from_extension(format));
     let mut codec = None;
 
@@ -141,6 +142,7 @@ pub(crate) fn parse_song_from_file(path: &Path, path_str: &str, format: &str) ->
         let detail_metadata = extract_detail_metadata(&tagged_file);
         track_number = detail_metadata.track_number;
         disc_number = detail_metadata.disc_number;
+        comment = detail_metadata.comment;
     }
 
     if duration == 0 || sample_rate == 0 || bit_depth.is_none() {
@@ -208,6 +210,7 @@ pub(crate) fn parse_song_from_file(path: &Path, path_str: &str, format: &str) ->
         cue_source_path: None,
         cue_start_offset: None,
         cue_end_offset: None,
+        comment,
     })
 }
 
@@ -510,6 +513,7 @@ pub(crate) fn build_cue_track_song(
         cue_source_path: Some(flac_path.to_string()),
         cue_start_offset: Some(track.index01_start_ms as u32),
         cue_end_offset: Some(end_ms as u32),
+        comment: None,
     })
 }
 

@@ -47,7 +47,8 @@ pub(crate) fn ensure_base_schema(conn: &Connection) -> Result<(), String> {
             cache_path TEXT,
             cue_source_path TEXT,
             cue_start_offset INTEGER,
-            cue_end_offset INTEGER
+            cue_end_offset INTEGER,
+            comment TEXT
         )",
         [],
     )

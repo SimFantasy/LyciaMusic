@@ -245,6 +245,7 @@ mod tests {
             cue_source_path: None,
             cue_start_offset: None,
             cue_end_offset: None,
+            comment: None,
         }
     }
 

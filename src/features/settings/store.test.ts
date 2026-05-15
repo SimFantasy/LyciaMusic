@@ -126,6 +126,12 @@ describe('settings store', () => {
     expect(settingsStore.settings.enableScrollToTopButton).toBe(true);
   });
 
+  it('shows song comments by default', () => {
+    const settingsStore = useSettingsStore();
+
+    expect(settingsStore.settings.showSongComments).toBe(true);
+  });
+
   it('disables short audio exclusion by default and preserves persisted threshold', () => {
     const settingsStore = useSettingsStore();
 

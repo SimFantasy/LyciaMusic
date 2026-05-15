@@ -161,6 +161,10 @@ fn migrate_song_columns(conn: &Connection) -> Result<(), String> {
         conn.execute("ALTER TABLE songs ADD COLUMN cue_end_offset INTEGER", [])
             .ok();
     }
+    if !columns.iter().any(|column| column == "comment") {
+        conn.execute("ALTER TABLE songs ADD COLUMN comment TEXT", [])
+            .ok();
+    }
 
     Ok(())
 }

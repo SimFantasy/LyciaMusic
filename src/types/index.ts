@@ -32,6 +32,7 @@ export interface SongCore {
   cue_source_path?: string;
   cue_start_offset?: number;
   cue_end_offset?: number;
+  comment?: string;
 }
 
 export interface Song extends SongCore {}
@@ -325,6 +326,7 @@ export interface AppSettings {
   closeToTray: boolean;
   showDesktopLyrics: boolean;
   showQualityBadges: boolean;
+  showSongComments: boolean;
   enableScrollToTopButton: boolean;
   libraryMinDurationSeconds: number;
   // Deprecated compat field. Retained only for legacy config deserialization.
