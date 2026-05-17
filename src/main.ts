@@ -4,6 +4,9 @@ import './style.css'
 import '@applemusic-like-lyrics/core/style.css'
 import App from './App.vue'
 import router from './router'
+import { applyPersistedStartupTheme } from './composables/startupTheme'
+
+applyPersistedStartupTheme()
 
 const escapeHtml = (value: unknown) =>
   String(value ?? '')
