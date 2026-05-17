@@ -16,7 +16,6 @@ function toMs(seconds: number): number {
 const MAX_AML_LINE_LEAD_IN_MS = 300;
 const AML_LINE_LEAD_IN_RATIO = 0.25;
 const MIN_AML_LINE_DURATION_MS = 40;
-const NUMERIC_TEXT_PATTERN = /\p{Number}/u;
 const AML_ROMAJI_FRAGMENT_SEPARATOR = '\u00a0';
 
 type AmlLineWithTimedRomaji = CoreAmlLyricLine & {
@@ -32,10 +31,6 @@ function getAdaptiveAmlLineLeadInMs(currentStartTime: number, nextStartTime: num
   if (gap <= 0) return 0;
 
   return Math.min(MAX_AML_LINE_LEAD_IN_MS, Math.round(gap * AML_LINE_LEAD_IN_RATIO));
-}
-
-function isUnsafeForAmlWordRomaji(word: LyricWord): boolean {
-  return NUMERIC_TEXT_PATTERN.test(word.text) && Boolean(word.romaji && word.romaji.trim().length > 0);
 }
 
 function hasRenderableWordRomaji(word: LyricWord | undefined): boolean {
@@ -64,7 +59,6 @@ function hasCompleteWordRomaji(words: LyricWord[] | undefined): words is LyricWo
   if (!words || words.length === 0) return false;
   const relevantWords = words.filter((word) => word.text.trim().length > 0 && word.end > word.start);
   return relevantWords.length > 0
-    && !relevantWords.some(isUnsafeForAmlWordRomaji)
     && relevantWords.every((word) => Boolean(word.romaji && word.romaji.trim().length > 0));
 }
 

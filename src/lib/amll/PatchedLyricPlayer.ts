@@ -10,6 +10,7 @@ import {
   TIMED_ROMAJI_BASE_OPACITY,
   TIMED_ROMAJI_HIGHLIGHT_OPACITY,
   TIMED_ROMAJI_SUBLINE_OPACITY,
+  getInlineRomajiPatchPlan,
   getTimedRomajiFillProgress,
   shouldRebuildTimedRomajiDom,
 } from './timedRomaji';
@@ -161,11 +162,110 @@ export class PatchedLyricPlayer extends DomLyricPlayer {
     return typeof getElement === 'function' ? getElement.call(lineObj) : null;
   }
 
+  private moveInlineRomajiAboveMainText(lineElement: HTMLElement) {
+    for (const romanWord of lineElement.querySelectorAll<HTMLElement>(
+      '[class*="_romanWord_"], [data-lycia-patched-inline-romaji="true"]',
+    )) {
+      const wordElement = romanWord.parentElement;
+      if (!wordElement || wordElement.firstElementChild === romanWord) continue;
+
+      wordElement.insertBefore(romanWord, wordElement.firstChild);
+    }
+  }
+
+  private getElementTextWithoutRomaji(element: HTMLElement) {
+    const clone = element.cloneNode(true) as HTMLElement;
+    clone
+      .querySelectorAll('[class*="_romanWord_"], [data-lycia-patched-inline-romaji="true"]')
+      .forEach((node) => node.remove());
+    return clone.textContent ?? '';
+  }
+
+  private getMainWordElements(mainLine: HTMLElement) {
+    const elements: HTMLElement[] = [];
+
+    for (const child of Array.from(mainLine.children)) {
+      if (!(child instanceof HTMLElement)) continue;
+      if (child.dataset.lyciaMainRomajiLine === 'true') continue;
+      if (child.matches('[class*="_romanWord_"]')) continue;
+
+      if (child.matches('[class*="_emphasizeWrapper_"]')) {
+        for (const wordElement of Array.from(child.children)) {
+          if (wordElement instanceof HTMLElement) {
+            elements.push(wordElement);
+          }
+        }
+      } else {
+        elements.push(child);
+      }
+    }
+
+    return elements;
+  }
+
+  private patchMissingInlineRomaji(lineElement: HTMLElement, line: LyricLineWithTimedRomaji) {
+    const sourceWords = line.words.filter((word) => word.romanWord.trim().length > 0);
+    if (sourceWords.length === 0) return;
+
+    const mainLine = lineElement.children[0];
+    if (!(mainLine instanceof HTMLElement)) return;
+
+    const wordElements = this.getMainWordElements(mainLine);
+    const renderedWords = wordElements.map((element) => this.getElementTextWithoutRomaji(element));
+    const plan = getInlineRomajiPatchPlan(renderedWords, line.words);
+
+    for (const patch of plan) {
+      const wordElement = wordElements[patch.elementIndex];
+      if (
+        !wordElement
+        || wordElement.querySelector('[class*="_romanWord_"], [data-lycia-patched-inline-romaji="true"]')
+      ) continue;
+
+      const romanWordElement = document.createElement('div');
+      romanWordElement.dataset.lyciaPatchedInlineRomaji = 'true';
+      romanWordElement.className = 'lycia-patched-inline-romaji';
+      romanWordElement.style.fontSize = '.5em';
+      romanWordElement.style.lineHeight = '1em';
+      romanWordElement.textContent = patch.romanWord;
+      wordElement.insertBefore(romanWordElement, wordElement.firstChild);
+    }
+  }
+
   private getRomanSubLineElement(lineElement: HTMLElement, line: LyricLineWithTimedRomaji) {
     if (!line.romanLyric.trim()) return null;
 
+    const mainLine = lineElement.children[0];
     const roman = lineElement.children[2];
-    return roman instanceof HTMLElement ? roman : null;
+    if (!(roman instanceof HTMLElement) || !(mainLine instanceof HTMLElement)) return null;
+
+    roman.style.display = 'none';
+
+    let mountedRoman = mainLine.querySelector<HTMLElement>('[data-lycia-main-romaji-line="true"]');
+    if (!mountedRoman) {
+      mountedRoman = document.createElement('div');
+      mountedRoman.dataset.lyciaMainRomajiLine = 'true';
+      mainLine.insertBefore(mountedRoman, mainLine.firstChild);
+    }
+
+    mountedRoman.className = roman.className;
+    mountedRoman.style.cssText = roman.style.cssText;
+    mountedRoman.style.display = '';
+    if (!mountedRoman.querySelector('.lycia-timed-romaji-word')) {
+      mountedRoman.textContent = roman.textContent;
+    }
+    return mountedRoman;
+  }
+
+  private syncRomajiPlacementToDom() {
+    for (const lineObj of this.currentLyricLineObjects) {
+      const lineElement = this.getLineElement(lineObj);
+      if (!lineElement) continue;
+
+      const line = lineObj.getLine() as LyricLineWithTimedRomaji;
+      this.patchMissingInlineRomaji(lineElement, line);
+      this.getRomanSubLineElement(lineElement, line);
+      this.moveInlineRomajiAboveMainText(lineElement);
+    }
   }
 
   private syncTimedRomajiWordsToDom() {
@@ -241,6 +341,8 @@ export class PatchedLyricPlayer extends DomLyricPlayer {
         }
       }
     }
+
+    this.syncRomajiPlacementToDom();
   }
 
   private patchLineElementLayout() {
@@ -516,6 +618,7 @@ export class PatchedLyricPlayer extends DomLyricPlayer {
     this.syncMeasuredSize();
     super.onResize();
     this.patchLineElementLayout();
+    this.syncRomajiPlacementToDom();
     this.syncLineTransformsToDom();
     this.syncAuxiliaryTransformsToDom();
   }
@@ -523,6 +626,7 @@ export class PatchedLyricPlayer extends DomLyricPlayer {
   override setLyricLines(...args: Parameters<DomLyricPlayer['setLyricLines']>): void {
     super.setLyricLines(...args);
     this.patchLineElementLayout();
+    this.syncRomajiPlacementToDom();
     this.syncTimedRomajiWordsToDom();
     this.syncLineTransformsToDom();
     this.syncAuxiliaryTransformsToDom();
@@ -680,6 +784,7 @@ export class PatchedLyricPlayer extends DomLyricPlayer {
     this.onResize();
     void this.calcLayout(true);
     this.update(0);
+    this.syncRomajiPlacementToDom();
     this.syncTimedRomajiWordsToDom();
     this.syncLineTransformsToDom();
     this.syncAuxiliaryTransformsToDom();

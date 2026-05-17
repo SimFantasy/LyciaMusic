@@ -155,7 +155,8 @@ describe('convertLyricsToAmlLines', () => {
     expect(amlLines[0]?.words.map((word) => word.romanWord || '')).toEqual(['', '', '']);
   });
 
-  it('falls back to line-level romaji for numeric main words that break AML ruby layout', () => {
+  it('keeps numeric main words in per-word romaji mode', () => {
+    const separator = '\u00a0';
     const lines = [
       {
         time: 25.014,
@@ -184,22 +185,22 @@ describe('convertLyricsToAmlLines', () => {
 
     const amlLines = convertLyricsToAmlLines(lines, true, true);
 
-    expect(amlLines[0]?.romanLyric).toBe('ha chi ro ku no ri zu mu ka ki mi da sa re ru');
+    expect(amlLines[0]?.romanLyric).toBe('');
     expect(amlLines[0]?.words.map((word) => word.romanWord || '')).toEqual([
+      `ha chi${separator}`,
       '',
+      `ro ku${separator}`,
+      `no${separator}`,
+      `ri${separator}`,
+      `zu${separator}`,
+      `mu${separator}`,
       '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
+      `ka${separator}`,
+      `ki${separator}`,
+      `mi da${separator}`,
+      `sa${separator}`,
+      `re${separator}`,
+      'ru',
     ]);
   });
 
