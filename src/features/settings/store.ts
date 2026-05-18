@@ -91,7 +91,7 @@ export const defaultAudioSettings: AudioSettings = {
 };
 
 export const defaultAppSettings: AppSettings = {
-  closeToTray: false,
+  closeToTray: true,
   showDesktopLyrics: false,
   showQualityBadges: true,
   showSongComments: true,

@@ -132,6 +132,12 @@ describe('settings store', () => {
     expect(settingsStore.settings.showSongComments).toBe(true);
   });
 
+  it('minimizes to tray on close by default', () => {
+    const settingsStore = useSettingsStore();
+
+    expect(settingsStore.settings.closeToTray).toBe(true);
+  });
+
   it('disables short audio exclusion by default and preserves persisted threshold', () => {
     const settingsStore = useSettingsStore();
 
