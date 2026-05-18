@@ -24,14 +24,12 @@ const isDesktopLyricsWindow = currentWindowLabel === DESKTOP_LYRICS_WINDOW_LABEL
 const isMiniPlayerWindow = currentWindowLabel === MINI_PLAYER_WINDOW_LABEL;
 const isTrayMenuWindow = currentWindowLabel === TRAY_MENU_WINDOW_LABEL;
 
-if (!isDesktopLyricsWindow) {
-  const { settings } = useSettings();
-  watch(
-    () => settings.value.customLyricsFonts,
-    (fonts) => registerImportedLyricsFonts(fonts),
-    { deep: true, immediate: true },
-  );
-}
+const { settings } = useSettings();
+watch(
+  () => settings.value.customLyricsFonts,
+  (fonts) => registerImportedLyricsFonts(fonts),
+  { deep: true, immediate: true },
+);
 </script>
 
 <template>

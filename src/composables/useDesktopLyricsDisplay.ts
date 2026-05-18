@@ -30,6 +30,7 @@ import {
   MIN_PLAYER_OFFSET_Y,
   MIN_DESKTOP_TEXT_OPACITY,
   MIN_DESKTOP_TEXT_SHADOW_STRENGTH,
+  buildImportedLyricsFontOptions,
   getLyricsFontFamily,
   normalizeHexColor,
   normalizeDesktopPlayerAlignment,
@@ -40,6 +41,7 @@ import {
   type LyricLine,
   type LyricWord,
 } from './lyrics';
+import type { ImportedLyricsFont } from '../types';
 import {
   DESKTOP_LYRICS_ACTION_EVENT,
   type DesktopLyricsAction,
@@ -96,6 +98,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
   const lyricsStatus = ref<LyricsStatus>('idle');
   const fallbackText = ref('Instrumental / No lyrics');
   const themeColors = ref<string[]>([]);
+  const customLyricsFonts = ref<ImportedLyricsFont[]>([]);
   const songDuration = ref<number | null>(null);
   const doubleLinePageStartIndex = ref(-1);
   const settings = ref<DesktopLyricsWindowSettings>({
@@ -230,6 +233,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
       ...settings.value,
       ...payload.settings,
     };
+    customLyricsFonts.value = [...payload.customLyricsFonts];
     registerImportedLyricsFonts(payload.customLyricsFonts);
     syncPlaybackClock(payload.playbackTime, payload.isPlaying, payload.syncedAt);
   }
@@ -410,6 +414,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     return `lyrics-align-${settings.value.playerAlignment}`;
   });
   const availableFontOptions = computed(() => [
+    ...buildImportedLyricsFontOptions(customLyricsFonts.value),
     ...LYRICS_FONT_OPTIONS,
     ...systemLyricsFontOptions.value,
   ]);

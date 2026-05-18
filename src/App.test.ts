@@ -15,3 +15,9 @@ describe('App text selection behavior', () => {
     expect(source).toContain('user-select: text;');
   });
 });
+
+describe('App imported lyrics fonts registration', () => {
+  it('does not skip registration in the desktop lyrics window', () => {
+    expect(source).not.toContain('if (!isDesktopLyricsWindow)');
+  });
+});

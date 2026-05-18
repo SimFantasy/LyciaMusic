@@ -142,6 +142,34 @@ describe('useDesktopLyricsDisplay', () => {
     });
   });
 
+  it('keeps imported desktop lyrics fonts available from state payloads', () => {
+    const display = useDesktopLyricsDisplay(ref(false));
+    const payload = createPayload(true);
+
+    display.handlePayload({
+      ...payload,
+      customLyricsFonts: [{
+        id: 'font-1',
+        name: 'My Lyrics Font',
+        family: 'Lycia Imported Lyrics Font font-1',
+        filePath: 'C:\\Fonts\\my-lyrics-font.ttf',
+        importedAt: 1,
+        format: 'truetype',
+      }],
+      settings: {
+        ...payload.settings,
+        playerFontPreset: 'Lycia Imported Lyrics Font font-1',
+      },
+    });
+
+    expect(display.availableFontOptions.value[0]).toMatchObject({
+      value: 'Lycia Imported Lyrics Font font-1',
+      label: 'My Lyrics Font',
+      isImported: true,
+    });
+    expect(display.selectedFontLabel.value).toBe('My Lyrics Font');
+  });
+
   it('exposes independent desktop romaji played and unplayed colors in custom schemes', () => {
     const display = useDesktopLyricsDisplay(ref(false));
     const payload = createPayload(true);
