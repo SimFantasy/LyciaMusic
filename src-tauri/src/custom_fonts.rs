@@ -4,6 +4,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use base64::{engine::general_purpose, Engine as _};
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
@@ -84,4 +85,30 @@ pub fn import_lyrics_font(
         imported_at: imported_at_millis()?,
         format: format.to_string(),
     })
+}
+
+#[tauri::command]
+pub fn read_lyrics_font_data_url(app: AppHandle, font_path: String) -> Result<String, String> {
+    let source = PathBuf::from(font_path);
+    if !source.is_file() {
+        return Err("Imported font file does not exist".to_string());
+    }
+
+    let (_, format) = normalize_font_extension(&source)?;
+    let custom_dir =
+        fs::canonicalize(custom_fonts_dir(&app)?).map_err(|error| error.to_string())?;
+    let source = fs::canonicalize(&source).map_err(|error| error.to_string())?;
+
+    if !source.starts_with(&custom_dir) {
+        return Err("Imported font file is outside the custom lyrics fonts directory".to_string());
+    }
+
+    let mime_type = match format {
+        "opentype" => "font/otf",
+        _ => "font/ttf",
+    };
+    let bytes = fs::read(source).map_err(|error| error.to_string())?;
+    let encoded = general_purpose::STANDARD.encode(bytes);
+
+    Ok(format!("data:{mime_type};base64,{encoded}"))
 }

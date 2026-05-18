@@ -15,6 +15,7 @@ import {
   buildImportedLyricsFontOptions,
   getLyricsFontFamily,
   importLyricsFontFile,
+  importedLyricsFontsRevision,
   LYRICS_FONT_OPTIONS,
   MAX_PLAYER_FONT_SCALE,
   MAX_PLAYER_LINE_GAP,
@@ -131,6 +132,7 @@ const lyricsPlayerStyle = computed(() => ({
   '--lyrics-offset-x': `${lyricsSettings.playerOffsetX}%`,
   '--lyrics-offset-y': `${lyricsSettings.playerOffsetY}%`,
 }));
+const lyricsLayoutVersion = computed(() => `${lyricsSettings.playerFontPreset}:${importedLyricsFontsRevision.value}`);
 
 function clampFontScale(value: number) {
   return Math.min(MAX_PLAYER_FONT_SCALE, Math.max(MIN_PLAYER_FONT_SCALE, value));
@@ -731,7 +733,7 @@ onUnmounted(() => {
           class="amll-host h-full min-h-0 w-full min-w-0"
           :lyric-lines="amllLines"
           :current-time="amllCurrentTime"
-          :layout-version="lyricsSettings.playerFontPreset"
+          :layout-version="lyricsLayoutVersion"
           align-anchor="center"
           :align-position="0.42"
           :enable-spring="true"

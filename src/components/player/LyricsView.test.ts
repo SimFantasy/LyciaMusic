@@ -35,4 +35,10 @@ describe('LyricsView custom font import', () => {
     expect(source).toContain('removeCustomLyricsFont(option.value)');
     expect(source).toContain('@click.stop');
   });
+
+  it('rebuilds the lyrics layout after imported fonts finish registering', () => {
+    expect(source).toContain('importedLyricsFontsRevision');
+    expect(source).toContain('lyricsLayoutVersion');
+    expect(source).toContain(':layout-version="lyricsLayoutVersion"');
+  });
 });

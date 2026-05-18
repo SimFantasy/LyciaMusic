@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 
 import {
   escapeFontFamilyName,
@@ -32,8 +32,47 @@ export function buildImportedLyricsFontOptions(fonts: ImportedLyricsFont[]): Lyr
 }
 
 let importedLyricsFontStyleEl: HTMLStyleElement | null = null;
+let importedLyricsFontRegistrationVersion = 0;
+const importedLyricsFontFaces = new Map<string, FontFace>();
+export const importedLyricsFontsRevision = ref(0);
 
-export function registerImportedLyricsFonts(fonts: ImportedLyricsFont[]) {
+async function loadImportedLyricsFontSource(font: ImportedLyricsFont): Promise<string | null> {
+  try {
+    return await invoke<string>('read_lyrics_font_data_url', { fontPath: font.filePath });
+  } catch (error) {
+    console.warn('Failed to load imported lyrics font:', font.name, error);
+    return null;
+  }
+}
+
+async function createImportedLyricsFontFace(
+  font: ImportedLyricsFont,
+  sourceUrl: string,
+): Promise<FontFace | null> {
+  if (typeof FontFace === 'undefined') {
+    return null;
+  }
+
+  try {
+    const fontFace = new FontFace(font.family, `url(${JSON.stringify(sourceUrl)})`, { display: 'swap' });
+    await fontFace.load();
+    return fontFace;
+  } catch (error) {
+    console.warn('Failed to create imported lyrics FontFace:', font.name, error);
+    return null;
+  }
+}
+
+function clearRegisteredImportedLyricsFontFaces() {
+  if (typeof document !== 'undefined' && 'fonts' in document) {
+    for (const fontFace of importedLyricsFontFaces.values()) {
+      document.fonts.delete(fontFace);
+    }
+  }
+  importedLyricsFontFaces.clear();
+}
+
+export async function registerImportedLyricsFonts(fonts: ImportedLyricsFont[]) {
   if (typeof document === 'undefined') return;
 
   if (!importedLyricsFontStyleEl) {
@@ -42,18 +81,33 @@ export function registerImportedLyricsFonts(fonts: ImportedLyricsFont[]) {
     document.head.appendChild(importedLyricsFontStyleEl);
   }
 
-  importedLyricsFontStyleEl.textContent = fonts
-    .map((font) => {
-      const sourceUrl = convertFileSrc(font.filePath);
-      return [
-        '@font-face {',
-        `  font-family: ${escapeFontFamilyName(font.family)};`,
-        `  src: url(${JSON.stringify(sourceUrl)}) format("${font.format}");`,
-        '  font-display: swap;',
-        '}',
-      ].join('\n');
-    })
-    .join('\n\n');
+  const registrationVersion = ++importedLyricsFontRegistrationVersion;
+  if (fonts.length === 0) {
+    importedLyricsFontStyleEl.textContent = '';
+    clearRegisteredImportedLyricsFontFaces();
+    importedLyricsFontsRevision.value += 1;
+    return;
+  }
+
+  const fontFaceEntries = await Promise.all(fonts.map(async (font) => {
+    const sourceUrl = await loadImportedLyricsFontSource(font);
+    if (!sourceUrl) return null;
+    const fontFace = await createImportedLyricsFontFace(font, sourceUrl);
+    if (!fontFace) return null;
+
+    return { font, fontFace };
+  }));
+
+  if (registrationVersion !== importedLyricsFontRegistrationVersion) return;
+
+  importedLyricsFontStyleEl.textContent = '';
+  clearRegisteredImportedLyricsFontFaces();
+  for (const entry of fontFaceEntries) {
+    if (!entry) continue;
+    importedLyricsFontFaces.set(entry.font.family, entry.fontFace);
+    document.fonts.add(entry.fontFace);
+  }
+  importedLyricsFontsRevision.value += 1;
 }
 
 export async function importLyricsFontFile(sourcePath: string): Promise<ImportedLyricsFont> {
