@@ -118,6 +118,12 @@ const handleKeydown = (event: KeyboardEvent) => {
 };
 
 onMounted(async () => {
+  try {
+    await appWindow.setBackgroundColor([0, 0, 0, 0]);
+  } catch (error) {
+    console.warn('Failed to force transparent background for tray menu window:', error);
+  }
+
   await appWindow.setAlwaysOnTop(true);
   window.addEventListener('keydown', handleKeydown);
 

@@ -214,6 +214,12 @@ watch([showMiniPlaylist, showVolumePopover, isDraggingVolume], () => {
 });
 
 onMounted(async () => {
+  try {
+    await appWindow.setBackgroundColor([0, 0, 0, 0]);
+  } catch (error) {
+    console.warn('Failed to force transparent background for mini player window:', error);
+  }
+
   await appWindow.setAlwaysOnTop(true);
   await applyWindowHeight();
   resetIdleTimer();
