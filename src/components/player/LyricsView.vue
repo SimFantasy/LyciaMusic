@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { open } from '@tauri-apps/plugin-dialog';
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
+import { Trash2 } from 'lucide-vue-next';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import type { LyricLine as AmlLyricLine, LyricLineMouseEvent } from '@applemusic-like-lyrics/core';
 import {
@@ -49,6 +50,7 @@ const FONT_SCALE_STEP = 0.05;
 const LINE_GAP_STEP = 0.05;
 const OFFSET_STEP = 1;
 const FONT_FILE_FILTERS = [{ name: 'Font', extensions: ['ttf', 'otf'] }];
+type FontPresetMenuMode = 'system' | 'custom';
 const PLAYER_ALIGNMENT_OPTIONS: Array<{ value: LyricsPlayerAlignment; label: string }> = [
   { value: 'left', label: '靠左' },
   { value: 'center', label: '居中' },
@@ -56,10 +58,12 @@ const PLAYER_ALIGNMENT_OPTIONS: Array<{ value: LyricsPlayerAlignment; label: str
 ];
 
 const fontPanelRef = ref<HTMLElement | null>(null);
-const fontPresetTriggerRef = ref<HTMLElement | null>(null);
+const systemFontPresetTriggerRef = ref<HTMLElement | null>(null);
+const customFontPresetTriggerRef = ref<HTMLElement | null>(null);
 const fontPresetMenuRef = ref<HTMLElement | null>(null);
 const amlPlayerRef = ref<InstanceType<typeof AmlLyricPlayer> | null>(null);
 const isFontPresetMenuOpen = ref(false);
+const fontPresetMenuMode = ref<FontPresetMenuMode | null>(null);
 const fontPresetMenuStyle = ref<Record<string, string>>({});
 
 const amllLines = computed<AmlLyricLine[]>(() => {
@@ -84,14 +88,23 @@ const fontScalePercent = computed(() => `${Math.round(lyricsSettings.playerFontS
 const lineGapPercent = computed(() => `${Math.round(lyricsSettings.playerLineGap * 100)}%`);
 const horizontalOffsetPercent = computed(() => formatOffsetValue(lyricsSettings.playerOffsetX));
 const verticalOffsetPercent = computed(() => formatOffsetValue(lyricsSettings.playerOffsetY));
-const availableFontOptions = computed(() => [
-  ...buildImportedLyricsFontOptions(settingsStore.settings.customLyricsFonts),
+const customFontOptions = computed(() => buildImportedLyricsFontOptions(settingsStore.settings.customLyricsFonts));
+const systemFontOptions = computed(() => [
   ...LYRICS_FONT_OPTIONS,
   ...systemLyricsFontOptions.value,
 ]);
-const selectedFontLabel = computed(() => {
-  return availableFontOptions.value.find((option) => option.value === lyricsSettings.playerFontPreset)?.label
+const isUsingCustomFont = computed(() => {
+  return customFontOptions.value.some((option) => option.value === lyricsSettings.playerFontPreset);
+});
+const selectedSystemFontLabel = computed(() => {
+  if (isUsingCustomFont.value) return '跟随系统默认';
+
+  return systemFontOptions.value.find((option) => option.value === lyricsSettings.playerFontPreset)?.label
     ?? normalizeLyricsFontPreset(lyricsSettings.playerFontPreset);
+});
+const selectedCustomFontLabel = computed(() => {
+  return customFontOptions.value.find((option) => option.value === lyricsSettings.playerFontPreset)?.label
+    ?? '自定义字体';
 });
 
 const fontScaleProgress = computed(() => {
@@ -230,6 +243,7 @@ function handleOffsetYInput(event: Event) {
 function selectFontPreset(value: LyricsFontPreset) {
   setPlayerFontPreset(normalizeLyricsFontPreset(value));
   isFontPresetMenuOpen.value = false;
+  fontPresetMenuMode.value = null;
 }
 
 async function importCustomLyricsFont() {
@@ -247,19 +261,43 @@ async function importCustomLyricsFont() {
     const remainingFonts = settingsStore.settings.customLyricsFonts.filter((font) => {
       return font.family !== importedFont.family && font.filePath !== importedFont.filePath;
     });
+    const shouldApplyToDesktopLyrics = settingsStore.settings.desktopLyrics.playerFontPreset === DEFAULT_PLAYER_FONT_PRESET;
 
     settingsStore.patchSettings({
       customLyricsFonts: [importedFont, ...remainingFonts],
+      lyrics: { playerFontPreset: importedFont.family },
+      ...(shouldApplyToDesktopLyrics
+        ? { desktopLyrics: { playerFontPreset: importedFont.family } }
+        : {}),
     });
-    setPlayerFontPreset(importedFont.family);
     isFontPresetMenuOpen.value = false;
+    fontPresetMenuMode.value = null;
   } catch (error) {
     console.warn('Failed to import custom lyrics font:', error);
   }
 }
 
+function removeCustomLyricsFont(value: LyricsFontPreset) {
+  const normalizedFamily = normalizeLyricsFontPreset(value);
+  const remainingFonts = settingsStore.settings.customLyricsFonts.filter((font) => {
+    return font.family !== normalizedFamily;
+  });
+
+  settingsStore.patchSettings({
+    customLyricsFonts: remainingFonts,
+    ...(lyricsSettings.playerFontPreset === normalizedFamily
+      ? { lyrics: { playerFontPreset: DEFAULT_PLAYER_FONT_PRESET } }
+      : {}),
+    ...(settingsStore.settings.desktopLyrics.playerFontPreset === normalizedFamily
+      ? { desktopLyrics: { playerFontPreset: DEFAULT_PLAYER_FONT_PRESET } }
+      : {}),
+  });
+}
+
 function updateFontPresetMenuPosition() {
-  const trigger = fontPresetTriggerRef.value;
+  const trigger = fontPresetMenuMode.value === 'custom'
+    ? customFontPresetTriggerRef.value
+    : systemFontPresetTriggerRef.value;
   if (!trigger) return;
 
   const panel = trigger.closest('.pointer-events-auto');
@@ -287,8 +325,15 @@ function updateFontPresetMenuPosition() {
   };
 }
 
-async function toggleFontPresetMenu() {
-  isFontPresetMenuOpen.value = !isFontPresetMenuOpen.value;
+async function toggleFontPresetMenu(mode: FontPresetMenuMode) {
+  if (isFontPresetMenuOpen.value && fontPresetMenuMode.value === mode) {
+    isFontPresetMenuOpen.value = false;
+    fontPresetMenuMode.value = null;
+    return;
+  }
+
+  fontPresetMenuMode.value = mode;
+  isFontPresetMenuOpen.value = true;
   if (isFontPresetMenuOpen.value) {
     await nextTick();
     updateFontPresetMenuPosition();
@@ -317,6 +362,7 @@ function handleClickOutside(event: MouseEvent) {
   if (fontPanelRef.value?.contains(target)) return;
   if (fontPresetMenuRef.value?.contains(target)) return;
   isFontPresetMenuOpen.value = false;
+  fontPresetMenuMode.value = null;
   showLyricsPlayerSettingsPanel.value = false;
 }
 
@@ -327,6 +373,13 @@ async function handleLineClick(event: LyricLineMouseEvent) {
   const targetSeconds = getPlaybackSeekSecondsForAmlLine(lineStartTimeMs, audioDelay.value);
   await seekTo(targetSeconds);
 }
+
+watch(showLyricsPlayerSettingsPanel, (visible) => {
+  if (!visible) {
+    isFontPresetMenuOpen.value = false;
+    fontPresetMenuMode.value = null;
+  }
+});
 
 onMounted(() => {
   window.addEventListener('mousedown', handleClickOutside);
@@ -339,6 +392,7 @@ onUnmounted(() => {
   window.removeEventListener('resize', updateFontPresetMenuPosition);
   showLyricsPlayerSettingsPanel.value = false;
   isFontPresetMenuOpen.value = false;
+  fontPresetMenuMode.value = null;
 });
 </script>
 
@@ -602,15 +656,18 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div class="relative overflow-visible">
+          <div class="space-y-2">
             <button
-              ref="fontPresetTriggerRef"
+              ref="systemFontPresetTriggerRef"
               type="button"
-              class="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left text-sm text-white transition hover:border-white/20 hover:bg-white/[0.06]"
-              :class="isFontPresetMenuOpen ? 'border-white/25 bg-white/[0.08] shadow-[0_18px_36px_rgba(0,0,0,0.16)]' : ''"
-              @click="toggleFontPresetMenu"
+              class="font-preset-trigger"
+              :class="[
+                !isUsingCustomFont ? 'font-preset-trigger--active' : 'font-preset-trigger--muted',
+                isFontPresetMenuOpen && fontPresetMenuMode === 'system' ? 'font-preset-trigger--open' : '',
+              ]"
+              @click="toggleFontPresetMenu('system')"
             >
-              <span class="truncate">{{ selectedFontLabel }}</span>
+              <span class="min-w-0 flex-1 truncate">{{ selectedSystemFontLabel }}</span>
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="14"
@@ -622,39 +679,39 @@ onUnmounted(() => {
                 stroke-linecap="round"
                 stroke-linejoin="round"
                 class="shrink-0 text-white/45 transition-transform duration-200"
-                :class="isFontPresetMenuOpen ? 'rotate-180 text-white/70' : ''"
+                :class="isFontPresetMenuOpen && fontPresetMenuMode === 'system' ? 'rotate-180 text-white/70' : ''"
               >
                 <path d="m6 9 6 6 6-6"/>
               </svg>
             </button>
 
-            <transition name="font-preset-menu">
-              <div
-                v-if="false"
-                class="absolute left-[calc(100%+14px)] top-1/2 z-20 w-[280px] -translate-y-1/2 flex flex-col overflow-hidden rounded-3xl border border-white/10 bg-black/30 p-2 text-white shadow-[0_28px_70px_rgba(0,0,0,0.36)] backdrop-blur-2xl"
+            <button
+              ref="customFontPresetTriggerRef"
+              type="button"
+              class="font-preset-trigger"
+              :class="[
+                isUsingCustomFont ? 'font-preset-trigger--active' : 'font-preset-trigger--muted',
+                isFontPresetMenuOpen && fontPresetMenuMode === 'custom' ? 'font-preset-trigger--open' : '',
+              ]"
+              @click="toggleFontPresetMenu('custom')"
+            >
+              <span class="min-w-0 flex-1 truncate">{{ selectedCustomFontLabel }}</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="shrink-0 text-white/45 transition-transform duration-200"
+                :class="isFontPresetMenuOpen && fontPresetMenuMode === 'custom' ? 'rotate-180 text-white/70' : ''"
               >
-                <div class="min-h-0 space-y-1 overflow-y-auto pr-1 custom-scrollbar">
-                  <button
-                    v-for="option in availableFontOptions"
-                    :key="option.value"
-                    type="button"
-                    class="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition"
-                    :class="lyricsSettings.playerFontPreset === option.value
-                      ? 'bg-white/[0.14] text-white'
-                      : 'text-white/72 hover:bg-white/[0.07] hover:text-white'"
-                    @click="selectFontPreset(option.value)"
-                  >
-                    <span>{{ option.label }}</span>
-                    <span
-                      v-if="lyricsSettings.playerFontPreset === option.value"
-                      class="text-[11px] font-medium text-white/50"
-                    >
-                      当前
-                    </span>
-                  </button>
-                </div>
-              </div>
-            </transition>
+                <path d="m6 9 6 6 6-6"/>
+              </svg>
+            </button>
           </div>
 
           </div>
@@ -705,33 +762,83 @@ onUnmounted(() => {
           @click.stop
           @mousedown.stop
         >
-          <div class="min-h-0 space-y-1 overflow-y-auto pr-1 custom-scrollbar">
-            <button
-              type="button"
-              class="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-medium text-white/85 transition hover:bg-white/[0.07] hover:text-white"
-              @click="importCustomLyricsFont"
+          <div class="min-h-0 overflow-y-auto pr-1 custom-scrollbar">
+            <div
+              v-if="fontPresetMenuMode === 'system'"
+              class="space-y-1"
             >
-              <span>自定义</span>
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white/45"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-            </button>
-            <button
-              v-for="option in availableFontOptions"
-              :key="option.value"
-              type="button"
-              class="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition"
-              :class="lyricsSettings.playerFontPreset === option.value
-                ? 'bg-white/[0.14] text-white active-font-preset'
-                : 'text-white/72 hover:bg-white/[0.07] hover:text-white'"
-              @click="selectFontPreset(option.value)"
-            >
-              <span>{{ option.label }}</span>
-              <span
-                v-if="lyricsSettings.playerFontPreset === option.value"
-                class="text-[11px] font-medium text-white/50"
+              <button
+                v-for="option in systemFontOptions"
+                :key="option.value"
+                type="button"
+                class="font-option-row"
+                :class="lyricsSettings.playerFontPreset === option.value
+                  ? 'font-option-row--active active-font-preset'
+                  : ''"
+                @click="selectFontPreset(option.value)"
               >
-                当前
-              </span>
-            </button>
+                <span class="min-w-0 flex-1 truncate" :title="option.label">{{ option.label }}</span>
+                <span
+                  v-if="lyricsSettings.playerFontPreset === option.value"
+                  class="shrink-0 rounded-full bg-white/12 px-2 py-0.5 text-[10px] font-medium text-white/58"
+                >
+                  当前
+                </span>
+              </button>
+            </div>
+
+            <div
+              v-if="fontPresetMenuMode === 'custom'"
+              class="space-y-2"
+            >
+              <div class="font-custom-menu-header">
+                <span>自定义</span>
+                <button
+                  type="button"
+                  class="font-import-button"
+                  title="导入自定义字体"
+                  @click="importCustomLyricsFont"
+                >
+                  <span>导入</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                </button>
+              </div>
+              <div
+                v-if="customFontOptions.length > 0"
+                class="space-y-1"
+              >
+                <div
+                  v-for="option in customFontOptions"
+                  :key="option.value"
+                  role="button"
+                  tabindex="0"
+                  class="font-option-row"
+                  :class="lyricsSettings.playerFontPreset === option.value
+                    ? 'font-option-row--active active-font-preset'
+                    : ''"
+                  @click="selectFontPreset(option.value)"
+                  @keydown.enter.prevent="selectFontPreset(option.value)"
+                  @keydown.space.prevent="selectFontPreset(option.value)"
+                >
+                  <span class="min-w-0 flex-1 truncate" :title="option.label">{{ option.label }}</span>
+                  <button
+                    type="button"
+                    class="font-delete-button"
+                    title="删除自定义字体"
+                    aria-label="删除自定义字体"
+                    @click.stop="removeCustomLyricsFont(option.value)"
+                  >
+                    <Trash2 :size="14" :stroke-width="2.1" />
+                  </button>
+                </div>
+              </div>
+              <div
+                v-else
+                class="px-3 py-3 text-xs font-medium text-white/38"
+              >
+                暂无自定义字体
+              </div>
+            </div>
           </div>
         </div>
       </transition>
@@ -846,6 +953,119 @@ onUnmounted(() => {
 .font-preset-menu-leave-to {
   opacity: 0;
   transform: translateY(-6px) scale(0.98);
+}
+
+.font-preset-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 50px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 650;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.03);
+  transition: opacity 160ms ease, color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.font-preset-trigger--muted {
+  color: rgba(255, 255, 255, 0.48);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.font-preset-trigger:hover,
+.font-preset-trigger--open {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.font-preset-trigger--active {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+
+.font-preset-trigger--open {
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.16);
+}
+
+.font-custom-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 6px 6px;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.font-import-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  padding: 4px 8px;
+  color: rgba(255, 255, 255, 0.62);
+  transition: color 140ms ease, background-color 140ms ease;
+}
+
+.font-import-button:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.font-option-row {
+  display: flex;
+  width: 100%;
+  min-height: 42px;
+  align-items: center;
+  gap: 10px;
+  border-radius: 14px;
+  padding: 10px 12px;
+  text-align: left;
+  color: rgba(255, 255, 255, 0.72);
+  transition: color 140ms ease, background-color 140ms ease;
+}
+
+.font-option-row:hover,
+.font-option-row:focus-visible {
+  background: rgba(255, 255, 255, 0.075);
+  color: rgba(255, 255, 255, 0.96);
+  outline: none;
+}
+
+.font-option-row--active {
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.98);
+}
+
+.font-delete-button {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: rgba(255, 255, 255, 0.52);
+  transition: color 140ms ease, background-color 140ms ease;
+}
+
+.font-delete-button:hover,
+.font-delete-button:focus-visible {
+  background: rgba(236, 65, 65, 0.2);
+  color: rgba(255, 255, 255, 0.96);
+  outline: none;
 }
 
 .font-size-slider::-webkit-slider-thumb {
