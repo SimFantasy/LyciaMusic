@@ -149,7 +149,7 @@ async function resolveTrayMenuPosition(payload: TrayMenuOpenPayload): Promise<{
   const clickX = payload.x / scaleFactor;
   const clickY = payload.y / scaleFactor;
 
-  const margin = 10;
+  const margin = 0;
   const maxX = workAreaPosition.x + workAreaSize.width - TRAY_MENU_WINDOW_WIDTH - margin;
   const minX = workAreaPosition.x + margin;
   const maxY = workAreaPosition.y + workAreaSize.height - TRAY_MENU_WINDOW_HEIGHT - margin;
