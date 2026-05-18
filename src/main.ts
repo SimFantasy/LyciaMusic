@@ -1,12 +1,23 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import './style.css'
 import '@applemusic-like-lyrics/core/style.css'
 import App from './App.vue'
 import router from './router'
-import { applyPersistedStartupTheme } from './composables/startupTheme'
+import { applyPersistedStartupTheme, shouldApplyStartupThemePaint } from './composables/startupTheme'
 
-applyPersistedStartupTheme()
+const currentWindowLabel = (() => {
+  try {
+    return getCurrentWindow().label
+  } catch {
+    return 'main'
+  }
+})()
+
+if (shouldApplyStartupThemePaint(currentWindowLabel)) {
+  applyPersistedStartupTheme()
+}
 
 const escapeHtml = (value: unknown) =>
   String(value ?? '')

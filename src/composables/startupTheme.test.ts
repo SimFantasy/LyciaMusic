@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { applyPersistedStartupTheme } from './startupTheme';
+import { applyPersistedStartupTheme, shouldApplyStartupThemePaint } from './startupTheme';
 
 const SETTINGS_KEY = 'player_settings';
 
@@ -89,5 +89,12 @@ describe('startup theme bootstrap', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(false);
     expect(document.documentElement.style.backgroundColor).toBe('#fafafa');
     expect(document.body.style.backgroundColor).toBe('#fafafa');
+  });
+
+  it('does not apply startup paint to transparent auxiliary windows', () => {
+    expect(shouldApplyStartupThemePaint('main')).toBe(true);
+    expect(shouldApplyStartupThemePaint('desktop-lyrics')).toBe(false);
+    expect(shouldApplyStartupThemePaint('mini-player')).toBe(false);
+    expect(shouldApplyStartupThemePaint('tray-menu')).toBe(false);
   });
 });
