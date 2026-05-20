@@ -642,6 +642,7 @@ function createPlayerCore() {
     clearQueue: playbackActions.clearQueue,
     addSongToQueue: playbackActions.addSongToQueue,
     addSongsToQueue: playbackActions.addSongsToQueue,
+    addAlbumToQueueTail: playbackActions.addAlbumToQueueTail,
     removeSongFromQueue: playbackActions.removeSongFromQueue,
     playNext: playbackActions.playNext,
     handleScan: playbackActions.handleScan,
