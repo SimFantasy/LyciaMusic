@@ -41,4 +41,15 @@ describe('LyricsView custom font import', () => {
     expect(source).toContain('lyricsLayoutVersion');
     expect(source).toContain(':layout-version="lyricsLayoutVersion"');
   });
+
+  it('passes playback state into AMLL so word highlighting pauses with audio', () => {
+    expect(source).toContain('isPlaying } = usePlayer();');
+    expect(source).toContain(':playing="isPlaying"');
+  });
+
+  it('starts playback from the clicked lyric line instead of only seeking while paused', () => {
+    expect(source).toContain('const { playAt, currentTime, isPlaying } = usePlayer();');
+    expect(source).toContain('await playAt(targetSeconds);');
+    expect(source).not.toContain('await seekTo(targetSeconds);');
+  });
 });

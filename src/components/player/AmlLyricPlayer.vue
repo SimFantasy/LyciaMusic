@@ -89,12 +89,7 @@ function applyPlayerProps() {
   player.setHidePassedLines(props.hidePassedLines);
   player.setWordFadeWidth(props.wordFadeWidth);
   player.setLineGap(props.lineGap);
-
-  if (props.playing) {
-    player.resume();
-  } else {
-    player.pause();
-  }
+  player.setPlaybackPaused(!props.playing);
 }
 
 function attachPlayer(nextPlayer: PatchedLyricPlayer) {
@@ -200,11 +195,7 @@ watch(() => props.disabled, (disabled) => {
 watch(() => props.playing, (playing) => {
   if (!player) return;
 
-  if (playing) {
-    player.resume();
-  } else {
-    player.pause();
-  }
+  player.setPlaybackPaused(!playing);
 });
 
 watch(() => props.alignAnchor, (value) => {

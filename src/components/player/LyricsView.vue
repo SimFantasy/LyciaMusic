@@ -43,7 +43,7 @@ const {
   lyricsStatus,
   showLyricsPlayerSettingsPanel,
 } = useLyrics();
-const { seekTo, currentTime } = usePlayer();
+const { playAt, currentTime, isPlaying } = usePlayer();
 const settingsStore = useSettingsStore();
 const { audioDelay } = storeToRefs(settingsStore);
 
@@ -373,7 +373,7 @@ async function handleLineClick(event: LyricLineMouseEvent) {
   amlPlayerRef.value?.syncSeekLayout(lineStartTimeMs, event.lineIndex);
 
   const targetSeconds = getPlaybackSeekSecondsForAmlLine(lineStartTimeMs, audioDelay.value);
-  await seekTo(targetSeconds);
+  await playAt(targetSeconds);
 }
 
 watch(showLyricsPlayerSettingsPanel, (visible) => {
@@ -733,6 +733,7 @@ onUnmounted(() => {
           class="amll-host h-full min-h-0 w-full min-w-0"
           :lyric-lines="amllLines"
           :current-time="amllCurrentTime"
+          :playing="isPlaying"
           :layout-version="lyricsLayoutVersion"
           align-anchor="center"
           :align-position="0.42"

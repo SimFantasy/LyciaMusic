@@ -28,6 +28,7 @@ type LyricLineWithTimedRomaji = LyricLine & {
 export class PatchedLyricPlayer extends DomLyricPlayer {
   private lineGap = 1;
   private restoreScrollFrameId = 0;
+  private playbackPaused = false;
 
   private hasFiniteTime(value: number | undefined): value is number {
     return Number.isFinite(value);
@@ -468,6 +469,33 @@ export class PatchedLyricPlayer extends DomLyricPlayer {
     this.lineGap = this.clamp(0.6, value, 2);
   }
 
+  setPlaybackPaused(paused: boolean) {
+    const nextPaused = Boolean(paused);
+
+    // Keep AMLL's "playing" layout class even while audio is paused. Calling the
+    // built-in pause() switches to AMLL's global paused layout and reveals other lines.
+    this.getElement().classList.add('playing');
+
+    if (this.playbackPaused === nextPaused) {
+      return;
+    }
+
+    this.playbackPaused = nextPaused;
+
+    if (nextPaused) {
+      this.interludeDots.pause();
+      for (const lineObj of this.currentLyricLineObjects) {
+        void lineObj.pause();
+      }
+      return;
+    }
+
+    this.interludeDots.resume();
+    for (const lineObj of this.currentLyricLineObjects) {
+      void lineObj.resume();
+    }
+  }
+
   suspendScrollForSeek() {
     this.allowScroll = false;
 
@@ -630,11 +658,19 @@ export class PatchedLyricPlayer extends DomLyricPlayer {
     this.syncTimedRomajiWordsToDom();
     this.syncLineTransformsToDom();
     this.syncAuxiliaryTransformsToDom();
+    if (this.playbackPaused) {
+      this.playbackPaused = false;
+      this.setPlaybackPaused(true);
+    }
   }
 
   override setCurrentTime(...args: Parameters<DomLyricPlayer['setCurrentTime']>): void {
     super.setCurrentTime(...args);
     this.syncTimedRomajiWordsToDom();
+    if (this.playbackPaused) {
+      this.playbackPaused = false;
+      this.setPlaybackPaused(true);
+    }
   }
 
   override update(delta = 0): void {
