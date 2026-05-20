@@ -6,6 +6,7 @@ import { loadSystemLyricsFonts } from './lyrics';
 import {
   DESKTOP_LYRICS_BOUNDS_EVENT,
   DESKTOP_LYRICS_PLAYBACK_EVENT,
+  DESKTOP_LYRICS_READY_EVENT,
   DESKTOP_LYRICS_REVEAL_SURFACE_EVENT,
   DESKTOP_LYRICS_REQUEST_STATE_EVENT,
   DESKTOP_LYRICS_STATE_EVENT,
@@ -344,7 +345,12 @@ export function useDesktopLyricsWindowController(options: {
       });
     });
 
-    await emitTo('main', DESKTOP_LYRICS_REQUEST_STATE_EVENT);
+    try {
+      await emitTo('main', DESKTOP_LYRICS_READY_EVENT);
+      await emitTo('main', DESKTOP_LYRICS_REQUEST_STATE_EVENT);
+    } catch (error) {
+      console.warn('Failed to notify main window that desktop lyrics is ready:', error);
+    }
   });
 
   onUnmounted(() => {

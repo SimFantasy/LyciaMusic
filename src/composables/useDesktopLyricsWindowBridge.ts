@@ -20,6 +20,7 @@ import {
   DESKTOP_LYRICS_BOUNDS_EVENT,
   DESKTOP_LYRICS_BOUNDS_KEY,
   DESKTOP_LYRICS_PLAYBACK_EVENT,
+  DESKTOP_LYRICS_READY_EVENT,
   DESKTOP_LYRICS_RESET_BOUNDS_EVENT,
   DESKTOP_LYRICS_REVEAL_SURFACE_EVENT,
   DESKTOP_LYRICS_REQUEST_STATE_EVENT,
@@ -40,6 +41,60 @@ import {
 
 let desktopLyricsWindowPromise: Promise<WebviewWindow> | null = null;
 const DESKTOP_LYRICS_PLAYBACK_SYNC_INTERVAL_MS = 400;
+const DESKTOP_LYRICS_READY_TIMEOUT_MS = 1200;
+
+function logDesktopLyricsBridgeError(action: string, error: unknown) {
+  console.warn(`Failed to ${action} desktop lyrics window:`, error);
+}
+
+export function createDesktopLyricsReadyGate(timeoutMs = DESKTOP_LYRICS_READY_TIMEOUT_MS) {
+  let isReady = false;
+  let readyPromise: Promise<void> | null = null;
+  let resolveReady: (() => void) | null = null;
+  let readyTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  const resolve = () => {
+    resolveReady?.();
+    resolveReady = null;
+    readyPromise = null;
+    if (readyTimeout) {
+      clearTimeout(readyTimeout);
+      readyTimeout = null;
+    }
+  };
+
+  return {
+    markReady() {
+      isReady = true;
+      resolve();
+    },
+    reset() {
+      isReady = false;
+      resolveReady = null;
+      readyPromise = null;
+      if (readyTimeout) {
+        clearTimeout(readyTimeout);
+        readyTimeout = null;
+      }
+    },
+    wait() {
+      if (isReady) {
+        return Promise.resolve();
+      }
+
+      if (!readyPromise) {
+        readyPromise = new Promise<void>((resolvePromise) => {
+          resolveReady = resolvePromise;
+          readyTimeout = setTimeout(resolve, timeoutMs);
+        });
+      }
+
+      return readyPromise;
+    },
+  };
+}
+
+const desktopLyricsReadyGate = createDesktopLyricsReadyGate();
 
 function readDesktopLyricsBounds(): DesktopLyricsWindowBounds | null {
   if (typeof localStorage === 'undefined') return null;
@@ -151,6 +206,7 @@ async function ensureDesktopLyricsWindow(alwaysOnTop: boolean) {
   if (existing) return existing;
 
   if (!desktopLyricsWindowPromise) {
+    desktopLyricsReadyGate.reset();
     const bounds = await resolveDesktopLyricsBounds();
     const windowInstance = new WebviewWindow(DESKTOP_LYRICS_WINDOW_LABEL, createDesktopLyricsWindowOptions({
       alwaysOnTop,
@@ -300,6 +356,7 @@ export function useDesktopLyricsWindowBridge() {
 
   const openDesktopLyricsWindow = async () => {
     const targetWindow = await ensureDesktopLyricsWindow(desktopLyricsSettings.isAlwaysOnTop);
+    await desktopLyricsReadyGate.wait();
     await syncWindowFlags();
     await emitStateToDesktopLyrics();
     await emitPlaybackToDesktopLyrics();
@@ -319,7 +376,9 @@ export function useDesktopLyricsWindowBridge() {
     stopSyncLoop();
     syncIntervalId = setInterval(() => {
       if (!showDesktopLyrics.value) return;
-      void emitPlaybackToDesktopLyrics();
+      void emitPlaybackToDesktopLyrics().catch((error) => {
+        logDesktopLyricsBridgeError('sync playback to', error);
+      });
     }, DESKTOP_LYRICS_PLAYBACK_SYNC_INTERVAL_MS);
   };
 
@@ -376,6 +435,7 @@ export function useDesktopLyricsWindowBridge() {
       console.warn('Failed to destroy desktop lyrics window during shutdown:', error);
     } finally {
       desktopLyricsWindowPromise = null;
+      desktopLyricsReadyGate.reset();
     }
   };
 
@@ -395,12 +455,22 @@ export function useDesktopLyricsWindowBridge() {
     }));
 
     unlisteners.push(await listen(DESKTOP_LYRICS_REQUEST_STATE_EVENT, () => {
-      void emitStateToDesktopLyrics();
-      void emitPlaybackToDesktopLyrics();
+      void emitStateToDesktopLyrics().catch((error) => {
+        logDesktopLyricsBridgeError('sync state to', error);
+      });
+      void emitPlaybackToDesktopLyrics().catch((error) => {
+        logDesktopLyricsBridgeError('sync playback to', error);
+      });
+    }));
+
+    unlisteners.push(await listen(DESKTOP_LYRICS_READY_EVENT, () => {
+      desktopLyricsReadyGate.markReady();
     }));
 
     unlisteners.push(await listen<DesktopLyricsAction>(DESKTOP_LYRICS_ACTION_EVENT, (event) => {
-      void handleAction(event.payload);
+      void handleAction(event.payload).catch((error) => {
+        logDesktopLyricsBridgeError('handle action from', error);
+      });
     }));
 
     unlisteners.push(await listen<{ visible: boolean }>(DESKTOP_LYRICS_VISIBILITY_EVENT, (event) => {
@@ -421,7 +491,10 @@ export function useDesktopLyricsWindowBridge() {
 
       stopSyncLoop();
       await destroyDesktopLyricsWindow();
-      await openDesktopLyricsWindow();
+      await openDesktopLyricsWindow().catch((error) => {
+        logDesktopLyricsBridgeError('reopen', error);
+        showDesktopLyrics.value = false;
+      });
     }));
   });
 
@@ -438,7 +511,15 @@ export function useDesktopLyricsWindowBridge() {
     );
 
     if (visible) {
-      await openDesktopLyricsWindow();
+      try {
+        await openDesktopLyricsWindow();
+      } catch (error) {
+        logDesktopLyricsBridgeError('open', error);
+        stopSyncLoop();
+        desktopLyricsWindowPromise = null;
+        desktopLyricsReadyGate.reset();
+        showDesktopLyrics.value = false;
+      }
       return;
     }
 
@@ -497,9 +578,15 @@ export function useDesktopLyricsWindowBridge() {
     ],
     () => {
       if (!showDesktopLyrics.value) return;
-      void emitStateToDesktopLyrics();
-      void emitPlaybackToDesktopLyrics();
-      void syncWindowFlags();
+      void emitStateToDesktopLyrics().catch((error) => {
+        logDesktopLyricsBridgeError('sync state to', error);
+      });
+      void emitPlaybackToDesktopLyrics().catch((error) => {
+        logDesktopLyricsBridgeError('sync playback to', error);
+      });
+      void syncWindowFlags().catch((error) => {
+        logDesktopLyricsBridgeError('sync flags for', error);
+      });
     },
     { deep: true },
   );
