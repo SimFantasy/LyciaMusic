@@ -53,6 +53,7 @@ const { audioDelay } = storeToRefs(settingsStore);
 const FONT_SCALE_STEP = 0.05;
 const LINE_GAP_STEP = 0.05;
 const OFFSET_STEP = 1;
+const DRAFT_LYRICS_SETTINGS_COMMIT_DELAY_MS = 180;
 const FONT_FILE_FILTERS = [{ name: 'Font', extensions: ['ttf', 'otf'] }];
 type FontPresetMenuMode = 'system' | 'custom';
 const PLAYER_ALIGNMENT_OPTIONS: Array<{ value: LyricsPlayerAlignment; label: string }> = [
@@ -69,6 +70,11 @@ const amlPlayerRef = ref<InstanceType<typeof AmlLyricPlayer> | null>(null);
 const isFontPresetMenuOpen = ref(false);
 const fontPresetMenuMode = ref<FontPresetMenuMode | null>(null);
 const fontPresetMenuStyle = ref<Record<string, string>>({});
+const previewPlayerFontScale = ref(lyricsSettings.playerFontScale);
+const previewPlayerLineGap = ref(lyricsSettings.playerLineGap);
+const previewPlayerOffsetX = ref(lyricsSettings.playerOffsetX);
+const previewPlayerOffsetY = ref(lyricsSettings.playerOffsetY);
+let lyricsSettingsCommitTimer: ReturnType<typeof setTimeout> | null = null;
 
 const amllLines = computed<AmlLyricLine[]>(() => {
   return convertLyricsToAmlLines(
@@ -88,10 +94,10 @@ const emptyStateText = computed(() => {
   return 'No synchronized lyrics';
 });
 
-const fontScalePercent = computed(() => `${Math.round(lyricsSettings.playerFontScale * 100)}%`);
-const lineGapPercent = computed(() => `${Math.round(lyricsSettings.playerLineGap * 100)}%`);
-const horizontalOffsetPercent = computed(() => formatOffsetValue(lyricsSettings.playerOffsetX));
-const verticalOffsetPercent = computed(() => formatOffsetValue(lyricsSettings.playerOffsetY));
+const fontScalePercent = computed(() => `${Math.round(previewPlayerFontScale.value * 100)}%`);
+const lineGapPercent = computed(() => `${Math.round(previewPlayerLineGap.value * 100)}%`);
+const horizontalOffsetPercent = computed(() => formatOffsetValue(previewPlayerOffsetX.value));
+const verticalOffsetPercent = computed(() => formatOffsetValue(previewPlayerOffsetY.value));
 const customFontOptions = computed(() => buildImportedLyricsFontOptions(settingsStore.settings.customLyricsFonts));
 const systemFontOptions = computed(() => [
   ...LYRICS_FONT_OPTIONS,
@@ -112,31 +118,31 @@ const selectedCustomFontLabel = computed(() => {
 });
 
 const fontScaleProgress = computed(() => {
-  return ((lyricsSettings.playerFontScale - MIN_PLAYER_FONT_SCALE) / (MAX_PLAYER_FONT_SCALE - MIN_PLAYER_FONT_SCALE)) * 100;
+  return ((previewPlayerFontScale.value - MIN_PLAYER_FONT_SCALE) / (MAX_PLAYER_FONT_SCALE - MIN_PLAYER_FONT_SCALE)) * 100;
 });
 
 const lineGapProgress = computed(() => {
-  return ((lyricsSettings.playerLineGap - MIN_PLAYER_LINE_GAP) / (MAX_PLAYER_LINE_GAP - MIN_PLAYER_LINE_GAP)) * 100;
+  return ((previewPlayerLineGap.value - MIN_PLAYER_LINE_GAP) / (MAX_PLAYER_LINE_GAP - MIN_PLAYER_LINE_GAP)) * 100;
 });
 
 const horizontalOffsetProgress = computed(() => {
-  return ((lyricsSettings.playerOffsetX - MIN_PLAYER_OFFSET_X) / (MAX_PLAYER_OFFSET_X - MIN_PLAYER_OFFSET_X)) * 100;
+  return ((previewPlayerOffsetX.value - MIN_PLAYER_OFFSET_X) / (MAX_PLAYER_OFFSET_X - MIN_PLAYER_OFFSET_X)) * 100;
 });
 
 const verticalOffsetProgress = computed(() => {
-  return ((lyricsSettings.playerOffsetY - MIN_PLAYER_OFFSET_Y) / (MAX_PLAYER_OFFSET_Y - MIN_PLAYER_OFFSET_Y)) * 100;
+  return ((previewPlayerOffsetY.value - MIN_PLAYER_OFFSET_Y) / (MAX_PLAYER_OFFSET_Y - MIN_PLAYER_OFFSET_Y)) * 100;
 });
 
 const lyricsAlignmentClass = computed(() => `lyrics-align-${lyricsSettings.playerAlignment}`);
 
 const lyricsPlayerStyle = computed(() => ({
-  '--lyrics-font-scale': lyricsSettings.playerFontScale.toString(),
+  '--lyrics-font-scale': previewPlayerFontScale.value.toString(),
   '--lyrics-font-family': getLyricsFontFamily(lyricsSettings.playerFontPreset),
-  '--lyrics-offset-x': `${lyricsSettings.playerOffsetX}%`,
-  '--lyrics-offset-y': `${lyricsSettings.playerOffsetY}%`,
+  '--lyrics-offset-x': `${previewPlayerOffsetX.value}%`,
+  '--lyrics-offset-y': `${previewPlayerOffsetY.value}%`,
 }));
-const shouldReduceLyricsRendering = computed(() => isMainWindowLowPower.value || !showPlayerDetail.value);
 const lyricsLayoutVersion = computed(() => `${lyricsSettings.playerFontPreset}:${importedLyricsFontsRevision.value}`);
+const shouldReduceLyricsRendering = computed(() => isMainWindowLowPower.value || !showPlayerDetail.value);
 
 function clampFontScale(value: number) {
   return Math.min(MAX_PLAYER_FONT_SCALE, Math.max(MIN_PLAYER_FONT_SCALE, value));
@@ -158,20 +164,82 @@ function formatOffsetValue(value: number) {
   return `${value > 0 ? '+' : ''}${Math.round(value)}%`;
 }
 
-function setPlayerFontScale(value: number) {
-  lyricsSettings.playerFontScale = Number(clampFontScale(value).toFixed(2));
+function clearLyricsSettingsCommitTimer() {
+  if (lyricsSettingsCommitTimer) {
+    clearTimeout(lyricsSettingsCommitTimer);
+    lyricsSettingsCommitTimer = null;
+  }
 }
 
-function setPlayerLineGap(value: number) {
-  lyricsSettings.playerLineGap = Number(clampLineGap(value).toFixed(2));
+function commitDraftLyricsSettings() {
+  clearLyricsSettingsCommitTimer();
+
+  const patch: {
+    playerFontScale?: number;
+    playerLineGap?: number;
+    playerOffsetX?: number;
+    playerOffsetY?: number;
+  } = {};
+
+  if (lyricsSettings.playerFontScale !== previewPlayerFontScale.value) {
+    patch.playerFontScale = previewPlayerFontScale.value;
+  }
+  if (lyricsSettings.playerLineGap !== previewPlayerLineGap.value) {
+    patch.playerLineGap = previewPlayerLineGap.value;
+  }
+  if (lyricsSettings.playerOffsetX !== previewPlayerOffsetX.value) {
+    patch.playerOffsetX = previewPlayerOffsetX.value;
+  }
+  if (lyricsSettings.playerOffsetY !== previewPlayerOffsetY.value) {
+    patch.playerOffsetY = previewPlayerOffsetY.value;
+  }
+
+  if (Object.keys(patch).length > 0) {
+    settingsStore.patchSettings({ lyrics: patch });
+  }
 }
 
-function setPlayerOffsetX(value: number) {
-  lyricsSettings.playerOffsetX = Number(clampOffsetX(value).toFixed(0));
+function scheduleLyricsSettingsCommit() {
+  clearLyricsSettingsCommitTimer();
+  lyricsSettingsCommitTimer = setTimeout(() => {
+    commitDraftLyricsSettings();
+  }, DRAFT_LYRICS_SETTINGS_COMMIT_DELAY_MS);
 }
 
-function setPlayerOffsetY(value: number) {
-  lyricsSettings.playerOffsetY = Number(clampOffsetY(value).toFixed(0));
+function setPlayerFontScale(value: number, commitImmediately = true) {
+  previewPlayerFontScale.value = Number(clampFontScale(value).toFixed(2));
+  if (commitImmediately) {
+    commitDraftLyricsSettings();
+  } else {
+    scheduleLyricsSettingsCommit();
+  }
+}
+
+function setPlayerLineGap(value: number, commitImmediately = true) {
+  previewPlayerLineGap.value = Number(clampLineGap(value).toFixed(2));
+  if (commitImmediately) {
+    commitDraftLyricsSettings();
+  } else {
+    scheduleLyricsSettingsCommit();
+  }
+}
+
+function setPlayerOffsetX(value: number, commitImmediately = true) {
+  previewPlayerOffsetX.value = Number(clampOffsetX(value).toFixed(0));
+  if (commitImmediately) {
+    commitDraftLyricsSettings();
+  } else {
+    scheduleLyricsSettingsCommit();
+  }
+}
+
+function setPlayerOffsetY(value: number, commitImmediately = true) {
+  previewPlayerOffsetY.value = Number(clampOffsetY(value).toFixed(0));
+  if (commitImmediately) {
+    commitDraftLyricsSettings();
+  } else {
+    scheduleLyricsSettingsCommit();
+  }
 }
 
 function setPlayerAlignment(value: LyricsPlayerAlignment) {
@@ -183,7 +251,7 @@ function setPlayerFontPreset(value: LyricsFontPreset) {
 }
 
 function adjustPlayerFontScale(delta: number) {
-  setPlayerFontScale(lyricsSettings.playerFontScale + delta);
+  setPlayerFontScale(previewPlayerFontScale.value + delta);
 }
 
 function resetPlayerFontScale() {
@@ -222,28 +290,28 @@ function handleFontScaleInput(event: Event) {
   const target = event.target as HTMLInputElement | null;
   if (!target) return;
 
-  setPlayerFontScale(Number(target.value));
+  setPlayerFontScale(Number(target.value), false);
 }
 
 function handleLineGapInput(event: Event) {
   const target = event.target as HTMLInputElement | null;
   if (!target) return;
 
-  setPlayerLineGap(Number(target.value));
+  setPlayerLineGap(Number(target.value), false);
 }
 
 function handleOffsetXInput(event: Event) {
   const target = event.target as HTMLInputElement | null;
   if (!target) return;
 
-  setPlayerOffsetX(Number(target.value));
+  setPlayerOffsetX(Number(target.value), false);
 }
 
 function handleOffsetYInput(event: Event) {
   const target = event.target as HTMLInputElement | null;
   if (!target) return;
 
-  setPlayerOffsetY(Number(target.value));
+  setPlayerOffsetY(Number(target.value), false);
 }
 
 function selectFontPreset(value: LyricsFontPreset) {
@@ -384,6 +452,31 @@ watch(showLyricsPlayerSettingsPanel, (visible) => {
   if (!visible) {
     isFontPresetMenuOpen.value = false;
     fontPresetMenuMode.value = null;
+    commitDraftLyricsSettings();
+  }
+});
+
+watch(() => lyricsSettings.playerFontScale, (value) => {
+  if (value !== previewPlayerFontScale.value) {
+    previewPlayerFontScale.value = value;
+  }
+});
+
+watch(() => lyricsSettings.playerLineGap, (value) => {
+  if (value !== previewPlayerLineGap.value) {
+    previewPlayerLineGap.value = value;
+  }
+});
+
+watch(() => lyricsSettings.playerOffsetX, (value) => {
+  if (value !== previewPlayerOffsetX.value) {
+    previewPlayerOffsetX.value = value;
+  }
+});
+
+watch(() => lyricsSettings.playerOffsetY, (value) => {
+  if (value !== previewPlayerOffsetY.value) {
+    previewPlayerOffsetY.value = value;
   }
 });
 
@@ -394,6 +487,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  commitDraftLyricsSettings();
   window.removeEventListener('mousedown', handleClickOutside);
   window.removeEventListener('resize', updateFontPresetMenuPosition);
   showLyricsPlayerSettingsPanel.value = false;
@@ -424,7 +518,7 @@ onUnmounted(() => {
               <div class="flex items-center gap-2">
                 <span class="text-[13px] font-medium text-white/85">字体大小</span>
                 <button
-                  v-if="lyricsSettings.playerFontScale !== DEFAULT_PLAYER_FONT_SCALE"
+                  v-if="previewPlayerFontScale !== DEFAULT_PLAYER_FONT_SCALE"
                   type="button"
                   class="flex h-5 w-5 items-center justify-center rounded-full text-white/40 transition hover:bg-white/10 hover:text-white"
                   @click="resetPlayerFontScale"
@@ -441,7 +535,7 @@ onUnmounted(() => {
             <button
               type="button"
               class="flex h-8 w-8 items-center justify-center rounded-full text-xs font-light text-white/60 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
-              :disabled="lyricsSettings.playerFontScale <= MIN_PLAYER_FONT_SCALE"
+              :disabled="previewPlayerFontScale <= MIN_PLAYER_FONT_SCALE"
               @click="adjustPlayerFontScale(-FONT_SCALE_STEP)"
             >
               A-
@@ -454,14 +548,15 @@ onUnmounted(() => {
               :min="MIN_PLAYER_FONT_SCALE"
               :max="MAX_PLAYER_FONT_SCALE"
               :step="FONT_SCALE_STEP"
-              :value="lyricsSettings.playerFontScale"
+              :value="previewPlayerFontScale"
               @input="handleFontScaleInput"
+              @change="commitDraftLyricsSettings"
             />
 
             <button
               type="button"
               class="flex h-8 w-8 items-center justify-center rounded-full text-xs font-light text-white/60 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
-              :disabled="lyricsSettings.playerFontScale >= MAX_PLAYER_FONT_SCALE"
+              :disabled="previewPlayerFontScale >= MAX_PLAYER_FONT_SCALE"
               @click="adjustPlayerFontScale(FONT_SCALE_STEP)"
             >
               A+
@@ -474,7 +569,7 @@ onUnmounted(() => {
               <div class="flex items-center gap-2">
                 <span class="text-[13px] font-medium text-white/85">歌词间距</span>
                 <button
-                  v-if="lyricsSettings.playerLineGap !== DEFAULT_PLAYER_LINE_GAP"
+                  v-if="previewPlayerLineGap !== DEFAULT_PLAYER_LINE_GAP"
                   type="button"
                   class="flex h-5 w-5 items-center justify-center rounded-full text-white/40 transition hover:bg-white/10 hover:text-white"
                   @click="resetPlayerLineGap"
@@ -491,8 +586,8 @@ onUnmounted(() => {
             <button
               type="button"
               class="flex h-8 w-8 items-center justify-center rounded-full text-base font-light text-white/60 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
-              :disabled="lyricsSettings.playerLineGap <= MIN_PLAYER_LINE_GAP"
-              @click="setPlayerLineGap(lyricsSettings.playerLineGap - LINE_GAP_STEP)"
+              :disabled="previewPlayerLineGap <= MIN_PLAYER_LINE_GAP"
+              @click="setPlayerLineGap(previewPlayerLineGap - LINE_GAP_STEP)"
             >
               -
             </button>
@@ -504,15 +599,16 @@ onUnmounted(() => {
               :min="MIN_PLAYER_LINE_GAP"
               :max="MAX_PLAYER_LINE_GAP"
               :step="LINE_GAP_STEP"
-              :value="lyricsSettings.playerLineGap"
+              :value="previewPlayerLineGap"
               @input="handleLineGapInput"
+              @change="commitDraftLyricsSettings"
             />
 
             <button
               type="button"
               class="flex h-8 w-8 items-center justify-center rounded-full text-base font-light text-white/60 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
-              :disabled="lyricsSettings.playerLineGap >= MAX_PLAYER_LINE_GAP"
-              @click="setPlayerLineGap(lyricsSettings.playerLineGap + LINE_GAP_STEP)"
+              :disabled="previewPlayerLineGap >= MAX_PLAYER_LINE_GAP"
+              @click="setPlayerLineGap(previewPlayerLineGap + LINE_GAP_STEP)"
             >
               +
             </button>
@@ -589,7 +685,7 @@ onUnmounted(() => {
               <span class="text-[13px] font-medium text-white/85">歌词偏移</span>
               <div class="flex items-center gap-1">
                 <button
-                  v-if="lyricsSettings.playerOffsetX !== DEFAULT_PLAYER_OFFSET_X"
+                  v-if="previewPlayerOffsetX !== DEFAULT_PLAYER_OFFSET_X"
                   type="button"
                   class="flex h-5 w-5 items-center justify-center rounded-full text-white/40 transition hover:bg-white/10 hover:text-white"
                   @click="resetPlayerOffsetX"
@@ -598,7 +694,7 @@ onUnmounted(() => {
                   <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                 </button>
                 <button
-                  v-if="lyricsSettings.playerOffsetY !== DEFAULT_PLAYER_OFFSET_Y"
+                  v-if="previewPlayerOffsetY !== DEFAULT_PLAYER_OFFSET_Y"
                   type="button"
                   class="flex h-5 w-5 items-center justify-center rounded-full text-white/40 transition hover:bg-white/10 hover:text-white"
                   @click="resetPlayerOffsetY"
@@ -623,8 +719,9 @@ onUnmounted(() => {
                 :min="MIN_PLAYER_OFFSET_X"
                 :max="MAX_PLAYER_OFFSET_X"
                 :step="OFFSET_STEP"
-                :value="lyricsSettings.playerOffsetX"
+                :value="previewPlayerOffsetX"
                 @input="handleOffsetXInput"
+                @change="commitDraftLyricsSettings"
               />
             </div>
 
@@ -640,8 +737,9 @@ onUnmounted(() => {
                 :min="MIN_PLAYER_OFFSET_Y"
                 :max="MAX_PLAYER_OFFSET_Y"
                 :step="OFFSET_STEP"
-                :value="lyricsSettings.playerOffsetY"
+                :value="previewPlayerOffsetY"
                 @input="handleOffsetYInput"
+                @change="commitDraftLyricsSettings"
               />
             </div>
           </div>
@@ -737,8 +835,8 @@ onUnmounted(() => {
           class="amll-host h-full min-h-0 w-full min-w-0"
           :lyric-lines="amllLines"
           :current-time="amllCurrentTime"
-          :low-power="shouldReduceLyricsRendering"
           :playing="isPlaying"
+          :low-power="shouldReduceLyricsRendering"
           :layout-version="lyricsLayoutVersion"
           align-anchor="center"
           :align-position="0.42"
@@ -747,7 +845,7 @@ onUnmounted(() => {
           :enable-scale="true"
           :hide-passed-lines="false"
           :word-fade-width="0.5"
-          :line-gap="lyricsSettings.playerLineGap"
+          :line-gap="previewPlayerLineGap"
           @line-click="handleLineClick"
         />
       </div>

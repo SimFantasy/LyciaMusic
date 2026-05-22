@@ -53,6 +53,14 @@ describe('LyricsView custom font import', () => {
     expect(source).toContain(':low-power="shouldReduceLyricsRendering"');
   });
 
+  it('previews high-frequency slider changes locally before persisting lyrics settings', () => {
+    expect(source).toContain('previewPlayerFontScale');
+    expect(source).toContain('previewPlayerLineGap');
+    expect(source).toContain('scheduleLyricsSettingsCommit');
+    expect(source).toContain('@change="commitDraftLyricsSettings"');
+    expect(source).toContain(':line-gap="previewPlayerLineGap"');
+  });
+
   it('starts playback from the clicked lyric line instead of only seeking while paused', () => {
     expect(source).toContain('const { playAt, currentTime, isPlaying } = usePlayer();');
     expect(source).toContain('await playAt(targetSeconds);');
