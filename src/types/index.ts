@@ -354,4 +354,6 @@ export interface AppSettings {
   theme: ThemeSettings;
   sidebar: SidebarSettings;
   shortcuts: ShortcutSettings;
+  showTaskbarPlayer: boolean;
+  taskbarPlayerCanDrag: boolean;
 }

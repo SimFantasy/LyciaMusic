@@ -100,4 +100,6 @@ commands.allow = [
   "import_lyrics_font",
   "read_lyrics_font_data_url",
   "exit_app",
+  "setup_taskbar_window",
+  "get_taskbar_tray_geometry",
 ]

@@ -111,6 +111,8 @@ export const defaultAppSettings: AppSettings = {
   theme: defaultThemeSettings,
   sidebar: defaultSidebarSettings,
   shortcuts: createDefaultShortcutSettings(),
+  showTaskbarPlayer: false,
+  taskbarPlayerCanDrag: false,
 };
 
 export const createDefaultThemeSettings = (): ThemeSettings => ({
