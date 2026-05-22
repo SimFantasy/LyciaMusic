@@ -5,6 +5,7 @@ import type {
   LyricsColorScheme,
   LyricsFontPreset,
   LyricsPlayerAlignment,
+  LyricsPlayerRenderMode,
   LyricsSettings,
 } from '../../types';
 
@@ -15,6 +16,7 @@ export type {
   LyricsColorScheme,
   LyricsFontPreset,
   LyricsPlayerAlignment,
+  LyricsPlayerRenderMode,
   LyricsSettings,
 };
 

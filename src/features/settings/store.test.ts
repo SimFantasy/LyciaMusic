@@ -201,6 +201,36 @@ describe('settings store', () => {
     expect(settingsStore.settings.lyrics.playerOffsetX).toBe(30);
   });
 
+  it('uses AMLL as the default player lyrics render mode', () => {
+    const settingsStore = useSettingsStore();
+
+    expect(settingsStore.settings.lyrics.playerRenderMode).toBe('amll');
+  });
+
+  it('preserves a persisted light player lyrics render mode', () => {
+    const settingsStore = useSettingsStore();
+
+    const merged = mergeAppSettings(settingsStore.settings, {
+      lyrics: {
+        playerRenderMode: 'light',
+      },
+    });
+
+    expect(merged.lyrics.playerRenderMode).toBe('light');
+  });
+
+  it('normalizes invalid player lyrics render modes to AMLL', () => {
+    const settingsStore = useSettingsStore();
+
+    const merged = mergeAppSettings(settingsStore.settings, {
+      lyrics: {
+        playerRenderMode: 'canvas' as unknown as 'amll',
+      },
+    });
+
+    expect(merged.lyrics.playerRenderMode).toBe('amll');
+  });
+
   it('merges desktop lyrics settings while keeping the desktop defaults intact', () => {
     const settingsStore = useSettingsStore();
 

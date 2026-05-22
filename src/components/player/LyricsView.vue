@@ -28,8 +28,10 @@ import {
   loadSystemLyricsFonts,
   normalizeLyricsFontPreset,
   systemLyricsFontOptions,
+  type LyricLine,
   type LyricsFontPreset,
   type LyricsPlayerAlignment,
+  type LyricsPlayerRenderMode,
   useLyrics,
 } from '../../composables/lyrics';
 import { usePlayer } from '../../composables/player';
@@ -37,6 +39,7 @@ import { useRenderingPower } from '../../composables/renderingPower';
 import { useSettingsStore } from '../../features/settings/store';
 import AmlLyricPlayer from './AmlLyricPlayer.vue';
 import { getPlaybackSeekSecondsForAmlLine } from './amllSeekLayout';
+import LightLyricPlayer from './LightLyricPlayer.vue';
 
 const {
   parsedLyrics,
@@ -60,6 +63,10 @@ const PLAYER_ALIGNMENT_OPTIONS: Array<{ value: LyricsPlayerAlignment; label: str
   { value: 'left', label: '靠左' },
   { value: 'center', label: '居中' },
   { value: 'right', label: '靠右' },
+];
+const PLAYER_RENDER_MODE_OPTIONS: Array<{ value: LyricsPlayerRenderMode; label: string }> = [
+  { value: 'amll', label: 'AMLL' },
+  { value: 'light', label: '轻量' },
 ];
 
 const fontPanelRef = ref<HTMLElement | null>(null);
@@ -86,6 +93,9 @@ const amllLines = computed<AmlLyricLine[]>(() => {
 
 const amllCurrentTime = computed(() => {
   return Math.max(0, Math.floor((currentTime.value - audioDelay.value) * 1000));
+});
+const lightCurrentTime = computed(() => {
+  return Math.max(0, currentTime.value - audioDelay.value);
 });
 
 const emptyStateText = computed(() => {
@@ -248,6 +258,10 @@ function setPlayerAlignment(value: LyricsPlayerAlignment) {
 
 function setPlayerFontPreset(value: LyricsFontPreset) {
   lyricsSettings.playerFontPreset = value;
+}
+
+function setPlayerRenderMode(value: LyricsPlayerRenderMode) {
+  settingsStore.patchSettings({ lyrics: { playerRenderMode: value } });
 }
 
 function adjustPlayerFontScale(delta: number) {
@@ -448,6 +462,10 @@ async function handleLineClick(event: LyricLineMouseEvent) {
   await playAt(targetSeconds);
 }
 
+async function handleLightLineClick(line: LyricLine) {
+  await playAt(Math.max(0, line.time + audioDelay.value));
+}
+
 watch(showLyricsPlayerSettingsPanel, (visible) => {
   if (!visible) {
     isFontPresetMenuOpen.value = false;
@@ -513,6 +531,28 @@ onUnmounted(() => {
         >
           <div class="min-h-0 overflow-y-auto px-4 py-4 custom-scrollbar">
           <div class="mb-3">
+            <div class="text-[9px] font-semibold uppercase tracking-[0.3em] text-white/30">Render</div>
+            <div class="mt-1.5 flex items-center justify-between">
+              <span class="text-[13px] font-medium text-white/85">歌词效果</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              v-for="option in PLAYER_RENDER_MODE_OPTIONS"
+              :key="option.value"
+              type="button"
+              class="flex h-10 items-center justify-center rounded-2xl border px-3 text-sm font-medium transition"
+              :class="lyricsSettings.playerRenderMode === option.value
+                ? 'border-white/25 bg-white/14 text-white shadow-[0_10px_30px_rgba(0,0,0,0.18)]'
+                : 'border-white/10 bg-white/[0.03] text-white/60 hover:border-white/20 hover:bg-white/[0.06] hover:text-white'"
+              @click="setPlayerRenderMode(option.value)"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+
+          <div class="mt-6 mb-3">
             <div class="text-[9px] font-semibold uppercase tracking-[0.3em] text-white/30">Lyrics</div>
             <div class="mt-1.5 flex items-center justify-between">
               <div class="flex items-center gap-2">
@@ -831,6 +871,7 @@ onUnmounted(() => {
     >
       <div class="lyrics-position-frame h-full min-h-0 w-full min-w-0">
         <AmlLyricPlayer
+          v-if="lyricsSettings.playerRenderMode === 'amll'"
           ref="amlPlayerRef"
           class="amll-host h-full min-h-0 w-full min-w-0"
           :lyric-lines="amllLines"
@@ -847,6 +888,17 @@ onUnmounted(() => {
           :word-fade-width="0.5"
           :line-gap="previewPlayerLineGap"
           @line-click="handleLineClick"
+        />
+        <LightLyricPlayer
+          v-else-if="lyricsSettings.playerRenderMode === 'light'"
+          class="light-lyrics-host h-full min-h-0 w-full min-w-0"
+          :lyric-lines="parsedLyrics"
+          :current-time="lightCurrentTime"
+          :playing="isPlaying && !shouldReduceLyricsRendering"
+          :show-translation="lyricsSettings.showTranslation"
+          :show-romaji="lyricsSettings.showRomaji"
+          :line-gap="previewPlayerLineGap"
+          @line-click="handleLightLineClick"
         />
       </div>
     </div>
@@ -1019,16 +1071,19 @@ onUnmounted(() => {
 .lyrics-align-left {
   --lyrics-text-align: left;
   --lyrics-line-transform-origin: 0%;
+  --light-align-items: flex-start;
 }
 
 .lyrics-align-center {
   --lyrics-text-align: center;
   --lyrics-line-transform-origin: 50%;
+  --light-align-items: center;
 }
 
 .lyrics-align-right {
   --lyrics-text-align: right;
   --lyrics-line-transform-origin: 100%;
+  --light-align-items: flex-end;
 }
 
 @media screen and (max-width: 768px) {

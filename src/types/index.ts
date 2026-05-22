@@ -247,6 +247,7 @@ export type LyricsPlayerAlignment = 'left' | 'center' | 'right';
 export type DesktopLyricsPlayerAlignment = LyricsPlayerAlignment | 'split-corners';
 export type LyricsColorScheme = 'auto' | 'default' | 'pink' | 'blue' | 'green' | 'white' | 'custom';
 export type LyricsFontPreset = string;
+export type LyricsPlayerRenderMode = 'amll' | 'light';
 
 export interface ImportedLyricsFont {
   id: string;
@@ -260,6 +261,7 @@ export interface ImportedLyricsFont {
 export interface LyricsSettings {
   showTranslation: boolean;
   showRomaji: boolean;
+  playerRenderMode: LyricsPlayerRenderMode;
   playerFontScale: number;
   playerLineGap: number;
   playerOffsetX: number;

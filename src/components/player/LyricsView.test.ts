@@ -53,6 +53,19 @@ describe('LyricsView custom font import', () => {
     expect(source).toContain(':low-power="shouldReduceLyricsRendering"');
   });
 
+  it('offers AMLL and light lyrics render modes at the top of the style panel', () => {
+    expect(source).toContain('PLAYER_RENDER_MODE_OPTIONS');
+    expect(source).toContain('AMLL');
+    expect(source).toContain('轻量');
+    expect(source).toContain('setPlayerRenderMode');
+  });
+
+  it('switches the player lyrics renderer based on the persisted render mode', () => {
+    expect(source).toContain('LightLyricPlayer');
+    expect(source).toContain('lyricsSettings.playerRenderMode === \'amll\'');
+    expect(source).toContain('lyricsSettings.playerRenderMode === \'light\'');
+  });
+
   it('previews high-frequency slider changes locally before persisting lyrics settings', () => {
     expect(source).toContain('previewPlayerFontScale');
     expect(source).toContain('previewPlayerLineGap');
