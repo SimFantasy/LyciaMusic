@@ -46,6 +46,9 @@ let player: PatchedLyricPlayer | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let frameId = 0;
 let recoveryFrameId = 0;
+let queueRecoveryMaxAttempts = 0;
+let queueRecoveryAttempts = 0;
+let queueRecoveryReason = '';
 let pendingLowPowerRecoveryReason = '';
 
 function stopAnimationLoop() {
@@ -118,7 +121,7 @@ function detachPlayer() {
   player = null;
 }
 
-function queueRecovery(reason: string) {
+function queueRecovery(reason: string, options: { maxAttempts?: number } = {}) {
   if (!player) return;
 
   if (props.lowPower) {
@@ -126,20 +129,29 @@ function queueRecovery(reason: string) {
     return;
   }
 
-  if (recoveryFrameId !== 0) {
-    cancelAnimationFrame(recoveryFrameId);
-  }
+  const maxAttempts = options.maxAttempts ?? 12;
+  queueRecoveryReason = reason;
+  queueRecoveryMaxAttempts = Math.max(queueRecoveryMaxAttempts, maxAttempts);
 
-  let attempts = 0;
+  if (recoveryFrameId !== 0) return;
+
+  queueRecoveryAttempts = 0;
   const runRecovery = () => {
-    if (!player) return;
+    if (!player) {
+      recoveryFrameId = 0;
+      queueRecoveryMaxAttempts = 0;
+      queueRecoveryAttempts = 0;
+      return;
+    }
 
-    player.recoverLayout(`${reason}:${attempts}`);
-    if (attempts < 12) {
-      attempts += 1;
+    player.recoverLayout(`${queueRecoveryReason}:${queueRecoveryAttempts}`);
+    if (queueRecoveryAttempts < queueRecoveryMaxAttempts) {
+      queueRecoveryAttempts += 1;
       recoveryFrameId = requestAnimationFrame(runRecovery);
     } else {
       recoveryFrameId = 0;
+      queueRecoveryMaxAttempts = 0;
+      queueRecoveryAttempts = 0;
     }
   };
 
@@ -180,6 +192,8 @@ onBeforeUnmount(() => {
   if (recoveryFrameId !== 0) {
     cancelAnimationFrame(recoveryFrameId);
     recoveryFrameId = 0;
+    queueRecoveryMaxAttempts = 0;
+    queueRecoveryAttempts = 0;
   }
   pendingLowPowerRecoveryReason = '';
 
@@ -207,6 +221,8 @@ watch(() => props.lowPower, (lowPower) => {
     if (recoveryFrameId !== 0) {
       cancelAnimationFrame(recoveryFrameId);
       recoveryFrameId = 0;
+      queueRecoveryMaxAttempts = 0;
+      queueRecoveryAttempts = 0;
     }
     return;
   }
@@ -259,7 +275,7 @@ watch(() => props.wordFadeWidth, (value) => {
 
 watch(() => props.lineGap, (value) => {
   player?.setLineGap(value);
-  queueRecovery('line-gap');
+  queueRecovery('line-gap', { maxAttempts: 0 });
 });
 
 watch(() => props.layoutVersion, () => {
