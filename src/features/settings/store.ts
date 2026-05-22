@@ -88,6 +88,7 @@ export const defaultSidebarSettings: SidebarSettings = {
 
 export const defaultAudioSettings: AudioSettings = {
   outputMode: 'shared',
+  volumeBalance: false,
 };
 
 export const defaultAppSettings: AppSettings = {
@@ -182,6 +183,7 @@ export const mergeAudioSettings = (
 ): AudioSettings => ({
   ...base,
   outputMode: patch.outputMode === 'wasapiExclusive' ? 'wasapiExclusive' : 'shared',
+  volumeBalance: patch.volumeBalance ?? base.volumeBalance,
 });
 
 export const mergeAppSettings = (

@@ -300,6 +300,7 @@ export type AudioOutputMode = 'shared' | 'wasapiExclusive';
 
 export interface AudioSettings {
   outputMode: AudioOutputMode;
+  volumeBalance: boolean;
 }
 
 export type ShortcutActionId =
