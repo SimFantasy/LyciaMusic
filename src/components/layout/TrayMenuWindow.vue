@@ -165,6 +165,7 @@ onUnmounted(() => {
       { 'tray-menu-shell--light': !isDarkTheme },
       `tray-menu-shell--submenu-${submenuPlacement}`,
     ]"
+    @pointerdown.self="hideWindow"
   >
     <div class="tray-menu-panel">
       <section class="track-row">
