@@ -44,6 +44,7 @@ import { usePlaybackStore } from '../features/playback/store';
 import { playbackApi } from '../services/tauri/playbackApi';
 import { createPlayerPlayback } from './playerPlayback';
 import { useUiStore } from '../shared/stores/ui';
+import { setMainWindowRenderingSnapshot } from './renderingPower';
 
 const makeSong = (overrides: Partial<Song> = {}): Song => ({
   path: '/music/demo.flac',
@@ -75,6 +76,13 @@ describe('player playback domain', () => {
     preloadPriorityCoversMock.mockReset();
     retainFullCoverPathsMock.mockReset();
     primeCoverPathMock.mockReturnValue('');
+    setMainWindowRenderingSnapshot({
+      documentHidden: false,
+      windowFocused: true,
+      windowVisible: true,
+      windowMinimized: false,
+      miniMode: false,
+    });
   });
 
   it('rebuilds the queue from the display song list order when playback starts', async () => {
@@ -164,6 +172,33 @@ describe('player playback domain', () => {
     (frameCallback as FrameRequestCallback)(performance.now() + 16);
 
     expect(handleAutoNext).not.toHaveBeenCalled();
+
+    playerPlayback.dispose();
+    vi.unstubAllGlobals();
+  });
+
+  it('updates playback progress with a low-frequency timer while main window rendering is low power', async () => {
+    const song = makeSong({ duration: 180 });
+    const handleAutoNext = vi.fn();
+    const requestAnimationFrameMock = vi.fn();
+    const setTimeoutMock = vi.fn().mockReturnValue(7);
+    vi.stubGlobal('requestAnimationFrame', requestAnimationFrameMock);
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    vi.stubGlobal('setTimeout', setTimeoutMock);
+    vi.stubGlobal('clearTimeout', vi.fn());
+    setMainWindowRenderingSnapshot({ windowVisible: false });
+
+    const playerPlayback = createPlayerPlayback({
+      getDisplaySongList: () => [song],
+      addToHistory: vi.fn(),
+      loadLyrics: vi.fn(),
+      handleAutoNext,
+    });
+
+    await playerPlayback.playSong(song);
+
+    expect(requestAnimationFrameMock).not.toHaveBeenCalled();
+    expect(setTimeoutMock).toHaveBeenCalledWith(expect.any(Function), 1000);
 
     playerPlayback.dispose();
     vi.unstubAllGlobals();

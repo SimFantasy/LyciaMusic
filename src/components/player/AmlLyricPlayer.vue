@@ -6,6 +6,7 @@ import { syncAmlLyricSeekLayout } from './amllSeekLayout';
 
 const props = withDefaults(defineProps<{
   disabled?: boolean;
+  lowPower?: boolean;
   playing?: boolean;
   alignAnchor?: 'top' | 'bottom' | 'center';
   alignPosition?: number;
@@ -20,6 +21,7 @@ const props = withDefaults(defineProps<{
   layoutVersion?: string | number;
 }>(), {
   disabled: false,
+  lowPower: false,
   playing: true,
   alignAnchor: 'center',
   alignPosition: 0.5,
@@ -44,6 +46,7 @@ let player: PatchedLyricPlayer | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let frameId = 0;
 let recoveryFrameId = 0;
+let pendingLowPowerRecoveryReason = '';
 
 function stopAnimationLoop() {
   if (frameId !== 0) {
@@ -55,13 +58,13 @@ function stopAnimationLoop() {
 function startAnimationLoop() {
   stopAnimationLoop();
 
-  if (props.disabled) {
+  if (props.disabled || props.lowPower) {
     return;
   }
 
   let lastTime = -1;
   const onFrame = (time: number) => {
-    if (!player || props.disabled) {
+    if (!player || props.disabled || props.lowPower) {
       frameId = 0;
       return;
     }
@@ -118,6 +121,11 @@ function detachPlayer() {
 function queueRecovery(reason: string) {
   if (!player) return;
 
+  if (props.lowPower) {
+    pendingLowPowerRecoveryReason = reason;
+    return;
+  }
+
   if (recoveryFrameId !== 0) {
     cancelAnimationFrame(recoveryFrameId);
   }
@@ -173,6 +181,7 @@ onBeforeUnmount(() => {
     cancelAnimationFrame(recoveryFrameId);
     recoveryFrameId = 0;
   }
+  pendingLowPowerRecoveryReason = '';
 
   resizeObserver?.disconnect();
   resizeObserver = null;
@@ -190,6 +199,21 @@ watch(() => props.disabled, (disabled) => {
 
   startAnimationLoop();
   queueRecovery('disabled-toggle');
+});
+
+watch(() => props.lowPower, (lowPower) => {
+  if (lowPower) {
+    stopAnimationLoop();
+    if (recoveryFrameId !== 0) {
+      cancelAnimationFrame(recoveryFrameId);
+      recoveryFrameId = 0;
+    }
+    return;
+  }
+
+  startAnimationLoop();
+  queueRecovery(pendingLowPowerRecoveryReason || 'low-power-toggle');
+  pendingLowPowerRecoveryReason = '';
 });
 
 watch(() => props.playing, (playing) => {

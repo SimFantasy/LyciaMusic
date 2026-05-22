@@ -1,10 +1,12 @@
 import { storeToRefs } from 'pinia';
+import { watch } from 'vue';
 import type { Song } from '../types';
 import { playbackApi } from '../services/tauri/playbackApi';
 import { usePlaybackStore } from '../features/playback/store';
 import { useSettingsStore } from '../features/settings/store';
 import { useUiStore } from '../shared/stores/ui';
 import { useCoverCache } from './useCoverCache';
+import { useRenderingPower } from './renderingPower';
 
 interface PlaySongOptions {
   updateShuffleHistory?: boolean;
@@ -28,6 +30,7 @@ interface CreatePlayerPlaybackDeps {
 }
 
 let progressFrameId: number | null = null;
+let progressTimerId: ReturnType<typeof setTimeout> | null = null;
 let syncIntervalId: ReturnType<typeof setInterval> | null = null;
 let playRequestId = 0;
 let latestSeekRequestId = 0;
@@ -38,6 +41,7 @@ let accumulatedTime = 0;
 let isSeeking = false;
 
 const getSmtcTitle = (song: Song) => song.title?.trim() || song.name.replace(/\.[^/.]+$/, '');
+const LOW_POWER_PROGRESS_UPDATE_MS = 1000;
 
 export const createPlayerPlayback = ({
   getDisplaySongList,
@@ -49,6 +53,7 @@ export const createPlayerPlayback = ({
   const playbackStore = usePlaybackStore();
   const settingsStore = useSettingsStore();
   const uiStore = useUiStore();
+  const { isMainWindowLowPower } = useRenderingPower();
   const {
     loadCover,
     loadCoverPath,
@@ -166,6 +171,10 @@ export const createPlayerPlayback = ({
       cancelAnimationFrame(progressFrameId);
       progressFrameId = null;
     }
+    if (progressTimerId !== null) {
+      clearTimeout(progressTimerId);
+      progressTimerId = null;
+    }
     if (syncIntervalId !== null) {
       clearInterval(syncIntervalId);
       syncIntervalId = null;
@@ -182,6 +191,18 @@ export const createPlayerPlayback = ({
     stopPlaybackRuntime();
     reanchorPlaybackClock(currentTime.value);
 
+    const scheduleUpdate = (update: FrameRequestCallback) => {
+      if (isMainWindowLowPower.value) {
+        progressTimerId = setTimeout(() => {
+          progressTimerId = null;
+          update(performance.now());
+        }, LOW_POWER_PROGRESS_UPDATE_MS);
+        return;
+      }
+
+      progressFrameId = requestAnimationFrame(update);
+    };
+
     const update = () => {
       if (!currentSong.value || !isPlaying.value) return;
 
@@ -194,10 +215,10 @@ export const createPlayerPlayback = ({
         return;
       }
 
-      progressFrameId = requestAnimationFrame(update);
+      scheduleUpdate(update);
     };
 
-    progressFrameId = requestAnimationFrame(update);
+    scheduleUpdate(update);
     syncIntervalId = setInterval(async () => {
       if (!isPlaying.value || isSeeking) return;
 
@@ -488,7 +509,14 @@ export const createPlayerPlayback = ({
 
   const dispose = () => {
     stopPlaybackRuntime();
+    stopPowerModeWatcher();
   };
+
+  const stopPowerModeWatcher = watch(isMainWindowLowPower, () => {
+    if (currentSong.value && isPlaying.value && !isSeeking) {
+      startPlaybackRuntime();
+    }
+  });
 
   return {
     flushPlaySession,

@@ -8,4 +8,11 @@ describe('AmlLyricPlayer playback pausing', () => {
     expect(source).not.toContain('player.pause();');
     expect(source).not.toContain('player.resume();');
   });
+
+  it('stops the animation and layout recovery loops while low power rendering is active', () => {
+    expect(source).toContain('lowPower?: boolean;');
+    expect(source).toContain('if (props.disabled || props.lowPower)');
+    expect(source).toContain('pendingLowPowerRecoveryReason = reason;');
+    expect(source).toContain('watch(() => props.lowPower');
+  });
 });

@@ -8,17 +8,19 @@ import { useCoverCache } from '../../composables/useCoverCache';
 import { usePlaybackStore } from '../../features/playback/store';
 import { useWindowMaterial } from '../../composables/windowMaterial';
 import { getPreblurredBackgroundUrl } from '../../composables/preblurredBackgroundCache';
+import { useRenderingPower } from '../../composables/renderingPower';
 
 const { currentCover, currentCoverFull, dominantColors, showPlayerDetail } = usePlayer();
 const { theme, isDarkTheme } = useThemeSettings();
 const { activeWindowMaterial } = useWindowMaterial();
 const { loadFullCover } = useCoverCache();
+const { isMainWindowLowPower } = useRenderingPower();
 const playbackStore = usePlaybackStore();
 const { currentSongPath } = storeToRefs(playbackStore);
 
 const hasWindowMaterial = computed(() => activeWindowMaterial.value !== 'none');
 const isMicaWindowMaterial = computed(() => activeWindowMaterial.value === 'mica');
-const reduceDynamicEffects = computed(() => showPlayerDetail.value);
+const reduceDynamicEffects = computed(() => showPlayerDetail.value || isMainWindowLowPower.value);
 const flowFallbackPalette = ['hsl(220, 28%, 34%)', 'hsl(196, 58%, 56%)', 'hsl(340, 52%, 58%)', 'hsl(42, 72%, 60%)'];
 const FLOW_SCENE_TRANSITION_MS = 1180;
 
@@ -435,6 +437,7 @@ const materialScrimStyle = computed(() => {
         : hasWindowMaterial
           ? 'bg-transparent'
           : 'bg-[#fafafa] dark:bg-[#121212]',
+      isMainWindowLowPower ? 'global-background--low-power' : '',
     ]"
   >
     <div
@@ -628,4 +631,11 @@ const materialScrimStyle = computed(() => {
 .animate-mesh-1 { animation: mesh-1 var(--mesh-duration-1, 14s) ease-in-out infinite; }
 .animate-mesh-2 { animation: mesh-2 var(--mesh-duration-2, 18s) ease-in-out infinite; }
 .animate-mesh-3 { animation: mesh-3 var(--mesh-duration-3, 22s) ease-in-out infinite; }
+
+.global-background--low-power,
+.global-background--low-power * {
+  animation-play-state: paused !important;
+  transition: none !important;
+  will-change: auto !important;
+}
 </style>

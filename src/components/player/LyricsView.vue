@@ -33,6 +33,7 @@ import {
   useLyrics,
 } from '../../composables/lyrics';
 import { usePlayer } from '../../composables/player';
+import { useRenderingPower } from '../../composables/renderingPower';
 import { useSettingsStore } from '../../features/settings/store';
 import AmlLyricPlayer from './AmlLyricPlayer.vue';
 import { getPlaybackSeekSecondsForAmlLine } from './amllSeekLayout';
@@ -44,6 +45,8 @@ const {
   showLyricsPlayerSettingsPanel,
 } = useLyrics();
 const { playAt, currentTime, isPlaying } = usePlayer();
+const { showPlayerDetail } = usePlayer();
+const { isMainWindowLowPower } = useRenderingPower();
 const settingsStore = useSettingsStore();
 const { audioDelay } = storeToRefs(settingsStore);
 
@@ -132,6 +135,7 @@ const lyricsPlayerStyle = computed(() => ({
   '--lyrics-offset-x': `${lyricsSettings.playerOffsetX}%`,
   '--lyrics-offset-y': `${lyricsSettings.playerOffsetY}%`,
 }));
+const shouldReduceLyricsRendering = computed(() => isMainWindowLowPower.value || !showPlayerDetail.value);
 const lyricsLayoutVersion = computed(() => `${lyricsSettings.playerFontPreset}:${importedLyricsFontsRevision.value}`);
 
 function clampFontScale(value: number) {
@@ -733,6 +737,7 @@ onUnmounted(() => {
           class="amll-host h-full min-h-0 w-full min-w-0"
           :lyric-lines="amllLines"
           :current-time="amllCurrentTime"
+          :low-power="shouldReduceLyricsRendering"
           :playing="isPlaying"
           :layout-version="lyricsLayoutVersion"
           align-anchor="center"

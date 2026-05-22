@@ -18,6 +18,7 @@ import { runStartupRouteRepaint } from './startupRouteRepaint';
 import { releaseStartupCompositionMask, waitForStartupRevealReadiness } from './startupCompositionMask';
 import { clearStartupThemePaint } from './startupTheme';
 import { useUiStore } from '../shared/stores/ui';
+import { useMainWindowRenderingPower } from './renderingPower';
 
 export function useAppShell() {
   const {
@@ -59,6 +60,8 @@ export function useAppShell() {
   const { currentViewMode, filterCondition, currentFolderFilter, activeRootPath } = usePlayerViewState();
   const { folderTree, searchQuery } = usePlayerLibraryView();
   let startupCompositionMaskStartedAt = 0;
+
+  useMainWindowRenderingPower();
 
   const prepareStartupTransparentComposition = async () => {
     await whenInitialThemeSynced();

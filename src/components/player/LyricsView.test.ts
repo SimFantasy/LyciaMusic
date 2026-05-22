@@ -47,6 +47,12 @@ describe('LyricsView custom font import', () => {
     expect(source).toContain(':playing="isPlaying"');
   });
 
+  it('passes low power rendering state to AMLL without removing the feature', () => {
+    expect(source).toContain('useRenderingPower');
+    expect(source).toContain('const shouldReduceLyricsRendering');
+    expect(source).toContain(':low-power="shouldReduceLyricsRendering"');
+  });
+
   it('starts playback from the clicked lyric line instead of only seeking while paused', () => {
     expect(source).toContain('const { playAt, currentTime, isPlaying } = usePlayer();');
     expect(source).toContain('await playAt(targetSeconds);');
