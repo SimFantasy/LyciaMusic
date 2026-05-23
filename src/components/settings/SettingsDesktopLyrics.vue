@@ -1383,6 +1383,74 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+:root {
+  /* 桌面歌词设置组件 - 浅色模式 CSS 变量 */
+  --desktop-chip-bg: rgba(255, 255, 255, 0.72);
+  --desktop-chip-border: rgba(15, 23, 42, 0.08);
+  --desktop-chip-text: rgb(55 65 81);
+
+  --desktop-chip-active-bg: rgba(236, 65, 65, 0.12);
+  --desktop-chip-active-border: rgba(236, 65, 65, 0.28);
+  --desktop-chip-active-text: #ec4141;
+
+  --desktop-font-trigger-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.68));
+  --desktop-font-trigger-border: rgba(148, 163, 184, 0.2);
+  --desktop-font-trigger-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 10px 26px rgba(15, 23, 42, 0.05);
+
+  --desktop-font-trigger-active-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 244, 244, 0.78));
+  --desktop-font-trigger-active-border: rgba(236, 65, 65, 0.32);
+  --desktop-font-trigger-active-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 14px 30px rgba(236, 65, 65, 0.08);
+
+  --desktop-font-menu-bg: rgba(255, 255, 255, 0.88);
+  --desktop-font-menu-border: rgba(255, 255, 255, 0.5);
+  --desktop-font-menu-shadow: 0 24px 60px rgba(15, 23, 42, 0.16), 0 10px 24px rgba(15, 23, 42, 0.08);
+  --desktop-font-menu-header-color: rgba(71, 85, 105, 0.92);
+  --desktop-font-menu-header-border: rgba(148, 163, 184, 0.12);
+
+  --desktop-font-option-text: rgb(55 65 81);
+  --desktop-font-option-hover-bg: rgba(236, 65, 65, 0.06);
+  --desktop-font-option-hover-border: rgba(236, 65, 65, 0.16);
+  --desktop-font-option-hover-text: rgb(17 24 39);
+
+  --desktop-font-option-active-bg: linear-gradient(180deg, rgba(236, 65, 65, 0.12), rgba(236, 65, 65, 0.06));
+  --desktop-font-option-active-border: rgba(236, 65, 65, 0.2);
+  --desktop-font-option-active-text: #ec4141;
+}
+
+:global(.dark) {
+  /* 桌面歌词设置组件 - 深色模式 CSS 变量重写 */
+  --desktop-chip-bg: rgba(255, 255, 255, 0.04);
+  --desktop-chip-border: rgba(255, 255, 255, 0.08);
+  --desktop-chip-text: rgba(255, 255, 255, 0.82);
+
+  --desktop-chip-active-bg: rgba(236, 65, 65, 0.14);
+  --desktop-chip-active-border: rgba(236, 65, 65, 0.35);
+  --desktop-chip-active-text: #ff8b8b;
+
+  --desktop-font-trigger-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.04));
+  --desktop-font-trigger-border: rgba(255, 255, 255, 0.08);
+  --desktop-font-trigger-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 28px rgba(0, 0, 0, 0.18);
+
+  --desktop-font-trigger-active-bg: linear-gradient(180deg, rgba(236, 65, 65, 0.16), rgba(255, 255, 255, 0.05));
+  --desktop-font-trigger-active-border: rgba(236, 65, 65, 0.34);
+  --desktop-font-trigger-active-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 16px 36px rgba(0, 0, 0, 0.24);
+
+  --desktop-font-menu-bg: rgba(17, 17, 19, 0.88);
+  --desktop-font-menu-border: rgba(255, 255, 255, 0.08);
+  --desktop-font-menu-shadow: 0 24px 60px rgba(0, 0, 0, 0.34), 0 10px 24px rgba(0, 0, 0, 0.24);
+  --desktop-font-menu-header-color: rgba(255, 255, 255, 0.58);
+  --desktop-font-menu-header-border: rgba(255, 255, 255, 0.06);
+
+  --desktop-font-option-text: rgba(255, 255, 255, 0.84);
+  --desktop-font-option-hover-bg: rgba(236, 65, 65, 0.1);
+  --desktop-font-option-hover-border: rgba(236, 65, 65, 0.22);
+  --desktop-font-option-hover-text: rgba(255, 255, 255, 0.98);
+
+  --desktop-font-option-active-bg: linear-gradient(180deg, rgba(236, 65, 65, 0.18), rgba(236, 65, 65, 0.08));
+  --desktop-font-option-active-border: rgba(236, 65, 65, 0.28);
+  --desktop-font-option-active-text: #ff9a9a;
+}
+
 .desktop-setting-row {
   display: flex;
   align-items: center;
@@ -1550,58 +1618,6 @@ onUnmounted(() => {
   background: rgba(0, 0, 0, 0.2);
 }
 
-:global(.dark) .desktop-font-trigger {
-  border-color: rgba(255, 255, 255, 0.08);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.04));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 12px 28px rgba(0, 0, 0, 0.18);
-}
-
-:global(.dark) .desktop-font-trigger:hover,
-:global(.dark) .desktop-font-trigger--open {
-  border-color: rgba(236, 65, 65, 0.34);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 16px 36px rgba(0, 0, 0, 0.24);
-}
-
-:global(.dark) .desktop-font-trigger--open {
-  background:
-    linear-gradient(180deg, rgba(236, 65, 65, 0.16), rgba(255, 255, 255, 0.05));
-}
-
-:global(.dark) .desktop-font-menu {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(17, 17, 19, 0.88);
-  box-shadow:
-    0 24px 60px rgba(0, 0, 0, 0.34),
-    0 10px 24px rgba(0, 0, 0, 0.24);
-}
-
-:global(.dark) .desktop-font-menu-header {
-  border-bottom-color: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.58);
-}
-
-:global(.dark) .desktop-font-option {
-  color: rgba(255, 255, 255, 0.84);
-}
-
-:global(.dark) .desktop-font-option:hover {
-  border-color: rgba(236, 65, 65, 0.22);
-  background: rgba(236, 65, 65, 0.1);
-  color: rgba(255, 255, 255, 0.98);
-}
-
-:global(.dark) .desktop-font-option--active {
-  border-color: rgba(236, 65, 65, 0.28);
-  background:
-    linear-gradient(180deg, rgba(236, 65, 65, 0.18), rgba(236, 65, 65, 0.08));
-  color: #ff9a9a;
-}
-
 .desktop-card-header {
   display: flex;
   align-items: flex-start;
@@ -1633,13 +1649,10 @@ onUnmounted(() => {
   width: 100%;
   min-height: 64px;
   padding: 14px 16px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--desktop-font-trigger-border);
   border-radius: 18px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.68));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.55),
-    0 10px 26px rgba(15, 23, 42, 0.05);
+  background: var(--desktop-font-trigger-bg);
+  box-shadow: var(--desktop-font-trigger-shadow);
   transition:
     border-color 180ms ease,
     box-shadow 180ms ease,
@@ -1656,25 +1669,20 @@ onUnmounted(() => {
 
 .desktop-font-trigger:hover,
 .desktop-font-trigger--open {
-  border-color: rgba(236, 65, 65, 0.32);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.7),
-    0 14px 30px rgba(236, 65, 65, 0.08);
+  border-color: var(--desktop-font-trigger-active-border);
+  box-shadow: var(--desktop-font-trigger-active-shadow);
 }
 
 .desktop-font-trigger--open {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 244, 244, 0.78));
+  background: var(--desktop-font-trigger-active-bg);
 }
 
 .desktop-font-menu {
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--desktop-font-menu-border);
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow:
-    0 24px 60px rgba(15, 23, 42, 0.16),
-    0 10px 24px rgba(15, 23, 42, 0.08);
+  background: var(--desktop-font-menu-bg);
+  box-shadow: var(--desktop-font-menu-shadow);
   backdrop-filter: blur(22px) saturate(160%);
   -webkit-backdrop-filter: blur(22px) saturate(160%);
   z-index: 120;
@@ -1686,8 +1694,8 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 12px;
   padding: 14px 16px 12px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
-  color: rgba(71, 85, 105, 0.92);
+  border-bottom: 1px solid var(--desktop-font-menu-header-border);
+  color: var(--desktop-font-menu-header-color);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -1708,7 +1716,7 @@ onUnmounted(() => {
   border: 1px solid transparent;
   border-radius: 16px;
   text-align: left;
-  color: rgb(55 65 81);
+  color: var(--desktop-font-option-text);
   transition:
     border-color 160ms ease,
     background-color 160ms ease,
@@ -1717,16 +1725,15 @@ onUnmounted(() => {
 }
 
 .desktop-font-option:hover {
-  border-color: rgba(236, 65, 65, 0.16);
-  background: rgba(236, 65, 65, 0.06);
-  color: rgb(17 24 39);
+  border-color: var(--desktop-font-option-hover-border);
+  background: var(--desktop-font-option-hover-bg);
+  color: var(--desktop-font-option-hover-text);
 }
 
 .desktop-font-option--active {
-  border-color: rgba(236, 65, 65, 0.2);
-  background:
-    linear-gradient(180deg, rgba(236, 65, 65, 0.12), rgba(236, 65, 65, 0.06));
-  color: #ec4141;
+  border-color: var(--desktop-font-option-active-border);
+  background: var(--desktop-font-option-active-bg);
+  color: var(--desktop-font-option-active-text);
 }
 
 .desktop-font-menu-enter-active,
@@ -1823,31 +1830,19 @@ onUnmounted(() => {
 }
 
 .desktop-chip {
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid var(--desktop-chip-border);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--desktop-chip-bg);
   padding: 8px 14px;
-  color: rgb(55 65 81);
+  color: var(--desktop-chip-text);
   font-size: 13px;
 }
 
 .desktop-chip--active {
-  border-color: rgba(236, 65, 65, 0.28);
-  background: rgba(236, 65, 65, 0.12);
-  color: #ec4141;
+  border-color: var(--desktop-chip-active-border);
+  background: var(--desktop-chip-active-bg);
+  color: var(--desktop-chip-active-text);
   font-weight: 600;
-}
-
-:global(.dark) .desktop-chip {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.82);
-}
-
-:global(.dark) .desktop-chip--active {
-  border-color: rgba(236, 65, 65, 0.35);
-  background: rgba(236, 65, 65, 0.14);
-  color: #ff8b8b;
 }
 
 .desktop-custom-modal-backdrop {
