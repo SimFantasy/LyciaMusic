@@ -63,6 +63,22 @@ function createPayload(enableWordEffect: boolean): DesktopLyricsStatePayload {
 }
 
 describe('useDesktopLyricsDisplay', () => {
+  it('aligns playback time when playback state changes', () => {
+    const display = useDesktopLyricsDisplay(ref(false));
+
+    display.playbackTime.value = 10;
+    display.isPlaying.value = true;
+    display.handlePlaybackPayload({
+      playbackTime: 9.8,
+      syncedAt: Date.now(),
+      isPlaying: false,
+      audioDelay: 0,
+    });
+
+    expect(display.isPlaying.value).toBe(false);
+    expect(display.playbackTime.value).toBe(9.8);
+  });
+
   it('renders the main line as one text block when desktop word effect is disabled', () => {
     const display = useDesktopLyricsDisplay(ref(false));
 

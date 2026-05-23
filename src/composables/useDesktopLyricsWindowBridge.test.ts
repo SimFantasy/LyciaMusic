@@ -2,6 +2,7 @@ import { effectScope, nextTick } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  createDesktopLyricsPlaybackClockTracker,
   createDesktopLyricsReadyGate,
   createDesktopLyricsWindowOptions,
   useDesktopLyricsWindowBridge,
@@ -188,6 +189,17 @@ describe('desktop lyrics window bridge', () => {
       focusable: true,
       visible: false,
     });
+  });
+
+  it('timestamps playback payloads at the last currentTime sample instead of send time', () => {
+    let now = 1_000;
+    const tracker = createDesktopLyricsPlaybackClockTracker(() => now);
+
+    tracker.markPlaybackTimeSample(11.35);
+    now += 650;
+
+    expect(tracker.resolveSyncedAt(11.35)).toBe(1_000);
+    expect(tracker.resolveSyncedAt(12)).toBe(1_650);
   });
 
   it('waits until the desktop lyrics window reports ready', async () => {
