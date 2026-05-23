@@ -1,4 +1,4 @@
-import { LogicalPosition } from '@tauri-apps/api/dpi';
+import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { availableMonitors, getCurrentWindow, primaryMonitor } from '@tauri-apps/api/window';
@@ -17,6 +17,7 @@ import {
   TASKBAR_PLAYER_REQUEST_STATE_EVENT,
   TASKBAR_PLAYER_READY_EVENT,
   TASKBAR_PLAYER_VISIBILITY_EVENT,
+  TASKBAR_PLAYER_DRAG_EVENT,
   TASKBAR_PLAYER_POSITION_X_KEY,
   TASKBAR_PLAYER_WINDOW_WIDTH,
   TASKBAR_PLAYER_WINDOW_HEIGHT,
@@ -53,6 +54,39 @@ let unlistenScaleChange: (() => void) | null = null;
 // 高可用定位并发控制锁
 let isPositioning = false;
 let pendingPositionUpdate = false;
+let isTaskbarPlayerDragging = false;
+
+async function ensureTaskbarWindowSize(targetWindow: WebviewWindow) {
+  await targetWindow.setSize(new LogicalSize(
+    TASKBAR_PLAYER_WINDOW_WIDTH,
+    TASKBAR_PLAYER_WINDOW_HEIGHT,
+  )).catch((err) => {
+    console.warn('Failed to normalize taskbar player size:', err);
+  });
+}
+
+async function refreshTaskbarWindowTopmost(targetWindow: WebviewWindow) {
+  await targetWindow.setAlwaysOnTop(true);
+  await invoke('refresh_taskbar_window_topmost').catch((err) => {
+    console.warn('Failed to refresh taskbar player topmost state:', err);
+  });
+}
+
+async function stabilizeTaskbarWindowGeometry(targetWindow: WebviewWindow) {
+  await ensureTaskbarWindowSize(targetWindow);
+  await updatePosition();
+  await refreshTaskbarWindowTopmost(targetWindow);
+}
+
+function scheduleTaskbarWindowGeometryStabilization(targetWindow: WebviewWindow) {
+  void stabilizeTaskbarWindowGeometry(targetWindow);
+
+  for (const delay of [120, 350, 900, 1600]) {
+    window.setTimeout(() => {
+      void stabilizeTaskbarWindowGeometry(targetWindow);
+    }, delay);
+  }
+}
 
 // 读取保存的 x 坐标
 function readSavedPositionX(): number | null {
@@ -71,6 +105,8 @@ export function writeSavedPositionX(x: number) {
 
 // 核心自愈与几何定位控制器（带 pending 控制的并发锁机制）
 async function updatePosition() {
+  if (isTaskbarPlayerDragging) return;
+
   const targetWindow = await getTaskbarPlayerWindow();
   if (!targetWindow) return;
 
@@ -95,9 +131,7 @@ async function updatePosition() {
       const scaleFactor = primary?.scaleFactor ?? 1;
 
       // 2. 调用 Rust 底层，返回 Win32 API 在当前进程 DPI awareness 下的原始物理屏幕坐标
-      const geometry = await invoke<TaskbarTrayGeometry>('get_taskbar_tray_geometry', {
-        window: targetWindow,
-      }).catch((err) => {
+      const geometry = await invoke<TaskbarTrayGeometry>('get_taskbar_tray_geometry').catch((err) => {
         console.warn('Failed to invoke get_taskbar_tray_geometry:', err);
         return null;
       });
@@ -244,7 +278,7 @@ async function ensureTaskbarPlayerWindow() {
 
           try {
             // 通过 Rust 底层 Win32 接口应用 WS_EX_NOACTIVATE 扩展样式，并绑定主任务栏 Owner
-            await invoke('setup_taskbar_window', { window: windowInstance });
+            await invoke('setup_taskbar_window');
 
             settled = true;
             taskbarPlayerWindowPromise = null;
@@ -346,21 +380,25 @@ export function useTaskbarPlayerBridge() {
     await waitForTaskbarPlayerReady();
     
     // 对齐最新几何坐标并置顶
-    await updatePosition();
-    await targetWindow.setAlwaysOnTop(true);
+    await stabilizeTaskbarWindowGeometry(targetWindow);
 
     await emitStateToTaskbarPlayer();
     await emitTo(TASKBAR_PLAYER_WINDOW_LABEL, TASKBAR_PLAYER_VISIBILITY_EVENT, { visible: true });
     await targetWindow.show();
+    await stabilizeTaskbarWindowGeometry(targetWindow);
     isTaskbarPlayerVisible.value = true;
 
+    // 安装 Z-order 守护，防止点击任务栏时播控窗口被遮盖
+    void invoke('install_taskbar_zorder_guard').catch((err) => {
+      console.warn('Failed to install taskbar zorder guard:', err);
+    });
     // Tauri 2 官方 API 缩放更改监听绑定
     if (unlistenScaleChange) {
       unlistenScaleChange();
       unlistenScaleChange = null;
     }
     unlistenScaleChange = await targetWindow.onScaleChanged(() => {
-      void updatePosition();
+      scheduleTaskbarWindowGeometryStabilization(targetWindow);
     }).catch((err) => {
       console.warn('Failed to listen scale change:', err);
       return null;
@@ -382,6 +420,8 @@ export function useTaskbarPlayerBridge() {
       unlistenScaleChange();
       unlistenScaleChange = null;
     }
+    // 卸载 Z-order 守护
+    void invoke('uninstall_taskbar_zorder_guard').catch(() => {});
     await emitTo(TASKBAR_PLAYER_WINDOW_LABEL, TASKBAR_PLAYER_VISIBILITY_EVENT, { visible: false });
     await targetWindow.hide();
     isTaskbarPlayerVisible.value = false;
@@ -399,6 +439,8 @@ export function useTaskbarPlayerBridge() {
       unlistenScaleChange();
       unlistenScaleChange = null;
     }
+    // 在 destroy 前卸载守护，防止回调访问已失效的 HWND
+    void invoke('uninstall_taskbar_zorder_guard').catch(() => {});
     try {
       await targetWindow.destroy();
     } catch (error) {
@@ -427,12 +469,13 @@ export function useTaskbarPlayerBridge() {
         } else {
           if (!isTaskbarPlayerVisible.value) {
             // 对齐一次坐标并显示
-            await updatePosition();
+            await stabilizeTaskbarWindowGeometry(targetWindow);
             await targetWindow.show();
+            await stabilizeTaskbarWindowGeometry(targetWindow);
             isTaskbarPlayerVisible.value = true;
-          } else {
+          } else if (!isTaskbarPlayerDragging) {
             // 正常显示状态下，每 1 秒进行位置的静默校验和动态纠偏（应对托盘变化或 Explorer 重建）
-            void updatePosition();
+            void stabilizeTaskbarWindowGeometry(targetWindow);
           }
         }
       } catch (error) {
@@ -500,6 +543,12 @@ export function useTaskbarPlayerBridge() {
     unlisteners.push(
       await listen<TaskbarPlayerAction>(TASKBAR_PLAYER_ACTION_EVENT, (event) => {
         void handleAction(event.payload);
+      })
+    );
+
+    unlisteners.push(
+      await listen<{ dragging: boolean }>(TASKBAR_PLAYER_DRAG_EVENT, (event) => {
+        isTaskbarPlayerDragging = event.payload.dragging;
       })
     );
 

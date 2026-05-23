@@ -6,9 +6,11 @@ import MainShell from './components/layout/MainShell.vue';
 import MiniPlayerWindow from './components/layout/MiniPlayerWindow.vue';
 import TrayMenuWindow from './components/layout/TrayMenuWindow.vue';
 import DesktopLyricsWindow from './components/player/DesktopLyricsWindow.vue';
+import TaskbarControlWindow from './components/layout/TaskbarControlWindow.vue';
 import { registerImportedLyricsFonts } from './composables/lyrics';
 import { DESKTOP_LYRICS_WINDOW_LABEL } from './features/desktopLyrics/shared';
 import { MINI_PLAYER_WINDOW_LABEL } from './features/miniPlayer/shared';
+import { TASKBAR_PLAYER_WINDOW_LABEL } from './features/taskbarPlayer/shared';
 import { useSettings } from './features/settings/useSettings';
 import { TRAY_MENU_WINDOW_LABEL } from './features/tray/actions';
 
@@ -23,6 +25,7 @@ const currentWindowLabel = (() => {
 const isDesktopLyricsWindow = currentWindowLabel === DESKTOP_LYRICS_WINDOW_LABEL;
 const isMiniPlayerWindow = currentWindowLabel === MINI_PLAYER_WINDOW_LABEL;
 const isTrayMenuWindow = currentWindowLabel === TRAY_MENU_WINDOW_LABEL;
+const isTaskbarPlayerWindow = currentWindowLabel === TASKBAR_PLAYER_WINDOW_LABEL;
 
 const { settings } = useSettings();
 watch(
@@ -36,6 +39,7 @@ watch(
   <DesktopLyricsWindow v-if="isDesktopLyricsWindow" />
   <MiniPlayerWindow v-else-if="isMiniPlayerWindow" />
   <TrayMenuWindow v-else-if="isTrayMenuWindow" />
+  <TaskbarControlWindow v-else-if="isTaskbarPlayerWindow" />
   <MainShell v-else />
 </template>
 
