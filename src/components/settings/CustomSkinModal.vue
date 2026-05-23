@@ -5,7 +5,12 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { useCustomThemeModal } from '../../composables/useCustomThemeModal';
 
 const emit = defineEmits(['close']);
-const { preview, handleSelectImage, handleCancel: revertTheme } = useCustomThemeModal();
+const {
+  preview,
+  handleSelectImage,
+  handleCancel: discardThemeDraft,
+  handleSave: applyThemeDraft,
+} = useCustomThemeModal();
 
 const foregroundOptions = [
   { value: 'light', label: '浅色' },
@@ -15,11 +20,12 @@ const foregroundOptions = [
 const isDarkForeground = computed(() => preview.value.foregroundStyle === 'dark');
 
 const handleCancel = () => {
-  revertTheme();
+  discardThemeDraft();
   emit('close');
 };
 
 const handleSave = () => {
+  applyThemeDraft();
   emit('close');
 };
 </script>
