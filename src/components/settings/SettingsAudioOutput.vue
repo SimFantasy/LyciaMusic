@@ -14,9 +14,12 @@ const volumeBalanceTip = '音量平衡会读取歌曲内置 ReplayGain 标签，
         <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
         音频处理
       </h2>
-      <div class="flex flex-col rounded-xl overflow-hidden bg-white/20 dark:bg-black/10 border border-gray-200/40 dark:border-gray-800/40">
+      <div class="flex flex-col rounded-xl bg-white/20 dark:bg-black/10 border border-gray-200/40 dark:border-gray-800/40">
         <!-- 音量平衡主开关行 -->
-        <div class="desktop-setting-row">
+        <div 
+          class="desktop-setting-row"
+          :class="settings.audio.volumeBalance.enabled ? 'rounded-t-xl' : 'rounded-xl'"
+        >
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">音量平衡</div>
           </div>
@@ -46,7 +49,7 @@ const volumeBalanceTip = '音量平衡会读取歌曲内置 ReplayGain 标签，
         <!-- 高级音量平衡配置子区域 -->
         <div
           v-if="settings.audio.volumeBalance.enabled"
-          class="flex flex-col border-t border-gray-200/20 dark:border-gray-800/20 bg-gray-50/10 dark:bg-gray-900/10 transition-all duration-300 animate-in slide-in-from-top-2"
+          class="flex flex-col border-t border-gray-200/20 dark:border-gray-800/20 bg-gray-50/10 dark:bg-gray-900/10 transition-all duration-300 animate-in fade-in rounded-b-xl"
         >
           <!-- 整体增益偏移设置 -->
           <div class="desktop-setting-row border-b border-gray-200/20 dark:border-gray-800/20 pl-8">
@@ -74,7 +77,7 @@ const volumeBalanceTip = '音量平衡会读取歌曲内置 ReplayGain 标签，
           </div>
 
           <!-- 防削波保护开关 -->
-          <div class="desktop-setting-row pl-8">
+          <div class="desktop-setting-row pl-8 rounded-b-xl">
             <div class="flex-1 space-y-1">
               <div class="text-sm font-medium text-gray-800 dark:text-gray-200">
                 防削波破音保护
