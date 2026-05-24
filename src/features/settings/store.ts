@@ -73,6 +73,8 @@ export const defaultThemeSettings: ThemeSettings = {
     maskAlpha: 0.4,
     scale: 1,
     foregroundStyle: 'light',
+    translateX: 0,
+    translateY: 0,
   },
 };
 

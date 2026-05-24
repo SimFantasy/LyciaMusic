@@ -230,6 +230,8 @@ export interface ThemeSettings {
     maskAlpha: number;
     scale: number;
     foregroundStyle: 'light' | 'dark';
+    translateX?: number;
+    translateY?: number;
   }
 }
 
