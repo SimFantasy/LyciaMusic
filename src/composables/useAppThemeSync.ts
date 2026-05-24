@@ -142,9 +142,16 @@ export function useAppThemeSync() {
   void loadWindowMaterialCapabilities();
 
   watch(
-    theme,
-    syncThemeAndMaterial,
-    { deep: true, immediate: true },
+    [
+      () => theme.value.mode,
+      () => theme.value.windowMaterial,
+      () => theme.value.windowBlurTint,
+      () => theme.value.customBackground.foregroundStyle,
+    ],
+    () => {
+      void syncThemeAndMaterial();
+    },
+    { immediate: true },
   );
 
   onMounted(() => {

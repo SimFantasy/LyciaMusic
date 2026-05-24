@@ -13,8 +13,13 @@ mod window_boundary;
 mod window_material;
 mod window_theme;
 mod window_z_order;
+mod taskbar;
 
 use app_runtime::{consume_pending_open_paths, exit_app, handle_single_instance, setup_app};
+use taskbar::{
+    get_taskbar_tray_geometry, install_taskbar_zorder_guard, refresh_taskbar_window_topmost,
+    setup_taskbar_window, uninstall_taskbar_zorder_guard,
+};
 use custom_fonts::{import_lyrics_font, read_lyrics_font_data_url};
 use database::clear_all_app_data;
 use foreground_window::get_foreground_fullscreen_state;
@@ -164,6 +169,11 @@ pub fn run() {
             get_system_fonts,
             import_lyrics_font,
             read_lyrics_font_data_url,
+            setup_taskbar_window,
+            get_taskbar_tray_geometry,
+            install_taskbar_zorder_guard,
+            refresh_taskbar_window_topmost,
+            uninstall_taskbar_zorder_guard,
             exit_app
         ])
         .run(tauri::generate_context!())

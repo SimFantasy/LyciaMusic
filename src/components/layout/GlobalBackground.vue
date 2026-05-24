@@ -55,6 +55,8 @@ const activeBackgroundInfo = computed(() => {
       maskColor: currentTheme.customBackground.maskColor,
       maskAlpha: currentTheme.customBackground.maskAlpha,
       scale: currentTheme.customBackground.scale,
+      translateX: currentTheme.customBackground.translateX,
+      translateY: currentTheme.customBackground.translateY,
       isDynamic: false,
       type: 'custom' as const,
     };
@@ -426,6 +428,42 @@ const materialScrimStyle = computed(() => {
     backgroundColor: isMicaWindowMaterial.value ? 'rgba(248, 249, 251, 0.62)' : 'rgba(250, 250, 252, 0.5)',
   };
 });
+
+const customBgRenderStyle = computed(() => {
+  const info = activeBackgroundInfo.value;
+  if (!info || info.type !== 'custom') {
+    return {
+      translateStyle: {},
+      scaleStyle: {}
+    };
+  }
+
+  const blurComp = Math.min(0.08, (info.blur || 0) * 0.002);
+  const renderScale = (info.scale || 1.0) + blurComp;
+  const tx = (info.translateX || 0) * 100;
+  const ty = (info.translateY || 0) * 100;
+
+  return {
+    translateStyle: {
+      transform: `translate3d(${tx}%, ${ty}%, 0)`,
+      width: '100%',
+      height: '100%',
+      transformOrigin: 'center center'
+    },
+    scaleStyle: {
+      filter: `blur(${info.blur}px)`,
+      opacity: info.opacity ?? 1.0,
+      transform: `scale(${renderScale})`,
+      width: '100%',
+      height: '100%',
+      objectFit: 'cover' as const,
+      transformOrigin: 'center center',
+      webkitUserDrag: 'none' as any,
+      userSelect: 'none' as any,
+      pointerEvents: 'none' as any
+    }
+  };
+});
 </script>
 
 <template>
@@ -524,24 +562,25 @@ const materialScrimStyle = computed(() => {
     </transition>
 
     <transition name="fade">
-      <div v-if="activeBackgroundInfo?.type === 'custom' && bgImageSrc" class="absolute inset-0">
+      <div v-if="activeBackgroundInfo?.type === 'custom' && bgImageSrc" class="absolute inset-0 global-background-container overflow-hidden">
         <div
           v-if="activeBackgroundInfo.maskAlpha !== undefined && activeBackgroundInfo.maskAlpha > 0"
-          class="absolute inset-0 z-10 transition-all duration-300"
+          class="absolute inset-0 z-10 transition-all duration-300 pointer-events-none"
           :style="{
             backgroundColor: activeBackgroundInfo.maskColor || '#000000',
             opacity: activeBackgroundInfo.maskAlpha,
           }"
         ></div>
 
-        <img
-          :src="bgImageSrc"
-          class="w-full h-full object-cover transition-all duration-700 z-0"
-          :style="{
-            filter: `blur(${activeBackgroundInfo.blur}px) brightness(${activeBackgroundInfo.opacity ?? 1.0})`,
-            transform: `scale(${activeBackgroundInfo.scale || 1.05})`,
-          }"
-        />
+        <!-- 外层平移层：只负责 translate3d 平移，不带 overflow-hidden -->
+        <div class="translate-layer absolute inset-0" :style="customBgRenderStyle.translateStyle">
+          <!-- 内层缩放图片最里层 -->
+          <img
+            :src="bgImageSrc"
+            class="scale-layer transition-all duration-700"
+            :style="customBgRenderStyle.scaleStyle"
+          />
+        </div>
       </div>
     </transition>
 

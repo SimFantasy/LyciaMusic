@@ -5,6 +5,7 @@ import type {
   LyricsColorScheme,
   LyricsFontPreset,
   LyricsPlayerAlignment,
+  LyricsPlayerRenderMode,
   LyricsSettings,
 } from '../../types';
 
@@ -26,6 +27,7 @@ export const MAX_PLAYER_OFFSET_Y = 25;
 export const DEFAULT_PLAYER_ALIGNMENT: LyricsPlayerAlignment = 'left';
 export const DEFAULT_DESKTOP_PLAYER_ALIGNMENT: DesktopLyricsPlayerAlignment = 'center';
 export const DEFAULT_PLAYER_FONT_PRESET: LyricsFontPreset = 'system';
+export const DEFAULT_PLAYER_RENDER_MODE: LyricsPlayerRenderMode = 'amll';
 export const DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR = '#EC4141';
 export const DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR = '#FFFFFF';
 export const DEFAULT_DESKTOP_CUSTOM_ROMAJI_PLAYED_COLOR = '#BFDBFE';
@@ -99,6 +101,7 @@ export const LYRICS_FONT_OPTIONS = [
 export const defaultLyricsSettings: LyricsSettings = {
   showTranslation: true,
   showRomaji: false,
+  playerRenderMode: DEFAULT_PLAYER_RENDER_MODE,
   playerFontScale: DEFAULT_PLAYER_FONT_SCALE,
   playerLineGap: DEFAULT_PLAYER_LINE_GAP,
   playerOffsetX: DEFAULT_PLAYER_OFFSET_X,
@@ -259,6 +262,10 @@ export function normalizeLyricsFontPreset(value: unknown): LyricsFontPreset {
   return normalized;
 }
 
+export function normalizeLyricsPlayerRenderMode(value: unknown): LyricsPlayerRenderMode {
+  return value === 'light' || value === 'amll' ? value : DEFAULT_PLAYER_RENDER_MODE;
+}
+
 export function extractPrimaryFontFamily(fontFamily: string): string {
   return fontFamily
     .split(',')[0]
@@ -277,6 +284,7 @@ export function normalizeLyricsSettingsPatch(patch: Partial<LyricsSettings>): Ly
     showRomaji: typeof patch.showRomaji === 'boolean'
       ? patch.showRomaji
       : defaultLyricsSettings.showRomaji,
+    playerRenderMode: normalizeLyricsPlayerRenderMode(patch.playerRenderMode),
     playerFontScale: clampPlayerFontScale(patch.playerFontScale ?? DEFAULT_PLAYER_FONT_SCALE),
     playerLineGap: clampPlayerLineGap(patch.playerLineGap ?? DEFAULT_PLAYER_LINE_GAP),
     playerOffsetX: clampPlayerOffsetX(patch.playerOffsetX ?? DEFAULT_PLAYER_OFFSET_X),

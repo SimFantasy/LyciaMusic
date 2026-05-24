@@ -47,6 +47,35 @@ function logDesktopLyricsBridgeError(action: string, error: unknown) {
   console.warn(`Failed to ${action} desktop lyrics window:`, error);
 }
 
+export function createDesktopLyricsPlaybackClockTracker(now = () => Date.now()) {
+  let sampledPlaybackTime: number | null = null;
+  let sampledAt = now();
+
+  const markPlaybackTimeSample = (playbackTime: number) => {
+    if (!Number.isFinite(playbackTime)) return;
+
+    sampledPlaybackTime = Math.max(0, playbackTime);
+    sampledAt = now();
+  };
+
+  const resolveSyncedAt = (playbackTime: number) => {
+    if (
+      sampledPlaybackTime === null
+      || !Number.isFinite(playbackTime)
+      || Math.abs(playbackTime - sampledPlaybackTime) > 0.000_001
+    ) {
+      markPlaybackTimeSample(playbackTime);
+    }
+
+    return sampledAt;
+  };
+
+  return {
+    markPlaybackTimeSample,
+    resolveSyncedAt,
+  };
+}
+
 export function createDesktopLyricsReadyGate(timeoutMs = DESKTOP_LYRICS_READY_TIMEOUT_MS) {
   let isReady = false;
   let readyPromise: Promise<void> | null = null;
@@ -264,6 +293,7 @@ export function useDesktopLyricsWindowBridge() {
   const { currentSong, currentTime, isPlaying } = storeToRefs(playbackStore);
   const { audioDelay } = storeToRefs(settingsStore);
   const { dominantColors } = storeToRefs(uiStore);
+  const playbackClockTracker = createDesktopLyricsPlaybackClockTracker();
 
   let isMainWindowClosing = false;
   let syncIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -275,7 +305,7 @@ export function useDesktopLyricsWindowBridge() {
     lyricsStatus: lyricsStatus.value,
     fallbackText: currentLyricLine.value.text,
     playbackTime: currentTime.value,
-    syncedAt: Date.now(),
+    syncedAt: playbackClockTracker.resolveSyncedAt(currentTime.value),
     isPlaying: isPlaying.value,
     audioDelay: audioDelay.value,
     settings: {
@@ -313,7 +343,7 @@ export function useDesktopLyricsWindowBridge() {
 
   const createPlaybackPayload = (): DesktopLyricsPlaybackPayload => ({
     playbackTime: currentTime.value,
-    syncedAt: Date.now(),
+    syncedAt: playbackClockTracker.resolveSyncedAt(currentTime.value),
     isPlaying: isPlaying.value,
     audioDelay: audioDelay.value,
   });
@@ -526,6 +556,14 @@ export function useDesktopLyricsWindowBridge() {
     stopSyncLoop();
     await destroyDesktopLyricsWindow();
   });
+
+  watch(
+    currentTime,
+    (time) => {
+      playbackClockTracker.markPlaybackTimeSample(time);
+    },
+    { immediate: true },
+  );
 
   watch(
     () => settingsStore.settings.showDesktopLyrics,

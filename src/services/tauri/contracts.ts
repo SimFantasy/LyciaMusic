@@ -343,6 +343,7 @@ export interface TauriCommandMap {
     payload: { enabled: boolean };
     response: void;
   };
+  refresh_taskbar_window_topmost: { payload: undefined; response: boolean };
   start_topmost_guard: { payload: undefined; response: void };
   stop_topmost_guard: { payload: undefined; response: void };
   clear_all_app_data: { payload: undefined; response: void };

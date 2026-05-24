@@ -6,7 +6,8 @@
     "main",
     "desktop-lyrics",
     "mini-player",
-    "tray-menu"
+    "tray-menu",
+    "taskbar-player"
   ],
   "permissions": [
     "core:default",

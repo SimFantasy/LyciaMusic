@@ -135,10 +135,41 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     await emitTo<DesktopLyricsAction>('main', DESKTOP_LYRICS_ACTION_EVENT, action);
   }
 
+  // 允许本地时钟领先远端同步时间的最大偏差（超过此值视为本地时钟漂移过大，强制对齐）
+  const SYNC_FORWARD_TOLERANCE_SECONDS = 0.5;
+  // 允许远端时间领先本地时钟的最大偏差（超过此值视为发生 seek 或跳转，强制对齐）
+  const SYNC_BACKWARD_TOLERANCE_SECONDS = 0.3;
+
   function syncPlaybackClock(nextTime: number, nextIsPlaying: boolean, nextSyncedAt: number) {
     const elapsed = nextIsPlaying ? Math.max(0, (Date.now() - nextSyncedAt) / 1000) : 0;
-    playbackTime.value = Math.max(0, nextTime + elapsed);
+    const remoteProjectedTime = Math.max(0, nextTime + elapsed);
+    const wasPlaying = isPlaying.value;
+
     isPlaying.value = nextIsPlaying;
+
+    // 播放状态改变（暂停/播放切换）时直接对齐
+    if (nextIsPlaying !== wasPlaying) {
+      playbackTime.value = remoteProjectedTime;
+      return;
+    }
+
+    const localTime = playbackTime.value;
+    const drift = remoteProjectedTime - localTime;
+
+    // 远端时间落后本地时钟：本地 rAF 时钟已领先，忽略此次同步以防回退
+    // 但若本地时钟漂移过大（领先超过阈值），说明本地时钟累积误差，需要对齐
+    if (drift < 0 && Math.abs(drift) <= SYNC_FORWARD_TOLERANCE_SECONDS) {
+      return;
+    }
+
+    // 远端时间超前本地时钟（可能是 seek 或网络波动），或本地漂移超出容忍范围，强制对齐
+    if (drift > SYNC_BACKWARD_TOLERANCE_SECONDS || drift < -SYNC_FORWARD_TOLERANCE_SECONDS) {
+      playbackTime.value = remoteProjectedTime;
+      return;
+    }
+
+    // 在容忍范围内的正向偏差，直接采用远端值（轻微修正本地时钟）
+    playbackTime.value = remoteProjectedTime;
   }
 
   function patchSettings(patch: DesktopLyricsSettingsPatch) {
