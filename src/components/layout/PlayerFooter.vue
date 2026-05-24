@@ -88,7 +88,7 @@ const progressTrackClass = computed(() => (
 const progressThumbClass = computed(() => (
   showPlayerDetail.value
     ? 'border-white/45 bg-white'
-    : 'border-white/55 bg-white'
+    : 'border-black/10 dark:border-white/20 bg-white'
 ));
 
 const progressVisualState = computed(() => getProgressVisualState(isProgressHidden.value, isDraggingProgress.value));
@@ -281,14 +281,32 @@ onUnmounted(() => {
         >
           <div class="absolute inset-0 rounded-full transition-colors duration-200" :class="progressTrackClass"></div>
           <div
-            class="absolute inset-y-0 left-0 rounded-full transition-[background-color,opacity] duration-200"
+            class="absolute inset-y-0 left-0 rounded-full transition-[background-color,opacity] duration-200 overflow-visible"
             :class="[progressFillClass, progressVisualState.trackClass]"
             :style="{ width: displayProgress + '%' }"
           >
+            <!-- 白色滑块圆球 (Thumb) -->
             <div
-              class="absolute right-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2 translate-x-1/2 rounded-full transition-all duration-150"
+              class="absolute right-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2 translate-x-1/2 rounded-full transition-all duration-150 z-40 border shadow-[0_2.5px_6px_rgba(0,0,0,0.15)]"
               :class="[progressThumbClass, isDraggingProgress && !isProgressHidden ? 'opacity-100 scale-100' : progressVisualState.thumbClass]"
             ></div>
+
+            <!-- 拖拽时间提示气泡的外层定位容器 (与白色滑块平级) -->
+            <div 
+              class="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-0 h-0 overflow-visible pointer-events-none z-50"
+            >
+              <!-- 内层负责 Vue transition 精致动画，物理定位通过 left-[-42px] 与 transform 解耦 -->
+              <transition name="fade-scale">
+                <div
+                  v-if="isDraggingProgress && !isProgressHidden"
+                  class="absolute bottom-4 left-[-42px] w-[84px] px-2 py-0.5 rounded-md bg-zinc-900/95 text-white text-[10px] font-semibold font-mono tracking-wider whitespace-nowrap shadow-lg border border-white/10 backdrop-blur-sm pointer-events-none select-none flex items-center justify-center text-center"
+                >
+                  {{ currentTimeStr }}/{{ totalTimeStr }}
+                  <!-- 气泡下方的微型三角指针 -->
+                  <div class="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-x-4 border-t-4 border-x-transparent border-t-zinc-900/95"></div>
+                </div>
+              </transition>
+            </div>
           </div>
         </div>
       </div>
@@ -510,3 +528,17 @@ onUnmounted(() => {
       </footer>
 
     </template>
+
+<style scoped>
+/* 拖拽气泡进入与离开的动画过渡 */
+.fade-scale-enter-active,
+.fade-scale-leave-active {
+  transition: opacity 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.fade-scale-enter-from,
+.fade-scale-leave-to {
+  opacity: 0;
+  transform: translateY(6px) scale(0.85);
+}
+</style>
