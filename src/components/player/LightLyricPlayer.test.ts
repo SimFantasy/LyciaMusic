@@ -5,6 +5,7 @@ import {
   LIGHT_LYRIC_VISIBLE_AFTER,
   LIGHT_LYRIC_VISIBLE_BEFORE,
   getLightLyricVisibleWindow,
+  resolveLightLyricLineProgress,
   resolveLightLyricActiveWord,
 } from './lightLyricPlayerModel';
 import type { LyricLine } from '../../composables/lyrics';
@@ -51,6 +52,11 @@ describe('light lyric player model', () => {
   it('returns no active word for line-only lyrics', () => {
     expect(resolveLightLyricActiveWord(lines[1], 1.5)).toBeNull();
   });
+
+  it('resolves line-level progress for lyrics without word timing', () => {
+    expect(resolveLightLyricLineProgress(lines[1], lines[2], 1.25)).toBe(0.25);
+    expect(resolveLightLyricLineProgress(lines[1], lines[2], 2.5)).toBe(1);
+  });
 });
 
 describe('LightLyricPlayer component source', () => {
@@ -65,5 +71,21 @@ describe('LightLyricPlayer component source', () => {
     expect(source).toContain('LIGHT_LYRIC_PROGRESS_FRAME_MS');
     expect(source).toContain('requestAnimationFrame');
     expect(source).toContain('stopProgressLoop');
+  });
+
+  it('renders the full lyric list with custom padding for 50% physical alignment', () => {
+    expect(source).toContain('lyricLines');
+    expect(source).toContain('lyricLineRefs');
+    expect(source).toContain('v-for="(line, index) in lyricLines"');
+  });
+
+  it('clips line-level fill without changing text wrapping', () => {
+    expect(source).toContain('clip-path: inset(0 calc(100% - var(--line-progress, 0%)) 0 0);');
+    expect(source).not.toContain('width: var(--line-progress, 0%);');
+  });
+
+  it('clips word-level fill without changing text wrapping', () => {
+    expect(source).toContain('clip-path: inset(0 calc(100% - var(--word-progress, 0%)) 0 0);');
+    expect(source).not.toContain('width: var(--word-progress, 0%);');
   });
 });

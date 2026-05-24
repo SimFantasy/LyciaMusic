@@ -20,8 +20,14 @@ export interface LightLyricRenderableWord {
   word: LyricWord;
 }
 
+const DEFAULT_LINE_DURATION_SECONDS = 3;
+
 function hasTimedWord(word: LyricWord) {
   return word.text.length > 0 && Number.isFinite(word.start) && Number.isFinite(word.end) && word.end > word.start;
+}
+
+function clampProgress(value: number) {
+  return Number(Math.min(1, Math.max(0, value)).toFixed(4));
 }
 
 export function findLightLyricIndexByTime(lines: LyricLine[], currentTime: number) {
@@ -77,14 +83,41 @@ export function resolveLightLyricActiveWord(
     if (!hasTimedWord(word)) continue;
     if (currentTime < word.start || currentTime > word.end) continue;
 
-    const progress = (currentTime - word.start) / (word.end - word.start);
     return {
       index,
-      progress: Number(Math.min(1, Math.max(0, progress)).toFixed(4)),
+      progress: clampProgress((currentTime - word.start) / (word.end - word.start)),
     };
   }
 
   return null;
+}
+
+export function resolveLightLyricWordFillProgress(
+  line: LyricLine | undefined,
+  wordIndex: number,
+  currentTime: number,
+): number {
+  const word = line?.words?.[wordIndex];
+  if (!word || !hasTimedWord(word)) return 0;
+  return clampProgress((currentTime - word.start) / (word.end - word.start));
+}
+
+export function resolveLightLyricLineProgress(
+  line: LyricLine | undefined,
+  nextLine: LyricLine | undefined,
+  currentTime: number,
+): number {
+  if (!line) return 0;
+
+  const start = line.time;
+  const nextStart = nextLine?.time;
+  const explicitEnd = line.endTime > line.time ? line.endTime : undefined;
+  const end = nextStart && nextStart > start
+    ? nextStart
+    : explicitEnd ?? start + DEFAULT_LINE_DURATION_SECONDS;
+
+  if (end <= start) return currentTime >= start ? 1 : 0;
+  return clampProgress((currentTime - start) / (end - start));
 }
 
 export function getLightLyricRenderableWords(line: LyricLine): LightLyricRenderableWord[] {

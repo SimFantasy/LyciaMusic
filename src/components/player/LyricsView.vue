@@ -48,6 +48,7 @@ const {
   showLyricsPlayerSettingsPanel,
 } = useLyrics();
 const { playAt, currentTime, isPlaying } = usePlayer();
+const { currentSong } = usePlayer();
 const { showPlayerDetail } = usePlayer();
 const { isMainWindowLowPower } = useRenderingPower();
 const settingsStore = useSettingsStore();
@@ -898,6 +899,9 @@ onUnmounted(() => {
           :show-translation="lyricsSettings.showTranslation"
           :show-romaji="lyricsSettings.showRomaji"
           :line-gap="previewPlayerLineGap"
+          :title="currentSong?.title || currentSong?.name"
+          :artist="currentSong?.artist"
+          :album="currentSong?.album"
           @line-click="handleLightLineClick"
         />
       </div>
