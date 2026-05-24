@@ -176,6 +176,7 @@ describe('settings store', () => {
     const settingsStore = useSettingsStore();
 
     expect(settingsStore.settings.audio.outputMode).toBe('shared');
+    expect(settingsStore.settings.audio.volumeBalance.gainOffsetDb).toBe(0);
 
     const merged = mergeAppSettings(settingsStore.settings, {
       audio: {
@@ -184,6 +185,26 @@ describe('settings store', () => {
     });
 
     expect(merged.audio.outputMode).toBe('wasapiExclusive');
+  });
+
+  it('migrates legacy target LUFS volume balance settings to gain offset dB', () => {
+    const settingsStore = useSettingsStore();
+
+    const merged = mergeAppSettings(settingsStore.settings, {
+      audio: {
+        volumeBalance: {
+          enabled: true,
+          targetLufs: -14,
+          preventClipping: false,
+        },
+      },
+    });
+
+    expect(merged.audio.volumeBalance).toEqual({
+      enabled: true,
+      gainOffsetDb: 4,
+      preventClipping: false,
+    });
   });
 
   it('merges lyrics settings without dropping untouched display preferences', () => {

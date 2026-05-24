@@ -101,6 +101,29 @@ export interface StatisticsImportResult {
   duplicateImportSkipped: boolean;
 }
 
+export interface LoudnessRecord {
+  songId: number;
+  songPath: string;
+  loudnessLufs: number | null;
+  estimatedLoudnessLufs: number | null;
+  samplePeak: number | null;
+  truePeak: number | null;
+  tagTrackGainDb: number | null;
+  tagTrackPeak: number | null;
+  tagAlbumGainDb: number | null;
+  tagAlbumPeak: number | null;
+  tagR128TrackGainDb: number | null;
+  tagR128AlbumGainDb: number | null;
+  fileSize: number;
+  fileModifiedAt: number;
+  scanSource: string;
+  analyzerName: string | null;
+  analyzerVersion: number;
+  scanStatus: string;
+  scannedAt: number | null;
+  errorMessage: string | null;
+}
+
 export interface PlayAudioOptions {
   path: string;
   title: string;
@@ -110,6 +133,18 @@ export interface PlayAudioOptions {
   duration: number;
   outputMode: AudioOutputMode;
   startOffsetMs?: number;
+  songId?: number | null;
+  volumeBalanceEnabled?: boolean | null;
+  gainOffsetDb?: number | null;
+  preventClipping?: boolean | null;
+}
+
+export interface UpdateLoudnessSettingsOptions {
+  enabled: boolean;
+  songId?: number | null;
+  songPath?: string | null;
+  gainOffsetDb: number;
+  preventClipping: boolean;
 }
 
 export interface UpdatePlaybackMetadataOptions {
@@ -352,4 +387,12 @@ export interface TauriCommandMap {
     response: void;
   };
   consume_pending_open_paths: { payload: undefined; response: string[] };
+  get_track_loudness_info: {
+    payload: { songId: number };
+    response: LoudnessRecord | null;
+  };
+  update_loudness_settings: {
+    payload: UpdateLoudnessSettingsOptions;
+    response: void;
+  };
 }

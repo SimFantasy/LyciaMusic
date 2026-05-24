@@ -4,7 +4,7 @@ import { useSettings } from '../../features/settings/useSettings';
 
 const { settings } = useSettings();
 
-const volumeBalanceTip = '音量平衡（响度均衡）会自动分析每首歌曲的感知响度，播放时将过响的歌曲压低、过轻的歌曲提升，让所有歌曲听起来音量一致，避免频繁手动调节音量。';
+const volumeBalanceTip = '音量平衡会读取歌曲内置 ReplayGain 标签，在切歌时自动平衡音量。默认完全按标签播放，不改变歌曲内部动态。不存在标签时则无变化。';
 </script>
 
 <template>
@@ -14,7 +14,8 @@ const volumeBalanceTip = '音量平衡（响度均衡）会自动分析每首歌
         <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
         音频处理
       </h2>
-      <div class="flex flex-col rounded-xl overflow-hidden">
+      <div class="flex flex-col rounded-xl overflow-hidden bg-white/20 dark:bg-black/10 border border-gray-200/40 dark:border-gray-800/40">
+        <!-- 音量平衡主开关行 -->
         <div class="desktop-setting-row">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">音量平衡</div>
@@ -31,14 +32,70 @@ const volumeBalanceTip = '音量平衡（响度均衡）会自动分析每首歌
             <button
               type="button"
               class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none"
-              :class="settings.audio.volumeBalance ? 'bg-[#EC4141]' : 'bg-gray-300 dark:bg-gray-700'"
-              @click="settings.audio.volumeBalance = !settings.audio.volumeBalance"
+              :class="settings.audio.volumeBalance.enabled ? 'bg-[#EC4141]' : 'bg-gray-300 dark:bg-gray-700'"
+              @click="settings.audio.volumeBalance.enabled = !settings.audio.volumeBalance.enabled"
             >
               <span
                 class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out shadow-sm"
-                :class="settings.audio.volumeBalance ? 'translate-x-6' : 'translate-x-1'"
+                :class="settings.audio.volumeBalance.enabled ? 'translate-x-6' : 'translate-x-1'"
               />
             </button>
+          </div>
+        </div>
+
+        <!-- 高级音量平衡配置子区域 -->
+        <div
+          v-if="settings.audio.volumeBalance.enabled"
+          class="flex flex-col border-t border-gray-200/20 dark:border-gray-800/20 bg-gray-50/10 dark:bg-gray-900/10 transition-all duration-300 animate-in slide-in-from-top-2"
+        >
+          <!-- 整体增益偏移设置 -->
+          <div class="desktop-setting-row border-b border-gray-200/20 dark:border-gray-800/20 pl-8">
+            <div class="flex-1 space-y-1">
+              <div class="text-sm font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                整体增益偏移
+                <span class="text-xs font-semibold px-2 py-0.5 rounded bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
+                  {{ settings.audio.volumeBalance.gainOffsetDb > 0 ? '+' : '' }}{{ settings.audio.volumeBalance.gainOffsetDb }} dB
+                </span>
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 max-w-xl">
+                默认 0 dB，表示完全按 ReplayGain 标签播放。调高会整体更响，调低会保留更多余量。
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <input
+                type="range"
+                min="-12"
+                max="6"
+                step="1"
+                v-model.number="settings.audio.volumeBalance.gainOffsetDb"
+                class="w-36 h-1 rounded-lg bg-gray-200 dark:bg-gray-700 appearance-none cursor-pointer accent-[#EC4141]"
+              />
+            </div>
+          </div>
+
+          <!-- 防削波保护开关 -->
+          <div class="desktop-setting-row pl-8">
+            <div class="flex-1 space-y-1">
+              <div class="text-sm font-medium text-gray-800 dark:text-gray-200">
+                防削波破音保护
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 max-w-xl">
+                当音量增益过大可能超出 0 dB 极限时自动降低音频信号。无峰值标签曲目会降级为不应用任何正增益。
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <button
+                type="button"
+                class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none"
+                :class="settings.audio.volumeBalance.preventClipping ? 'bg-[#EC4141]' : 'bg-gray-300 dark:bg-gray-700'"
+                @click="settings.audio.volumeBalance.preventClipping = !settings.audio.volumeBalance.preventClipping"
+              >
+                <span
+                  class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out shadow-sm"
+                  :class="settings.audio.volumeBalance.preventClipping ? 'translate-x-6' : 'translate-x-1'"
+                />
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -147,6 +147,7 @@ pub enum AudioCommand {
         source: AudioSource,
         output_mode: AudioOutputMode,
         start_offset_ms: Option<u64>,
+        volume_balance_gain: f32,
     },
     Pause,
     Stop,
@@ -157,6 +158,10 @@ pub enum AudioCommand {
         request_id: u64,
     },
     SetVolume(f32),
+    SetVolumeBalance {
+        enabled: bool,
+        target_gain: f32,
+    },
     SetDevice(Option<String>),
     SetOutputMode(AudioOutputMode),
 }

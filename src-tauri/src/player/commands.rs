@@ -1,6 +1,9 @@
 use crate::database::DbState;
 use crate::music::scanner::apply_scan_changes;
 use crate::music::types::Song;
+use crate::player::loudness::{
+    calculate_playback_gain, get_song_loudness_record, process_song_on_play, LoudnessRecord,
+};
 use crate::player::spectrum::build_frequency_bands;
 use crate::player::types::{
     AudioCommand, AudioOutputMode, AudioSource, PlayerState, VISUALIZER_BAND_COUNT,
@@ -54,6 +57,10 @@ pub async fn play_audio(
     duration: u32,
     output_mode: AudioOutputMode,
     start_offset_ms: Option<u64>,
+    song_id: Option<i64>,
+    volume_balance_enabled: Option<bool>,
+    gain_offset_db: Option<f32>,
+    prevent_clipping: Option<bool>,
     app: tauri::AppHandle,
     db_state: tauri::State<'_, DbState>,
     state: tauri::State<'_, PlayerState>,
@@ -78,8 +85,19 @@ pub async fn play_audio(
             }
         }
     } else {
-        AudioSource::LocalFile(path)
+        AudioSource::LocalFile(path.clone())
     };
+
+    let mut volume_balance_gain = 1.0;
+    if let (Some(s_id), Some(true)) = (song_id, volume_balance_enabled) {
+        if let Ok(mut conn) = db_state.conn.lock() {
+            if let Ok(record) = process_song_on_play(&mut conn, s_id, &path) {
+                let offset_db = gain_offset_db.unwrap_or(0.0);
+                let prev_clip = prevent_clipping.unwrap_or(true);
+                volume_balance_gain = calculate_playback_gain(&record, offset_db, prev_clip);
+            }
+        }
+    }
 
     let normalized_cover = normalize_cover_for_smtc(&cover);
     let tx = state.tx.lock().map_err(|e| e.to_string())?;
@@ -87,6 +105,7 @@ pub async fn play_audio(
         source,
         output_mode: selected_output_mode,
         start_offset_ms,
+        volume_balance_gain,
     })
     .map_err(|e| e.to_string())?;
 
@@ -334,4 +353,43 @@ pub fn get_audio_visualizer_samples(state: tauri::State<PlayerState>) -> Vec<f32
     let visualizer = &state.progress.visualizer;
     let sample_rate = state.progress.sample_rate.load(Ordering::Relaxed);
     build_frequency_bands(&visualizer.snapshot(), sample_rate, VISUALIZER_BAND_COUNT)
+}
+
+#[tauri::command]
+pub async fn get_track_loudness_info(
+    song_id: i64,
+    db_state: tauri::State<'_, DbState>,
+) -> Result<Option<LoudnessRecord>, String> {
+    let conn = db_state.conn.lock().map_err(|e| e.to_string())?;
+    get_song_loudness_record(&conn, song_id)
+}
+
+#[tauri::command]
+pub async fn update_loudness_settings(
+    enabled: bool,
+    song_id: Option<i64>,
+    song_path: Option<String>,
+    gain_offset_db: f32,
+    prevent_clipping: bool,
+    db_state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, PlayerState>,
+) -> Result<(), String> {
+    let mut target_gain = 1.0;
+    if enabled {
+        if let (Some(s_id), Some(path)) = (song_id, song_path.as_deref()) {
+            if let Ok(mut conn) = db_state.conn.lock() {
+                if let Ok(record) = process_song_on_play(&mut conn, s_id, path) {
+                    target_gain = calculate_playback_gain(&record, gain_offset_db, prevent_clipping);
+                }
+            }
+        }
+    }
+
+    let tx = state.tx.lock().map_err(|e| e.to_string())?;
+    tx.send(AudioCommand::SetVolumeBalance {
+        enabled,
+        target_gain,
+    })
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }

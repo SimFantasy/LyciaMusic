@@ -31,7 +31,12 @@ export type SidebarSettingsPatch = Partial<SidebarSettings>;
 
 export type LyricsSettingsPatch = Partial<LyricsSettings>;
 export type DesktopLyricsSettingsPatch = Partial<DesktopLyricsSettings>;
-export type AudioSettingsPatch = Partial<AudioSettings>;
+type LegacyVolumeBalanceSettingsPatch = Partial<AudioSettings['volumeBalance']> & {
+  targetLufs?: number;
+};
+export type AudioSettingsPatch = Partial<Omit<AudioSettings, 'volumeBalance'>> & {
+  volumeBalance?: LegacyVolumeBalanceSettingsPatch | boolean;
+};
 export type ImportedLyricsFontsPatch = ImportedLyricsFont[];
 
 export interface AppSettingsPatch
@@ -90,7 +95,11 @@ export const defaultSidebarSettings: SidebarSettings = {
 
 export const defaultAudioSettings: AudioSettings = {
   outputMode: 'shared',
-  volumeBalance: false,
+  volumeBalance: {
+    enabled: false,
+    gainOffsetDb: 0,
+    preventClipping: true,
+  },
 };
 
 export const defaultAppSettings: AppSettings = {
@@ -184,11 +193,31 @@ export const mergeSidebarSettings = (
 export const mergeAudioSettings = (
   base: AudioSettings,
   patch: AudioSettingsPatch,
-): AudioSettings => ({
-  ...base,
-  outputMode: patch.outputMode === 'wasapiExclusive' ? 'wasapiExclusive' : 'shared',
-  volumeBalance: patch.volumeBalance ?? base.volumeBalance,
-});
+): AudioSettings => {
+  const volumeBalancePatch = patch.volumeBalance;
+  let enabled = base.volumeBalance?.enabled ?? false;
+  let gainOffsetDb = base.volumeBalance?.gainOffsetDb ?? 0;
+  let preventClipping = base.volumeBalance?.preventClipping ?? true;
+
+  if (typeof volumeBalancePatch === 'boolean') {
+    enabled = volumeBalancePatch;
+  } else if (volumeBalancePatch && typeof volumeBalancePatch === 'object') {
+    enabled = volumeBalancePatch.enabled ?? enabled;
+    gainOffsetDb = volumeBalancePatch.gainOffsetDb
+      ?? (volumeBalancePatch.targetLufs !== undefined ? volumeBalancePatch.targetLufs - (-18) : gainOffsetDb);
+    preventClipping = volumeBalancePatch.preventClipping ?? preventClipping;
+  }
+
+  return {
+    ...base,
+    outputMode: patch.outputMode === 'wasapiExclusive' ? 'wasapiExclusive' : 'shared',
+    volumeBalance: {
+      enabled,
+      gainOffsetDb,
+      preventClipping,
+    },
+  };
+};
 
 export const mergeAppSettings = (
   base: AppSettings,

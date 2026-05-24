@@ -1,4 +1,5 @@
 use crate::player::device::{default_output_device_name, emit_output_status};
+use crate::player::loudness::{VolumeNormalizer, VolumeNormalizerHandle};
 use crate::player::output::shared::progress_seconds_from_samples;
 use crate::player::output::shared::{restore_current_playback, SharedOutputBackend};
 #[cfg(target_os = "windows")]
@@ -64,6 +65,7 @@ fn start_exclusive_playback(
     is_playing: bool,
     start_time: Duration,
     progress: &Arc<SharedProgress>,
+    volume_balance_gain: f32,
 ) -> Result<WasapiExclusivePlayback, String> {
     WasapiExclusivePlayback::start(ExclusivePlayRequest {
         path,
@@ -72,6 +74,7 @@ fn start_exclusive_playback(
         is_playing,
         progress: progress.clone(),
         start_time,
+        volume_balance_gain,
     })
     .map_err(|error| error.to_string())
 }
@@ -91,6 +94,7 @@ fn restore_preferred_output(
     current_volume: f32,
     is_playing_flag: bool,
     progress: &Arc<SharedProgress>,
+    volume_balance_gain: f32,
 ) {
     *output = SharedOutputBackend::open(host, selected_device_name.as_deref()).ok();
     *active_device_name = output
@@ -106,6 +110,7 @@ fn restore_preferred_output(
             is_playing_flag,
             progress_duration(progress),
             progress,
+            volume_balance_gain,
         ) {
             Ok(playback) => {
                 *active_device_name = Some(playback.active_device_name().to_string());
@@ -378,6 +383,8 @@ fn append_decoded_source<R>(
     current_volume: f32,
     progress: &Arc<SharedProgress>,
     start_offset: Option<Duration>,
+    volume_balance_gain: f32,
+    current_normalizer_handle: &mut Option<VolumeNormalizerHandle>,
 ) where
     R: Read + Seek + Send + Sync + 'static,
 {
@@ -403,8 +410,16 @@ fn append_decoded_source<R>(
 
             let skipped_source = source.convert_samples::<f32>().skip_duration(offset);
 
-            let timed_source = TimedSource::new(
+            // 封装平滑渐变的定值音量平衡节点
+            let (normalized_source, handle) = VolumeNormalizer::new(
                 skipped_source,
+                volume_balance_gain,
+                100, // ramp 100ms
+            );
+            *current_normalizer_handle = Some(handle);
+
+            let timed_source = TimedSource::new(
+                normalized_source,
                 progress.samples_played.clone(),
                 progress.visualizer.clone(),
             );
@@ -427,6 +442,8 @@ fn handle_play(
     is_playing_flag: &mut bool,
     progress: &Arc<SharedProgress>,
     start_offset_ms: Option<u64>,
+    volume_balance_gain: f32,
+    current_normalizer_handle: &mut Option<VolumeNormalizerHandle>,
 ) {
     *current_path = source.display_path();
     *is_playing_flag = true;
@@ -448,6 +465,8 @@ fn handle_play(
                     current_volume,
                     progress,
                     start_offset,
+                    volume_balance_gain,
+                    current_normalizer_handle,
                 );
             }
         }
@@ -460,6 +479,8 @@ fn handle_play(
                     current_volume,
                     progress,
                     start_offset,
+                    volume_balance_gain,
+                    current_normalizer_handle,
                 );
             }
         }
@@ -477,6 +498,8 @@ fn handle_seek(
     is_playing_flag: &mut bool,
     progress: &Arc<SharedProgress>,
     app: &AppHandle,
+    volume_balance_gain: f32,
+    current_normalizer_handle: &mut Option<VolumeNormalizerHandle>,
 ) {
     let clamped_time = time.max(0.0);
     let jump_target = Duration::from_secs_f64(clamped_time);
@@ -517,8 +540,19 @@ fn handle_seek(
                                     .samples_played
                                     .store(samples_to_skip, Ordering::Relaxed);
 
+                                let skipped_source =
+                                    source.convert_samples::<f32>().skip_duration(jump_target);
+
+                                // 封装平滑渐变的定值音量平衡节点
+                                let (normalized_source, handle) = VolumeNormalizer::new(
+                                    skipped_source,
+                                    volume_balance_gain,
+                                    100, // ramp 100ms
+                                );
+                                *current_normalizer_handle = Some(handle);
+
                                 let timed_source = TimedSource::new(
-                                    source.convert_samples::<f32>().skip_duration(jump_target),
+                                    normalized_source,
                                     progress.samples_played.clone(),
                                     progress.visualizer.clone(),
                                 );
@@ -580,6 +614,8 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
         let mut active_device_name = output
             .as_ref()
             .map(|output| output.active_device_name().to_string());
+        let mut current_normalizer_handle: Option<VolumeNormalizerHandle> = None;
+        let mut current_volume_balance_gain = 1.0;
 
         if let Some(output) = &output {
             current_sink = output.create_sink().ok();
@@ -602,8 +638,10 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                         source,
                         output_mode,
                         start_offset_ms,
+                        volume_balance_gain,
                     } => {
                         requested_output_mode = output_mode;
+                        current_volume_balance_gain = volume_balance_gain;
                         let source_is_remote = source.is_remote();
                         let display_path = source.display_path();
 
@@ -625,6 +663,7 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                                 true,
                                 exclusive_start,
                                 &thread_progress,
+                                current_volume_balance_gain,
                             ) {
                                 Ok(playback) => {
                                     if selected_device_name.is_none() {
@@ -704,6 +743,8 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                             &mut is_playing_flag,
                             &thread_progress,
                             start_offset_ms,
+                            current_volume_balance_gain,
+                            &mut current_normalizer_handle,
                         )
                     }
                     AudioCommand::Pause => {
@@ -774,6 +815,8 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                             &mut is_playing_flag,
                             &thread_progress,
                             &thread_app_handle,
+                            current_volume_balance_gain,
+                            &mut current_normalizer_handle,
                         )
                     }
                     AudioCommand::SetVolume(vol) => {
@@ -814,6 +857,7 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                             current_volume,
                             is_playing_flag,
                             &thread_progress,
+                            current_volume_balance_gain,
                         );
                         if selected_device_name.is_none() {
                             last_default_device_name = default_output_device_name(&host);
@@ -854,6 +898,7 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                             current_volume,
                             is_playing_flag,
                             &thread_progress,
+                            current_volume_balance_gain,
                         );
                         if selected_device_name.is_none() {
                             last_default_device_name = default_output_device_name(&host);
@@ -868,6 +913,22 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                             active_output_mode,
                             fallback_reason.clone(),
                         );
+                    }
+                    AudioCommand::SetVolumeBalance {
+                        enabled,
+                        target_gain,
+                    } => {
+                        let next_gain = if enabled { target_gain } else { 1.0 };
+                        current_volume_balance_gain = next_gain;
+
+                        if let Some(ref handle) = current_normalizer_handle {
+                            handle.set_target_gain(next_gain);
+                        }
+
+                        #[cfg(target_os = "windows")]
+                        if let Some(ref playback) = exclusive_playback {
+                            playback.set_volume_balance(enabled, target_gain);
+                        }
                     }
                 },
                 Err(RecvTimeoutError::Timeout) => {
@@ -938,6 +999,7 @@ pub fn init_player(app: &AppHandle) -> PlayerState {
                                 current_volume,
                                 is_playing_flag,
                                 &thread_progress,
+                                current_volume_balance_gain,
                             );
 
                             emit_output_status(
@@ -989,6 +1051,7 @@ mod tests {
         let mut current_sink = None;
         let mut current_path = String::new();
         let mut is_playing_flag = false;
+        let mut current_normalizer_handle = None;
 
         handle_play(
             AudioSource::LocalFile("Z:\\missing\\song.flac".to_string()),
@@ -999,6 +1062,8 @@ mod tests {
             &mut is_playing_flag,
             &progress,
             None,
+            1.0,
+            &mut current_normalizer_handle,
         );
 
         assert_eq!(progress.samples_played.load(Ordering::Relaxed), 0);

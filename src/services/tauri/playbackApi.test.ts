@@ -58,4 +58,22 @@ describe('playbackApi', () => {
 
     expect(tauriInvoke).toHaveBeenCalledWith('stop_audio');
   });
+
+  it('passes loudness settings context to update_loudness_settings', () => {
+    playbackApi.updateLoudnessSettings({
+      enabled: true,
+      songId: 42,
+      songPath: '/music/demo.flac',
+      gainOffsetDb: -2,
+      preventClipping: false,
+    });
+
+    expect(tauriInvoke).toHaveBeenCalledWith('update_loudness_settings', {
+      enabled: true,
+      songId: 42,
+      songPath: '/music/demo.flac',
+      gainOffsetDb: -2,
+      preventClipping: false,
+    });
+  });
 });

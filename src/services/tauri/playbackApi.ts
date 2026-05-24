@@ -4,7 +4,9 @@ import type {
   AudioOutputStatus,
   PlayAudioOptions,
   SeekAudioOptions,
+  UpdateLoudnessSettingsOptions,
   UpdatePlaybackMetadataOptions,
+  LoudnessRecord,
 } from './contracts';
 
 export const playbackApi = {
@@ -36,4 +38,8 @@ export const playbackApi = {
   getOutputDevices: (): Promise<AudioDevice[]> => tauriInvoke('get_output_devices'),
   getCurrentOutputDevice: (): Promise<AudioOutputStatus> =>
     tauriInvoke('get_current_output_device'),
+  getTrackLoudnessInfo: (songId: number): Promise<LoudnessRecord | null> =>
+    tauriInvoke('get_track_loudness_info', { songId }),
+  updateLoudnessSettings: (options: UpdateLoudnessSettingsOptions): Promise<void> =>
+    tauriInvoke('update_loudness_settings', options),
 };

@@ -360,6 +360,10 @@ export const createPlayerPlayback = ({
         duration: Math.floor(song.duration),
         outputMode: settingsStore.settings.audio.outputMode,
         startOffsetMs: startOffsetMs || undefined,
+        songId: song.id,
+        volumeBalanceEnabled: settingsStore.settings.audio.volumeBalance?.enabled,
+        gainOffsetDb: settingsStore.settings.audio.volumeBalance?.gainOffsetDb,
+        preventClipping: settingsStore.settings.audio.volumeBalance?.preventClipping,
       });
       if (requestId !== playRequestId || currentSong.value?.path !== song.path) return;
 

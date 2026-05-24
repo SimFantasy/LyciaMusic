@@ -304,7 +304,11 @@ export type AudioOutputMode = 'shared' | 'wasapiExclusive';
 
 export interface AudioSettings {
   outputMode: AudioOutputMode;
-  volumeBalance: boolean;
+  volumeBalance: {
+    enabled: boolean;
+    gainOffsetDb: number;
+    preventClipping: boolean;
+  };
 }
 
 export type ShortcutActionId =

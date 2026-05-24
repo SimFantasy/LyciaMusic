@@ -8,18 +8,14 @@ mod player;
 mod remote;
 mod statistics;
 mod system_fonts;
+mod taskbar;
 mod toolbox;
 mod window_boundary;
 mod window_material;
 mod window_theme;
 mod window_z_order;
-mod taskbar;
 
 use app_runtime::{consume_pending_open_paths, exit_app, handle_single_instance, setup_app};
-use taskbar::{
-    get_taskbar_tray_geometry, install_taskbar_zorder_guard, refresh_taskbar_window_topmost,
-    setup_taskbar_window, uninstall_taskbar_zorder_guard,
-};
 use custom_fonts::{import_lyrics_font, read_lyrics_font_data_url};
 use database::clear_all_app_data;
 use foreground_window::get_foreground_fullscreen_state;
@@ -37,8 +33,9 @@ use music::{
 };
 use player::{
     get_audio_visualizer_samples, get_current_output_device, get_output_devices,
-    get_playback_progress, pause_audio, play_audio, resume_audio, seek_audio,
-    set_audio_output_mode, set_output_device, set_volume, stop_audio, update_playback_metadata,
+    get_playback_progress, get_track_loudness_info, pause_audio, play_audio, resume_audio,
+    seek_audio, set_audio_output_mode, set_output_device, set_volume, stop_audio,
+    update_loudness_settings, update_playback_metadata,
 };
 use remote::{
     add_remote_source, clear_remote_cache, get_remote_cache_usage, get_remote_sources,
@@ -54,6 +51,10 @@ use statistics::{
     remove_from_recent_history, remove_songs_from_history_and_statistics,
 };
 use system_fonts::get_system_fonts;
+use taskbar::{
+    get_taskbar_tray_geometry, install_taskbar_zorder_guard, refresh_taskbar_window_topmost,
+    setup_taskbar_window, uninstall_taskbar_zorder_guard,
+};
 use toolbox::{apply_rename, open_external_program, preview_rename, refresh_folder_songs};
 use window_boundary::set_mini_boundary_enabled;
 use window_material::get_window_material_capabilities;
@@ -96,6 +97,8 @@ pub fn run() {
             set_volume,
             get_playback_progress,
             get_audio_visualizer_samples,
+            get_track_loudness_info,
+            update_loudness_settings,
             preview_rename,
             apply_rename,
             get_output_devices,

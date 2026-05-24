@@ -222,6 +222,19 @@ export const createPlayerLifecycle = ({
   const scheduleStatePersistence = () => {
     schedulePersistedState();
   };
+  const syncLoudnessSettings = async () => {
+    const volumeBalance = settings.value.audio.volumeBalance;
+    const song = currentSong.value;
+    await playbackApi.updateLoudnessSettings({
+      enabled: volumeBalance.enabled,
+      songId: song?.id ?? null,
+      songPath: song ? (song.cue_source_path || song.path) : null,
+      gainOffsetDb: volumeBalance.gainOffsetDb,
+      preventClipping: volumeBalance.preventClipping,
+    }).catch(err => {
+      console.warn('Failed to update loudness settings:', err);
+    });
+  };
 
   onMounted(async () => {
     await bootstrapLibrary();
@@ -297,6 +310,13 @@ export const createPlayerLifecycle = ({
     watch(favoritePaths, scheduleStatePersistence, { deep: true });
     watch(playlists, scheduleStatePersistence, { deep: true });
     watch(settings, scheduleStatePersistence, { deep: true });
+    watch(
+      () => settings.value.audio.volumeBalance,
+      () => {
+        void syncLoudnessSettings();
+      },
+      { deep: true }
+    );
     watch(artistCustomOrder, scheduleStatePersistence, { deep: true });
     watch(albumCustomOrder, scheduleStatePersistence, { deep: true });
     watch(folderCustomOrder, scheduleStatePersistence, { deep: true });
@@ -514,6 +534,10 @@ export const createPlayerLifecycle = ({
       await playbackApi.setAudioOutputMode(settings.value.audio.outputMode).catch(error => {
         console.warn('Failed to restore audio output mode:', error);
       });
+      const vb = settings.value.audio.volumeBalance;
+      if (vb) {
+        await syncLoudnessSettings();
+      }
 
       await restorePathBackedState();
       await restoreRecentHistory();
