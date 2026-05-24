@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { convertFileSrc } from '@tauri-apps/api/core';
 
 import { useCustomThemeModal } from '../../composables/useCustomThemeModal';
+import { calculateCoverGeometry } from '../../composables/useThemeBackgroundGeometry';
 
 const emit = defineEmits(['close']);
 const {
@@ -29,31 +30,117 @@ const handleSave = () => {
   emit('close');
 };
 
-// --- 背景图片自由拖拽定位逻辑 ---
+// --- 背景物理与视口几何管理 ---
 const containerRef = ref<HTMLDivElement | null>(null);
 const isDragging = ref(false);
-let containerWidth = 0;
-let containerHeight = 0;
 let startX = 0;
 let startY = 0;
 let startTranslateX = 0;
 let startTranslateY = 0;
 
-// 模糊安全膨胀（最大防漏底保守化）
-const blurCompensation = computed(() => Math.min(0.08, (preview.value.blur || 0) * 0.002));
-const renderScale = computed(() => preview.value.scale + blurCompensation.value);
+const viewportWidth = ref(0);
+const viewportHeight = ref(0);
+const imageNaturalWidth = ref(preview.value.imageWidth || 0);
+const imageNaturalHeight = ref(preview.value.imageHeight || 0);
 
+// 模糊安全膨胀（防漏底保守化）
+const blurCompensation = computed(() => Math.min(0.08, (preview.value.blur || 0) * 0.002));
+const renderScale = computed(() => Math.max(1.0, (preview.value.scale || 1.0) + blurCompensation.value));
+
+// 共享几何尺寸计算
+const viewportGeometry = computed(() => {
+  return calculateCoverGeometry(
+    viewportWidth.value,
+    viewportHeight.value,
+    imageNaturalWidth.value,
+    imageNaturalHeight.value
+  );
+});
+
+// 计算当前图片在 Viewport 中是否存在可拖拽物理余地
+const canDrag = computed(() => {
+  if (!preview.value.imagePath || !viewportGeometry.value || viewportWidth.value <= 0 || viewportHeight.value <= 0) return false;
+
+  const safeScale = Math.max(1.0, (preview.value.scale || 1.0) + blurCompensation.value);
+  const scaledImgW = viewportGeometry.value.width * safeScale;
+  const scaledImgH = viewportGeometry.value.height * safeScale;
+
+  const maxTxPx = Math.max(0, (scaledImgW - viewportWidth.value) / 2);
+  const maxTyPx = Math.max(0, (scaledImgH - viewportHeight.value) / 2);
+
+  return maxTxPx > 0.5 || maxTyPx > 0.5;
+});
+
+// 探测大背景的宽高比以对齐几何
+const getActualBackgroundRatio = () => {
+  const bgEl = document.querySelector('[data-global-background]');
+  if (bgEl) {
+    const rect = bgEl.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      return rect.width / rect.height;
+    }
+  }
+  return window.innerWidth / window.innerHeight;
+};
+
+// 动态更新 Viewport 尺寸
+const updateViewportSize = () => {
+  if (!containerRef.value) return;
+  const containerRect = containerRef.value.getBoundingClientRect();
+  const W_max = containerRect.width;
+  const H_max = containerRect.height;
+
+  if (W_max <= 0 || H_max <= 0) return;
+
+  const R_win = getActualBackgroundRatio();
+
+  let w = W_max;
+  let h = W_max / R_win;
+
+  if (h > H_max) {
+    h = H_max;
+    w = H_max * R_win;
+  }
+
+  viewportWidth.value = Math.floor(w);
+  viewportHeight.value = Math.floor(h);
+};
+
+// --- 精密防漏底边界 Clamp 函数 ---
+const getClampedTranslation = (tx: number, ty: number, scale = preview.value.scale) => {
+  if (!viewportGeometry.value) {
+    return { tx: 0, ty: 0 };
+  }
+
+  const safeScale = Math.max(1.0, scale + blurCompensation.value);
+  const scaledImgW = viewportGeometry.value.width * safeScale;
+  const scaledImgH = viewportGeometry.value.height * safeScale;
+
+  // 根据物理公式，平移最大像素限制为 (S * W_img - W) / 2
+  const maxTxPx = Math.max(0, (scaledImgW - viewportWidth.value) / 2);
+  const maxTyPx = Math.max(0, (scaledImgH - viewportHeight.value) / 2);
+
+  // 转换比例值为像素
+  const txPx = tx * viewportWidth.value;
+  const tyPx = ty * viewportHeight.value;
+
+  // 物理 Clamp 限幅
+  const clampedTxPx = Math.max(-maxTxPx, Math.min(maxTxPx, txPx));
+  const clampedTyPx = Math.max(-maxTyPx, Math.min(maxTyPx, tyPx));
+
+  return {
+    tx: clampedTxPx / viewportWidth.value,
+    ty: clampedTyPx / viewportHeight.value,
+  };
+};
+
+// --- 拖拽与缩放事件同步 Inline 处理 ---
 const handlePointerDown = (e: PointerEvent) => {
-  if (!preview.value.imagePath || preview.value.scale <= 1.0) return;
+  if (!preview.value.imagePath || !canDrag.value) return;
   
-  // 阻止默认拖拽或选中行为
   e.preventDefault();
 
   const container = e.currentTarget as HTMLDivElement;
-  const rect = container.getBoundingClientRect();
-  containerWidth = rect.width;
-  containerHeight = rect.height;
-  
   startX = e.clientX;
   startY = e.clientY;
   startTranslateX = preview.value.translateX || 0;
@@ -64,23 +151,21 @@ const handlePointerDown = (e: PointerEvent) => {
 };
 
 const handlePointerMove = (e: PointerEvent) => {
-  if (!isDragging.value || containerWidth <= 0 || containerHeight <= 0) return;
+  if (!isDragging.value || viewportWidth.value <= 0 || viewportHeight.value <= 0) return;
   
   const deltaX = e.clientX - startX;
   const deltaY = e.clientY - startY;
   
-  // 视觉平移限幅（Clamp 纯依赖用户主动设定的 scale，当 scale=1.0 时强制归 0）
-  const maxOffsetX = Math.max(0, (preview.value.scale - 1) / 2);
-  const maxOffsetY = Math.max(0, (preview.value.scale - 1) / 2);
+  const rawTx = startTranslateX + deltaX / viewportWidth.value;
+  const rawTy = startTranslateY + deltaY / viewportHeight.value;
   
-  const nextX = startTranslateX + deltaX / containerWidth;
-  const nextY = startTranslateY + deltaY / containerHeight;
+  // 在事件中当场执行物理 Clamp 限制，极速渲染
+  const clamped = getClampedTranslation(rawTx, rawTy);
   
-  preview.value.translateX = Math.max(-maxOffsetX, Math.min(maxOffsetX, nextX));
-  preview.value.translateY = Math.max(-maxOffsetY, Math.min(maxOffsetY, nextY));
+  preview.value.translateX = clamped.tx;
+  preview.value.translateY = clamped.ty;
 };
 
-// 异常中断与结束拖拽的端点安全处理（带 hasPointerCapture 探测与缓存清空）
 const endDrag = (e: PointerEvent) => {
   if (!isDragging.value) return;
   const container = e.currentTarget as HTMLDivElement;
@@ -90,8 +175,6 @@ const endDrag = (e: PointerEvent) => {
     } catch {}
   }
   isDragging.value = false;
-  containerWidth = 0;
-  containerHeight = 0;
 };
 
 const handlePointerUp = (e: PointerEvent) => {
@@ -106,28 +189,100 @@ const handleLostPointerCapture = (e: PointerEvent) => {
   endDrag(e);
 };
 
-const clampTranslateByScale = (scale = preview.value.scale) => {
-  const maxOffsetX = Math.max(0, (scale - 1) / 2);
-  const maxOffsetY = Math.max(0, (scale - 1) / 2);
+const handleWheel = (e: WheelEvent) => {
+  if (!preview.value.imagePath || viewportWidth.value <= 0 || viewportHeight.value <= 0) return;
 
-  preview.value.translateX = Math.max(
-    -maxOffsetX,
-    Math.min(maxOffsetX, preview.value.translateX || 0)
-  );
-  preview.value.translateY = Math.max(
-    -maxOffsetY,
-    Math.min(maxOffsetY, preview.value.translateY || 0)
-  );
+  // 阻止外层容器联动滚动
+  e.preventDefault();
+
+  const viewportElement = document.getElementById('skin-preview-viewport');
+  if (!viewportElement) return;
+
+  const viewportRect = viewportElement.getBoundingClientRect();
+  
+  // 1. 计算以 Viewport 物理几何中心为原点的鼠标坐标
+  const cursorX = e.clientX - viewportRect.left - viewportWidth.value / 2;
+  const cursorY = e.clientY - viewportRect.top - viewportHeight.value / 2;
+
+  // 2. 物理平移像素值
+  const oldScale = preview.value.scale || 1.0;
+  const oldTxPx = (preview.value.translateX || 0) * viewportWidth.value;
+  const oldTyPx = (preview.value.translateY || 0) * viewportHeight.value;
+
+  // 3. 滚轮步进，强制限制 minScale = 1.0
+  const zoomStep = 0.05;
+  const delta = e.deltaY < 0 ? zoomStep : -zoomStep;
+  let nextScale = oldScale + delta;
+  nextScale = Math.max(1.0, Math.min(2.0, nextScale));
+  nextScale = Math.round(nextScale * 100) / 100;
+
+  if (nextScale === oldScale) return;
+
+  // 4. 精密悬浮锚点物理公式
+  const ratio = nextScale / oldScale;
+  const nextTxPx = cursorX - (cursorX - oldTxPx) * ratio;
+  const nextTyPx = cursorY - (cursorY - oldTyPx) * ratio;
+
+  const nextTx = nextTxPx / viewportWidth.value;
+  const nextTy = nextTyPx / viewportHeight.value;
+
+  // 5. 当场执行 Clamp 并写入 Vue ref
+  const clamped = getClampedTranslation(nextTx, nextTy, nextScale);
+
+  preview.value.scale = nextScale;
+  preview.value.translateX = clamped.tx;
+  preview.value.translateY = clamped.ty;
 };
 
-// 采用同步 Flush 彻底杜绝滑动条闪烁
+// --- 低频安全补偿 Clamp 触发器 ---
 watch(
-  () => preview.value.scale,
-  (scale) => {
-    clampTranslateByScale(scale);
-  },
-  { flush: 'sync' }
+  [viewportWidth, viewportHeight, imageNaturalWidth, imageNaturalHeight, () => preview.value.scale],
+  () => {
+    if (viewportWidth.value <= 0 || viewportHeight.value <= 0) return;
+    const clamped = getClampedTranslation(preview.value.translateX || 0, preview.value.translateY || 0);
+    preview.value.translateX = clamped.tx;
+    preview.value.translateY = clamped.ty;
+  }
 );
+
+// --- 挂载与销毁生命周期生命体征 ---
+let resizeObserver: ResizeObserver | null = null;
+
+onMounted(async () => {
+  updateViewportSize();
+  window.addEventListener('resize', updateViewportSize);
+
+  if (typeof ResizeObserver !== 'undefined' && containerRef.value) {
+    resizeObserver = new ResizeObserver(() => {
+      updateViewportSize();
+    });
+    resizeObserver.observe(containerRef.value);
+  }
+
+  // 旧皮肤配置的异步高度模糊补偿与尺寸补齐回写机制
+  if (preview.value.imagePath && (!imageNaturalWidth.value || !imageNaturalHeight.value)) {
+    try {
+      const img = new Image();
+      img.src = convertFileSrc(preview.value.imagePath);
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
+      imageNaturalWidth.value = img.naturalWidth;
+      imageNaturalHeight.value = img.naturalHeight;
+      preview.value.imageWidth = img.naturalWidth;
+      preview.value.imageHeight = img.naturalHeight;
+    } catch {}
+  }
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', updateViewportSize);
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver = null;
+  }
+});
 
 const handleSelectNewImage = async () => {
   const oldImagePath = preview.value.imagePath;
@@ -138,57 +293,27 @@ const handleSelectNewImage = async () => {
     preview.value.scale = 1.0;
     preview.value.translateX = 0;
     preview.value.translateY = 0;
+
+    // 获取新选图片的真实宽高并写入持久化 preview 对象中
+    try {
+      const img = new Image();
+      img.src = convertFileSrc(newImagePath);
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
+      imageNaturalWidth.value = img.naturalWidth;
+      imageNaturalHeight.value = img.naturalHeight;
+      preview.value.imageWidth = img.naturalWidth;
+      preview.value.imageHeight = img.naturalHeight;
+    } catch (err) {
+      console.error('Failed to load image size metadata', err);
+      imageNaturalWidth.value = 0;
+      imageNaturalHeight.value = 0;
+      preview.value.imageWidth = 0;
+      preview.value.imageHeight = 0;
+    }
   }
-};
-
-const handleWheel = (e: WheelEvent) => {
-  if (!preview.value.imagePath) return;
-
-  // 仅在有图片时，阻止滚轮的默认行为，避免父弹窗整体滚动
-  e.preventDefault();
-
-  const container = containerRef.value;
-  if (!container) return;
-
-  const rect = container.getBoundingClientRect();
-  const mouseX = e.clientX - rect.left;
-  const mouseY = e.clientY - rect.top;
-
-  const W = rect.width;
-  const H = rect.height;
-  if (W <= 0 || H <= 0) return;
-
-  // 计算鼠标在容器内的相对比例坐标 (-0.5 到 0.5)
-  const px = (mouseX / W) - 0.5;
-  const py = (mouseY / H) - 0.5;
-
-  const currentScale = preview.value.scale || 1.0;
-  const currentTranslateX = preview.value.translateX || 0;
-  const currentTranslateY = preview.value.translateY || 0;
-
-  // 步长 0.05
-  const zoomStep = 0.05;
-  const delta = e.deltaY < 0 ? zoomStep : -zoomStep;
-  
-  const minScale = 1.0;
-  const maxScale = 2.0;
-  let nextScale = currentScale + delta;
-  nextScale = Math.max(minScale, Math.min(maxScale, nextScale));
-  nextScale = Math.round(nextScale * 100) / 100;
-
-  if (nextScale === currentScale) return;
-
-  // 使用以鼠标悬停位置为缩放锚点的物理平移变化量公式
-  const nextTranslateX = px - (nextScale / currentScale) * (px - currentTranslateX);
-  const nextTranslateY = py - (nextScale / currentScale) * (py - currentTranslateY);
-
-  // 赋值
-  preview.value.scale = nextScale;
-  preview.value.translateX = nextTranslateX;
-  preview.value.translateY = nextTranslateY;
-
-  // 强制立即应用限幅，防止缩小露底
-  clampTranslateByScale(nextScale);
 };
 </script>
 
@@ -226,85 +351,116 @@ const handleWheel = (e: WheelEvent) => {
               @pointercancel="handlePointerCancel"
               @lostpointercapture="handleLostPointerCapture"
               @wheel="handleWheel"
-              class="group relative h-48 w-full overflow-hidden rounded-xl border border-white/5 bg-[#1a1a1a] select-none touch-none"
+              class="group relative h-48 w-full overflow-hidden rounded-xl border border-white/5 bg-[#1a1a1a] select-none touch-none flex items-center justify-center"
+              style="isolation: isolate;"
               :class="{
-                'cursor-grab': preview.imagePath && preview.scale > 1.0 && !isDragging,
-                'cursor-grabbing': preview.imagePath && preview.scale > 1.0 && isDragging
+                'cursor-grab': canDrag && !isDragging,
+                'cursor-grabbing': canDrag && isDragging
               }"
             >
-              <div v-if="preview.imagePath" class="absolute inset-0">
-                <!-- 外层平移层：只负责 translate3d 平移定位与 will-change，允许溢出 -->
-                <div
-                  class="translate-layer"
-                  :style="{
-                    transform: 'translate3d(' + ((preview.translateX || 0) * 100) + '%, ' + ((preview.translateY || 0) * 100) + '%, 0)',
-                    width: '100%',
-                    height: '100%',
-                    'transform-origin': 'center center',
-                    'will-change': isDragging ? 'transform' : 'auto'
-                  }"
-                >
-                  <!-- 内层缩放图片层：负责 object-fit、scale 缩放与 filter 模糊，使用独立的 opacity 混色 -->
-                  <img
-                    :src="convertFileSrc(preview.imagePath)"
-                    class="scale-layer w-full h-full object-cover"
-                    :style="{
-                      filter: 'blur(' + preview.blur + 'px)',
-                      opacity: preview.opacity ?? 1.0,
-                      transform: 'scale(' + renderScale + ')',
-                      'transform-origin': 'center center'
-                    }"
-                  />
-                </div>
-                
-                <!-- 纯色遮罩层：不随图片平移而移动，满铺全屏 -->
-                <div
-                  class="absolute inset-0 z-10 pointer-events-none"
-                  :style="{ backgroundColor: preview.maskColor, opacity: preview.maskAlpha }"
-                ></div>
-              </div>
-
-              <div v-else class="absolute inset-0 flex flex-col items-center justify-center text-white/20 pointer-events-none">
-                <svg xmlns="http://www.w3.org/2000/svg" class="mb-2 h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <span class="text-xs">未选择图片</span>
-              </div>
-
-              <!-- 字体及预览文字层 -->
-              <div class="absolute inset-x-0 bottom-0 z-[15] px-4 pb-4 pointer-events-none">
-                <div class="flex items-end justify-between gap-3">
-                  <div class="min-w-0">
-                    <div
-                      class="text-[10px] font-medium uppercase tracking-[0.2em]"
-                      :class="isDarkForeground ? 'text-black/45' : 'text-white/60'"
-                    >
-                      字体预览
-                    </div>
-                    <div
-                      class="mt-1 truncate text-base font-bold"
-                      :class="isDarkForeground ? 'text-[#111111] drop-shadow-[0_1px_6px_rgba(255,255,255,0.18)]' : 'text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.4)]'"
-                    >
-                      夜航星
-                    </div>
-                    <div
-                      class="mt-1 truncate text-[12px]"
-                      :class="isDarkForeground ? 'text-black/65' : 'text-white/72'"
-                    >
-                      浅色和深色字体会直接预览在这里
-                    </div>
-                  </div>
-
+              <!-- 比例自适应的真实裁剪 Viewport -->
+              <div
+                id="skin-preview-viewport"
+                class="relative overflow-visible z-10 transition-all duration-300"
+                :style="{
+                  width: `${viewportWidth}px`,
+                  height: `${viewportHeight}px`
+                }"
+              >
+                <div v-if="preview.imagePath" class="absolute inset-0">
+                  <!-- 物理双层解耦图片布局 -->
                   <div
-                    class="shrink-0 text-[11px] font-semibold"
-                    :class="isDarkForeground ? 'text-black/70' : 'text-white/85'"
+                    v-if="viewportGeometry"
+                    class="absolute"
+                    :style="{
+                      position: 'absolute',
+                      left: '50%',
+                      top: '50%',
+                      width: `${viewportGeometry.width}px`,
+                      height: `${viewportGeometry.height}px`,
+                      transform: 'translate(-50%, -50%)',
+                    }"
                   >
-                    {{ preview.foregroundStyle === 'light' ? '浅色字体' : '深色字体' }}
+                    <img
+                      :src="convertFileSrc(preview.imagePath)"
+                      class="absolute block max-w-none max-h-none select-none pointer-events-none"
+                      :style="{
+                        width: '100%',
+                        height: '100%',
+                        transform: `translate3d(${(preview.translateX || 0) * viewportWidth}px, ${(preview.translateY || 0) * viewportHeight}px, 0) scale(${renderScale})`,
+                        transformOrigin: 'center center',
+                        filter: `blur(${preview.blur}px)`,
+                        opacity: preview.opacity ?? 1.0,
+                      }"
+                    />
+                  </div>
+
+                  <!-- 纯色混合遮罩层，z-index: 5 -->
+                  <div
+                    class="absolute inset-0 z-[5] pointer-events-none"
+                    :style="{ backgroundColor: preview.maskColor, opacity: preview.maskAlpha }"
+                  ></div>
+                </div>
+
+                <div v-else class="absolute inset-0 flex flex-col items-center justify-center text-white/20 pointer-events-none bg-[#1a1a1a]">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="mb-2 h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span class="text-xs">未选择图片</span>
+                </div>
+
+                <!-- 镂空遮罩与 dashed 虚线框层，z-index: 10 -->
+                <div
+                  class="absolute inset-0 z-10 pointer-events-none border border-dashed border-white/50 rounded-[4px] transition-all duration-300"
+                  :class="{
+                    'shadow-[0_0_0_9999px_rgba(0,0,0,0.65)]': preview.imagePath
+                  }"
+                ></div>
+
+                <!-- 智能悬浮标签，z-index: 20 -->
+                <div
+                  v-if="preview.imagePath"
+                  class="absolute right-2 top-2 z-20 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-medium tracking-wider text-white/40 backdrop-blur-sm transition-opacity duration-300 group-hover:opacity-0"
+                >
+                  软件背景区域
+                </div>
+
+                <!-- 字体及预览文字层，z-index: 30，移入虚线 Viewport 内部以保证真实预览对比度 -->
+                <div 
+                  v-if="preview.imagePath" 
+                  class="absolute inset-x-0 bottom-0 z-30 px-3 pb-3 pointer-events-none animate-in fade-in duration-300"
+                >
+                  <div class="flex items-end justify-between gap-3">
+                    <div class="min-w-0">
+                      <div
+                        class="text-[10px] font-medium uppercase tracking-[0.2em]"
+                        :class="isDarkForeground ? 'text-black/45' : 'text-white/60'"
+                      >
+                        字体预览
+                      </div>
+                      <div
+                        class="mt-1 truncate text-base font-bold"
+                        :class="isDarkForeground ? 'text-[#111111] drop-shadow-[0_1px_6px_rgba(255,255,255,0.18)]' : 'text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.4)]'"
+                      >
+                        夜航星
+                      </div>
+                      <div
+                        class="mt-1 truncate text-[12px]"
+                        :class="isDarkForeground ? 'text-black/65' : 'text-white/72'"
+                      >
+                        浅色和深色字体会直接预览在这里
+                      </div>
+                    </div>
+
+                    <div
+                      class="shrink-0 text-[11px] font-semibold"
+                      :class="isDarkForeground ? 'text-black/70' : 'text-white/85'"
+                    >
+                      {{ preview.foregroundStyle === 'light' ? '浅色字体' : '深色字体' }}
+                    </div>
                   </div>
                 </div>
               </div>
-
-
             </div>
 
             <div class="space-y-5">

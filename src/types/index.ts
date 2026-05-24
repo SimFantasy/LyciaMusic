@@ -232,6 +232,8 @@ export interface ThemeSettings {
     foregroundStyle: 'light' | 'dark';
     translateX?: number;
     translateY?: number;
+    imageWidth?: number;
+    imageHeight?: number;
   }
 }
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { storeToRefs } from 'pinia';
 import { usePlayer } from '../../composables/player';
@@ -9,14 +9,84 @@ import { usePlaybackStore } from '../../features/playback/store';
 import { useWindowMaterial } from '../../composables/windowMaterial';
 import { getPreblurredBackgroundUrl } from '../../composables/preblurredBackgroundCache';
 import { useRenderingPower } from '../../composables/renderingPower';
+import { calculateCoverGeometry } from '../../composables/useThemeBackgroundGeometry';
 
 const { currentCover, currentCoverFull, dominantColors, showPlayerDetail } = usePlayer();
-const { theme, isDarkTheme } = useThemeSettings();
+const { theme, isDarkTheme, patchTheme } = useThemeSettings();
 const { activeWindowMaterial } = useWindowMaterial();
 const { loadFullCover } = useCoverCache();
 const { isMainWindowLowPower } = useRenderingPower();
 const playbackStore = usePlaybackStore();
 const { currentSongPath } = storeToRefs(playbackStore);
+
+// --- 大背景物理尺寸动态测量 ---
+const containerWidth = ref(window.innerWidth);
+const containerHeight = ref(window.innerHeight);
+
+const updateContainerSize = () => {
+  const bgEl = document.querySelector('[data-global-background]');
+  if (bgEl) {
+    const rect = bgEl.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      containerWidth.value = rect.width;
+      containerHeight.value = rect.height;
+      return;
+    }
+  }
+  containerWidth.value = window.innerWidth;
+  containerHeight.value = window.innerHeight;
+};
+
+// --- 图片物理原始宽高元数据管理 ---
+const imageNaturalWidth = ref(theme.value.customBackground?.imageWidth || 0);
+const imageNaturalHeight = ref(theme.value.customBackground?.imageHeight || 0);
+
+// 监听自定义背景图片路径及尺寸
+watch(
+  [
+    () => theme.value.customBackground?.imagePath,
+    () => theme.value.customBackground?.imageWidth,
+    () => theme.value.customBackground?.imageHeight
+  ],
+  async ([path, w, h]) => {
+    if (!path) {
+      imageNaturalWidth.value = 0;
+      imageNaturalHeight.value = 0;
+      return;
+    }
+
+    // 如果配置中已经带有尺寸，直接使用
+    if (w && h) {
+      imageNaturalWidth.value = w;
+      imageNaturalHeight.value = h;
+      return;
+    }
+
+    // 否则为旧版配置，需要异步加载元数据并写回
+    try {
+      const img = new Image();
+      img.src = convertFileSrc(path);
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
+      imageNaturalWidth.value = img.naturalWidth;
+      imageNaturalHeight.value = img.naturalHeight;
+      
+      // 回写补齐配置
+      patchTheme({
+        customBackground: {
+          ...theme.value.customBackground,
+          imageWidth: img.naturalWidth,
+          imageHeight: img.naturalHeight
+        }
+      });
+    } catch (err) {
+      console.error('Failed to load old custom theme background image size', err);
+    }
+  },
+  { immediate: true }
+);
 
 const hasWindowMaterial = computed(() => activeWindowMaterial.value !== 'none');
 const isMicaWindowMaterial = computed(() => activeWindowMaterial.value === 'mica');
@@ -399,7 +469,13 @@ watch(
   { immediate: true },
 );
 
+onMounted(() => {
+  updateContainerSize();
+  window.addEventListener('resize', updateContainerSize);
+});
+
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateContainerSize);
   clearFlowTransitionTimer();
   clearFlowEnterAnimationFrame();
   fullCoverRequestId += 1;
@@ -429,45 +505,38 @@ const materialScrimStyle = computed(() => {
   };
 });
 
-const customBgRenderStyle = computed(() => {
+const customBgGeometry = computed(() => {
+  if (activeBackgroundInfo.value?.type !== 'custom') return null;
+  return calculateCoverGeometry(
+    containerWidth.value,
+    containerHeight.value,
+    imageNaturalWidth.value,
+    imageNaturalHeight.value
+  );
+});
+
+const customBgTransform = computed(() => {
   const info = activeBackgroundInfo.value;
   if (!info || info.type !== 'custom') {
-    return {
-      translateStyle: {},
-      scaleStyle: {}
-    };
+    return { tx: 0, ty: 0, scale: 1.0 };
   }
 
   const blurComp = Math.min(0.08, (info.blur || 0) * 0.002);
   const renderScale = (info.scale || 1.0) + blurComp;
-  const tx = (info.translateX || 0) * 100;
-  const ty = (info.translateY || 0) * 100;
+  const tx = (info.translateX || 0) * containerWidth.value;
+  const ty = (info.translateY || 0) * containerHeight.value;
 
   return {
-    translateStyle: {
-      transform: `translate3d(${tx}%, ${ty}%, 0)`,
-      width: '100%',
-      height: '100%',
-      transformOrigin: 'center center'
-    },
-    scaleStyle: {
-      filter: `blur(${info.blur}px)`,
-      opacity: info.opacity ?? 1.0,
-      transform: `scale(${renderScale})`,
-      width: '100%',
-      height: '100%',
-      objectFit: 'cover' as const,
-      transformOrigin: 'center center',
-      webkitUserDrag: 'none' as any,
-      userSelect: 'none' as any,
-      pointerEvents: 'none' as any
-    }
+    tx,
+    ty,
+    scale: renderScale
   };
 });
 </script>
 
 <template>
   <div
+    data-global-background
     class="fixed inset-0 z-0 overflow-hidden pointer-events-none transition-colors duration-500"
     :class="[
       theme.mode === 'custom'
@@ -572,13 +641,30 @@ const customBgRenderStyle = computed(() => {
           }"
         ></div>
 
-        <!-- 外层平移层：只负责 translate3d 平移，不带 overflow-hidden -->
-        <div class="translate-layer absolute inset-0" :style="customBgRenderStyle.translateStyle">
-          <!-- 内层缩放图片最里层 -->
+        <!-- 完美的物理双层解耦图片布局 -->
+        <div
+          v-if="customBgGeometry"
+          class="absolute"
+          :style="{
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
+            width: `${customBgGeometry.width}px`,
+            height: `${customBgGeometry.height}px`,
+            transform: 'translate(-50%, -50%)',
+          }"
+        >
           <img
             :src="bgImageSrc"
-            class="scale-layer transition-all duration-700"
-            :style="customBgRenderStyle.scaleStyle"
+            class="absolute block max-w-none max-h-none select-none pointer-events-none transition-all duration-700"
+            :style="{
+              width: '100%',
+              height: '100%',
+              transform: `translate3d(${customBgTransform.tx}px, ${customBgTransform.ty}px, 0) scale(${customBgTransform.scale})`,
+              transformOrigin: 'center center',
+              filter: `blur(${activeBackgroundInfo.blur}px)`,
+              opacity: activeBackgroundInfo.opacity ?? 1.0,
+            }"
           />
         </div>
       </div>
