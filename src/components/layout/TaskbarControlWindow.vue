@@ -3,6 +3,7 @@ import { LogicalPosition } from '@tauri-apps/api/dpi';
 import { invoke } from '@tauri-apps/api/core';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
 import {
@@ -140,6 +141,24 @@ const startDrag = async (event: PointerEvent) => {
   };
 };
 
+const restoreMainWindow = async () => {
+  try {
+    const mainWin = await WebviewWindow.getByLabel('main');
+    if (!mainWin) {
+      console.warn('[TaskbarPlayer] Main window not found');
+      return;
+    }
+    await mainWin.show();
+    const minimized = await mainWin.isMinimized();
+    if (minimized) {
+      await mainWin.unminimize();
+    }
+    await mainWin.setFocus();
+  } catch (error) {
+    console.error('[TaskbarPlayer] Failed to restore main window:', error);
+  }
+};
+
 const titleElement = ref<HTMLElement | null>(null);
 const titleWrapperElement = ref<HTMLElement | null>(null);
 const shouldScroll = ref(false);
@@ -251,13 +270,52 @@ onUnmounted(() => {
     <!-- 左侧：封面与歌曲信息 -->
     <div class="flex items-center gap-2.5 min-w-0 flex-1 mr-4 pointer-events-none">
       <!-- 封面 -->
-      <div class="w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-white/5 border border-white/5 flex items-center justify-center text-white/40">
-        <img v-if="localCoverUrl" :src="localCoverUrl" class="w-full h-full object-cover" />
-        <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <div 
+        class="group/cover w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-white/5 border border-white/5 flex items-center justify-center text-white/40 relative cursor-pointer pointer-events-auto"
+        @mousedown.stop.prevent
+        @click.stop="restoreMainWindow"
+      >
+        <img 
+          v-if="localCoverUrl" 
+          :src="localCoverUrl" 
+          class="w-full h-full object-cover transition-all duration-200 group-hover/cover:scale-[0.96] group-hover/cover:brightness-[0.75]" 
+          draggable="false"
+        />
+        <svg 
+          v-else 
+          xmlns="http://www.w3.org/2000/svg" 
+          class="h-[18px] w-[18px] transition-all duration-200 group-hover/cover:scale-[0.96] group-hover/cover:brightness-[0.75]" 
+          viewBox="0 0 24 24" 
+          fill="none" 
+          stroke="currentColor" 
+          stroke-width="2" 
+          stroke-linecap="round" 
+          stroke-linejoin="round"
+        >
           <path d="M9 18V5l12-2v13"></path>
           <circle cx="6" cy="18" r="3"></circle>
           <circle cx="18" cy="16" r="3"></circle>
         </svg>
+
+        <!-- 精美、轻量对角双向箭头覆盖层 -->
+        <div 
+          class="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 group-hover/cover:opacity-100 transition-opacity duration-200 ease-out"
+        >
+          <svg 
+            xmlns="http://www.w3.org/2000/svg" 
+            class="h-4 w-4 text-white stroke-[2.5]" 
+            viewBox="0 0 24 24" 
+            fill="none" 
+            stroke="currentColor" 
+            stroke-linecap="round" 
+            stroke-linejoin="round"
+          >
+            <polyline points="15 3 21 3 21 9" />
+            <polyline points="9 21 3 21 3 15" />
+            <line x1="21" y1="3" x2="14" y2="10" />
+            <line x1="3" y1="21" x2="10" y2="14" />
+          </svg>
+        </div>
       </div>
 
       <!-- 文字信息（歌名/歌手） -->
