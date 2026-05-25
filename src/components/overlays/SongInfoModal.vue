@@ -507,7 +507,7 @@ const formatTime = (timestampSeconds?: number) => {
                   :disabled="!isSongInfoEditing"
                   @click="handleChooseCover"
                 >
-                  <img v-if="songInfoEditForm.coverPreviewUrl || coverUrl" :src="songInfoEditForm.coverPreviewUrl || coverUrl" class="w-full h-full object-cover" />
+                  <img v-if="songInfoEditForm.coverPreviewUrl || coverUrl" :src="songInfoEditForm.coverPreviewUrl || coverUrl" class="w-full h-full object-cover" draggable="false" />
                   <svg v-else class="w-12 h-12 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                   </svg>
@@ -516,21 +516,33 @@ const formatTime = (timestampSeconds?: number) => {
 
                 <div class="flex-1 min-w-0 flex flex-col justify-center">
                   <template v-if="isSongInfoEditing">
-                    <input
-                      v-model="songInfoEditForm.title"
-                      class="song-info-edit-input song-info-edit-input--title"
-                      placeholder="歌名"
-                    />
-                    <input
-                      v-model="songInfoEditForm.artist"
-                      class="song-info-edit-input song-info-edit-input--artist mt-3"
-                      placeholder="歌手名"
-                    />
-                    <input
-                      v-model="songInfoEditForm.album"
-                      class="song-info-edit-input mt-2"
-                      placeholder="专辑名"
-                    />
+                    <div class="song-info-edit-wrapper">
+                      <label class="song-info-edit-label" for="song-info-title-input">歌名</label>
+                      <input
+                        id="song-info-title-input"
+                        v-model="songInfoEditForm.title"
+                        class="song-info-edit-input song-info-edit-input--title song-info-edit-input--with-label"
+                        placeholder="请输入歌名"
+                      />
+                    </div>
+                    <div class="song-info-edit-wrapper mt-3">
+                      <label class="song-info-edit-label" for="song-info-artist-input">歌手</label>
+                      <input
+                        id="song-info-artist-input"
+                        v-model="songInfoEditForm.artist"
+                        class="song-info-edit-input song-info-edit-input--artist song-info-edit-input--with-label"
+                        placeholder="请输入歌手名"
+                      />
+                    </div>
+                    <div class="song-info-edit-wrapper mt-2">
+                      <label class="song-info-edit-label" for="song-info-album-input">专辑</label>
+                      <input
+                        id="song-info-album-input"
+                        v-model="songInfoEditForm.album"
+                        class="song-info-edit-input song-info-edit-input--with-label"
+                        placeholder="请输入专辑名"
+                      />
+                    </div>
                   </template>
                   <template v-else>
                     <h3 class="song-info-name text-3xl font-bold text-gray-900 dark:text-white truncate" :title="displaySong.title || displaySong.name">{{ displaySong.title || displaySong.name }}</h3>
@@ -613,8 +625,8 @@ const formatTime = (timestampSeconds?: number) => {
                 </div>
 
                 <div class="bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800">
-                  <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">文件路径</div>
-                  <div class="text-sm text-gray-800 dark:text-gray-200 break-all leading-snug">{{ displaySong.path }}</div>
+                  <div class="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1 no-text-select">文件路径</div>
+                  <div class="text-sm text-gray-800 dark:text-gray-200 break-all leading-snug selectable-text">{{ displaySong.path }}</div>
                 </div>
 
                 <div class="song-info-time-grid bg-gray-50/50 dark:bg-white/5 rounded-xl p-4 border border-gray-100 dark:border-gray-800 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -676,7 +688,7 @@ const formatTime = (timestampSeconds?: number) => {
                 :class="isLyricsEditorVisuallyExpanded ? '' : 'lyrics-editor-inline-song--hidden'"
               >
                 <div class="lyrics-editor-cover">
-                  <img v-if="coverUrl" :src="coverUrl" alt="" />
+                  <img v-if="coverUrl" :src="coverUrl" alt="" draggable="false" />
                   <svg v-else class="h-5 w-5 text-gray-400 dark:text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                   </svg>
@@ -1036,6 +1048,10 @@ const formatTime = (timestampSeconds?: number) => {
   padding: 0;
   color: inherit;
   cursor: default;
+  /* 开启独立渲染复合层，解决绝对定位子元素引入导致的 Webkit/Chromium 溢出圆角裁剪失效 Bug */
+  transform: translateZ(0);
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 .song-info-cover:disabled {
@@ -1066,6 +1082,8 @@ const formatTime = (timestampSeconds?: number) => {
   line-height: 1;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  /* 显式赋予底部左/右两侧圆角，与外层容器完美的 12px 物理圆角无缝重叠 */
+  border-radius: 0 0 12px 12px;
 }
 
 .song-info-edit-input {
@@ -1545,5 +1563,89 @@ const formatTime = (timestampSeconds?: number) => {
     width: clamp(84px, 12vh, 112px);
     height: clamp(84px, 12vh, 112px);
   }
+}
+
+.song-info-edit-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.song-info-edit-label {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+  user-select: none;
+  transition:
+    color 160ms ease,
+    opacity 160ms ease;
+  z-index: 1;
+}
+
+.song-info-edit-wrapper:focus-within .song-info-edit-label {
+  color: #ec4141;
+}
+
+.song-info-edit-input--with-label {
+  padding-left: 56px;
+}
+
+.song-info-stage--dark .song-info-edit-label {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.song-info-stage--dark .song-info-edit-wrapper:focus-within .song-info-edit-label {
+  color: #ec4141;
+}
+
+/* 精细防文本误选中与防图片拖拽新增样式 */
+.no-text-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.selectable-text {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.modal-external-header,
+.song-info-header-title,
+.song-info-edit-toggle,
+.lyrics-editor-expand-button,
+.lyrics-editor-inline-song,
+.song-info-cover,
+.song-info-cover-overlay,
+.song-info-detail-grid,
+.song-info-time-grid,
+.modal-external-actions,
+.modal-action-button {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.song-info-stage input,
+.song-info-stage textarea,
+.song-info-stage [contenteditable='true'],
+.song-info-stage .selectable-text {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.song-info-cover img {
+  -webkit-user-drag: none;
+  user-drag: none;
+  /* 显式强制赋予 12px 物理圆角，建立第二道物理裁剪防线，杜绝任何直角溢出 */
+  border-radius: 12px;
+}
+
+.lyrics-editor-cover img {
+  -webkit-user-drag: none;
+  user-drag: none;
 }
 </style>
