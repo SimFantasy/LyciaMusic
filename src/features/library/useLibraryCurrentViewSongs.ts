@@ -9,6 +9,7 @@ import type { HistoryItem, Playlist, Song } from '../../types';
 import { sortItemsByAlphabetIndex } from '../../utils/alphabetIndex';
 import {
   getSongArtistSearchText,
+  getSongFileNameLabel,
   getSongTitleLabel,
   matchesAlbumKey,
   songHasArtist,
@@ -492,6 +493,12 @@ export function useLibraryCurrentViewSongs({
       const query = searchQuery.value.toLowerCase();
 
       if (currentViewMode.value === 'all' && localSortMode.value !== 'custom') {
+        if (localSortMode.value === 'title') {
+          return sortItemsByAlphabetIndex(
+            allViewSongPaths.value,
+            (path) => getSongTitleLabel(songLookup.value.get(path)!),
+          );
+        }
         return allViewSongPaths.value;
       }
 
@@ -535,6 +542,18 @@ export function useLibraryCurrentViewSongs({
 
       if (currentViewMode.value === 'folder') {
         if (folderSortMode.value !== 'custom') {
+          if (folderSortMode.value === 'name') {
+            return sortItemsByAlphabetIndex(
+              folderViewSongPaths.value,
+              (path) => getSongFileNameLabel(songLookup.value.get(path)!),
+            );
+          }
+          if (folderSortMode.value === 'title') {
+            return sortItemsByAlphabetIndex(
+              folderViewSongPaths.value,
+              (path) => getSongTitleLabel(songLookup.value.get(path)!),
+            );
+          }
           return folderViewSongPaths.value;
         }
 
@@ -562,6 +581,12 @@ export function useLibraryCurrentViewSongs({
 
     if (currentViewMode.value === 'all') {
       if (localSortMode.value !== 'custom') {
+        if (localSortMode.value === 'title') {
+          return sortItemsByAlphabetIndex(
+            allViewSongPaths.value,
+            (path) => getSongTitleLabel(songLookup.value.get(path)!),
+          );
+        }
         return allViewSongPaths.value;
       }
 
@@ -584,6 +609,18 @@ export function useLibraryCurrentViewSongs({
 
     if (currentViewMode.value === 'folder') {
       if (folderSortMode.value !== 'custom') {
+        if (folderSortMode.value === 'name') {
+          return sortItemsByAlphabetIndex(
+            folderViewSongPaths.value,
+            (path) => getSongFileNameLabel(songLookup.value.get(path)!),
+          );
+        }
+        if (folderSortMode.value === 'title') {
+          return sortItemsByAlphabetIndex(
+            folderViewSongPaths.value,
+            (path) => getSongTitleLabel(songLookup.value.get(path)!),
+          );
+        }
         return folderViewSongPaths.value;
       }
 
