@@ -104,4 +104,5 @@ commands.allow = [
   "exit_app",
   "setup_taskbar_window",
   "get_taskbar_tray_geometry",
+  "file_exists",
 ]

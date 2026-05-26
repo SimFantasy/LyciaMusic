@@ -248,3 +248,9 @@ pub fn refresh_folder_songs(
         crate::music::scanner::ScanOptions::from_minimum_duration_seconds(minimum_duration_seconds),
     )
 }
+
+#[tauri::command]
+pub fn file_exists(path: String) -> bool {
+    std::path::Path::new(&path).is_file()
+}
+

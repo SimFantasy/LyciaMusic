@@ -395,4 +395,8 @@ export interface TauriCommandMap {
     payload: UpdateLoudnessSettingsOptions;
     response: void;
   };
+  file_exists: {
+    payload: { path: string };
+    response: boolean;
+  };
 }

@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { SquarePen } from 'lucide-vue-next';
+import { SquarePen, Tag } from 'lucide-vue-next';
 import type { Song, SongDetail } from '../../types';
 import { useCoverCache } from '../../composables/useCoverCache';
 import { usePlayer } from '../../composables/player';
@@ -200,6 +200,80 @@ const handleOpenFolder = () => {
   if (props.song?.path) {
     void openInFinder(props.song.path);
     handleClose();
+  }
+};
+
+const ensureMusicTagPath = async (): Promise<string | null> => {
+  const MUSICTAG_PATH_KEY = 'toolbox_musictag_path';
+  let path = localStorage.getItem(MUSICTAG_PATH_KEY);
+
+  if (path) {
+    const exists = await tauriInvoke('file_exists', { path });
+    if (!exists) {
+      localStorage.removeItem(MUSICTAG_PATH_KEY);
+      showToast('MusicTag 路径无效，请重新选择', 'error');
+      path = null;
+    }
+  }
+
+  if (!path) {
+    const selected = await open({
+      multiple: false,
+      directory: false,
+      title: '选择 MusicTag 可执行文件',
+      filters: [
+        {
+          name: '可执行文件',
+          extensions: ['exe'],
+        },
+      ],
+    });
+
+    if (!selected || typeof selected !== 'string') {
+      showToast('已取消选择 MusicTag', 'info');
+      return null;
+    }
+
+    const exists = await tauriInvoke('file_exists', { path: selected });
+    if (!exists) {
+      showToast('MusicTag 路径无效', 'error');
+      return null;
+    }
+
+    localStorage.setItem(MUSICTAG_PATH_KEY, selected);
+    path = selected;
+  }
+
+  return path;
+};
+
+const handleOpenInMusicTag = async () => {
+  const songPath = props.song?.path;
+  if (!songPath) {
+    showToast('当前歌曲文件路径无效', 'error');
+    return;
+  }
+
+  const songExists = await tauriInvoke('file_exists', { path: songPath });
+  if (!songExists) {
+    showToast('当前歌曲文件路径无效', 'error');
+    return;
+  }
+
+  const musicTagPath = await ensureMusicTagPath();
+  if (!musicTagPath) {
+    return;
+  }
+
+  try {
+    await tauriInvoke('open_external_program', {
+      path: musicTagPath,
+      args: [songPath],
+    });
+    showToast('已在 MusicTag 中打开当前歌曲', 'success');
+  } catch (error) {
+    console.error('Failed to open MusicTag:', error);
+    showToast('无法打开 MusicTag，请检查路径配置', 'error');
   }
 };
 
@@ -654,6 +728,15 @@ const formatTime = (timestampSeconds?: number) => {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
               </svg>
               打开文件所在目录
+            </button>
+            <button
+              v-if="!isSongInfoEditing"
+              @click="handleOpenInMusicTag"
+              :disabled="!props.song?.path"
+              class="modal-action-button modal-action-button--wide"
+            >
+              <Tag class="w-4 h-4 mr-2 text-gray-500 dark:text-gray-400" />
+              用 MusicTag 修正标签
             </button>
             <template v-else>
               <button

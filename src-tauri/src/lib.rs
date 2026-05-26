@@ -55,7 +55,7 @@ use taskbar::{
     get_taskbar_tray_geometry, install_taskbar_zorder_guard, refresh_taskbar_window_topmost,
     setup_taskbar_window, uninstall_taskbar_zorder_guard,
 };
-use toolbox::{apply_rename, open_external_program, preview_rename, refresh_folder_songs};
+use toolbox::{apply_rename, file_exists, open_external_program, preview_rename, refresh_folder_songs};
 use window_boundary::set_mini_boundary_enabled;
 use window_material::get_window_material_capabilities;
 use window_theme::set_dark_mode_for_window;
@@ -160,6 +160,7 @@ pub fn run() {
             get_format_distribution,
             clear_all_app_data,
             open_external_program,
+            file_exists,
             refresh_folder_songs,
             set_mini_boundary_enabled,
             get_window_material_capabilities,
