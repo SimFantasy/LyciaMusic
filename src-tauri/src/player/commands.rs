@@ -1,6 +1,7 @@
 use crate::database::DbState;
 use crate::music::scanner::apply_scan_changes;
 use crate::music::types::Song;
+use crate::player::equalizer::EqualizerSettings;
 use crate::player::loudness::{
     calculate_playback_gain, get_song_loudness_record, process_song_on_play, LoudnessRecord,
 };
@@ -379,7 +380,8 @@ pub async fn update_loudness_settings(
         if let (Some(s_id), Some(path)) = (song_id, song_path.as_deref()) {
             if let Ok(mut conn) = db_state.conn.lock() {
                 if let Ok(record) = process_song_on_play(&mut conn, s_id, path) {
-                    target_gain = calculate_playback_gain(&record, gain_offset_db, prevent_clipping);
+                    target_gain =
+                        calculate_playback_gain(&record, gain_offset_db, prevent_clipping);
                 }
             }
         }
@@ -391,5 +393,48 @@ pub async fn update_loudness_settings(
         target_gain,
     })
     .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_equalizer_settings(
+    enabled: bool,
+    preamp: f32,
+    gains: Vec<f32>,
+    state: tauri::State<'_, PlayerState>,
+) -> Result<(), String> {
+    // 1. 严格入参校验：长度必须等于 10
+    if gains.len() != 10 {
+        return Err(format!("均衡器频段数量错误，期望 10，实际 {}", gains.len()));
+    }
+
+    // 2. 校验浮点数有限性，严禁 NaN / Inf
+    if !preamp.is_finite() {
+        return Err("Preamp 增益必须为有限浮点数，严禁 NaN/Inf".to_string());
+    }
+    for (i, &gain) in gains.iter().enumerate() {
+        if !gain.is_finite() {
+            return Err(format!("频段 {} 增益必须为有限浮点数，严禁 NaN/Inf", i));
+        }
+    }
+
+    // 3. 数值 Clamp
+    let preamp_clamped = preamp.clamp(-12.0, 12.0);
+    let mut gains_clamped = [0.0; 10];
+    for i in 0..10 {
+        gains_clamped[i] = gains[i].clamp(-12.0, 12.0);
+    }
+
+    // 4. 发送指令
+    let tx = state.tx.lock().map_err(|e| e.to_string())?;
+    let settings = EqualizerSettings {
+        enabled,
+        preamp: preamp_clamped,
+        gains: gains_clamped,
+    };
+
+    tx.send(AudioCommand::SetEqualizerSettings { settings })
+        .map_err(|e| e.to_string())?;
+
     Ok(())
 }

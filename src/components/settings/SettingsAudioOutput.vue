@@ -1,10 +1,35 @@
 <script setup lang="ts">
 import { CircleAlert } from 'lucide-vue-next';
 import { useSettings } from '../../features/settings/useSettings';
+import EqualizerPanel from '../player/EqualizerPanel.vue';
 
-const { settings } = useSettings();
+const { settings, patchSettings } = useSettings();
 
 const volumeBalanceTip = '音量平衡会读取歌曲内置 ReplayGain 标签，在切歌时自动平衡音量。默认完全按标签播放，不改变歌曲内部动态。不存在标签时则无变化。';
+
+// 规范更新：启用/禁用均衡器
+const toggleEqualizer = () => {
+  const currentEq = settings.value.audio.equalizer;
+  patchSettings({
+    audio: {
+      ...settings.value.audio, // 展开以保护其他 audio 状态不受非深合并影响
+      equalizer: {
+        ...currentEq,
+        enabled: !currentEq.enabled,
+      },
+    },
+  });
+};
+
+// 规范更新：在播放栏显示均衡器按钮
+const toggleShowEqualizerInFooter = () => {
+  patchSettings({
+    audio: {
+      ...settings.value.audio, // 展开以保护其他 audio 状态不受非深合并影响
+      showEqualizerInFooter: !settings.value.audio.showEqualizerInFooter,
+    },
+  });
+};
 </script>
 
 <template>
@@ -100,6 +125,74 @@ const volumeBalanceTip = '音量平衡会读取歌曲内置 ReplayGain 标签，
               </button>
             </div>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 均衡器配置区 -->
+    <section class="space-y-3">
+      <h2 class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200">
+        <span class="h-4 w-1 rounded-full bg-[#EC4141]"></span>
+        均衡器 (EQ)
+      </h2>
+      <div class="flex flex-col rounded-xl bg-white/20 dark:bg-black/10 border border-gray-200/40 dark:border-gray-800/40">
+        <!-- 固定均衡器到播放栏开关行 -->
+        <div 
+          class="desktop-setting-row rounded-t-xl border-b border-gray-200/20 dark:border-gray-800/20"
+        >
+          <div>
+            <div class="text-sm font-medium text-gray-800 dark:text-gray-200">在播放栏显示均衡器按钮</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              开启后，在主界面底部的播放控制栏将显示均衡器快捷按钮。
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none"
+              :class="settings.audio.showEqualizerInFooter ? 'bg-[#EC4141]' : 'bg-gray-300 dark:bg-gray-700'"
+              @click="toggleShowEqualizerInFooter"
+            >
+              <span
+                class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out shadow-sm"
+                :class="settings.audio.showEqualizerInFooter ? 'translate-x-6' : 'translate-x-1'"
+              />
+            </button>
+          </div>
+        </div>
+
+        <!-- 启用均衡器主开关行 -->
+        <div 
+          class="desktop-setting-row"
+          :class="settings.audio.equalizer.enabled ? 'border-b border-gray-200/20 dark:border-gray-800/20' : 'rounded-b-xl'"
+        >
+          <div>
+            <div class="text-sm font-medium text-gray-800 dark:text-gray-200">启用均衡器</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              通过调整不同频段的增益，改善音乐在不同音频设备上的表现。
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none"
+              :class="settings.audio.equalizer.enabled ? 'bg-[#EC4141]' : 'bg-gray-300 dark:bg-gray-700'"
+              @click="toggleEqualizer"
+            >
+              <span
+                class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out shadow-sm"
+                :class="settings.audio.equalizer.enabled ? 'translate-x-6' : 'translate-x-1'"
+              />
+            </button>
+          </div>
+        </div>
+
+        <!-- 均衡器调节板高级配置子区域 -->
+        <div
+          v-if="settings.audio.equalizer.enabled"
+          class="flex flex-col border-t border-gray-200/20 dark:border-gray-800/20 bg-gray-50/10 dark:bg-gray-900/10 transition-all duration-300 animate-in fade-in rounded-b-xl p-6"
+        >
+          <EqualizerPanel :embedded="true" />
         </div>
       </div>
     </section>

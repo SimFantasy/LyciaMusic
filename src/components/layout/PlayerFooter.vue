@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { AudioLines, Eye, EyeOff } from 'lucide-vue-next';
+import { AudioLines, Eye, EyeOff, SlidersHorizontal } from 'lucide-vue-next';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useLibraryCollections } from '../../features/collections/useLibraryCollections';
 import { useLyrics } from '../../composables/lyrics';
 import { usePlaybackController } from '../../features/playback/usePlaybackController';
 import AudioVisualizer from '../player/AudioVisualizer.vue';
 import FooterContextMenu from "../overlays/FooterContextMenu.vue";
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import EqualizerPanel from '../player/EqualizerPanel.vue';
+import { useSettings } from '../../features/settings/useSettings';
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue';
 import type { RemoteDownloadProgress } from '../../types';
 import {
   FOOTER_PROGRESS_HIDDEN_KEY,
@@ -190,6 +192,36 @@ const handleVolumeLeave = () => {
   }, 300);
 };
 
+// --- EQ Panel State ---
+const showEqPanel = ref(false);
+const eqButtonRef = ref<HTMLElement | null>(null);
+const eqPanelRef = ref<HTMLElement | null>(null);
+
+const { settings } = useSettings();
+
+watch(
+  () => settings.value.audio.showEqualizerInFooter,
+  (show) => {
+    if (show === false) {
+      showEqPanel.value = false;
+    }
+  }
+);
+
+const toggleEqPanel = (e: MouseEvent) => {
+  e.stopPropagation();
+  showEqPanel.value = !showEqPanel.value;
+};
+
+const handleWindowClick = (e: MouseEvent) => {
+  if (showEqPanel.value && eqPanelRef.value && eqButtonRef.value) {
+    const target = e.target as HTMLElement;
+    if (!eqPanelRef.value.contains(target) && !eqButtonRef.value.contains(target)) {
+      showEqPanel.value = false;
+    }
+  }
+};
+
 // --- Idle State for Auto-Hide ---
 const isPinned = ref(localStorage.getItem('footer_pinned') === 'true');
 const isIdle = ref(false);
@@ -234,6 +266,7 @@ onMounted(async () => {
   window.addEventListener('pointermove', onGlobalPointerMove); 
   window.addEventListener('pointerup', onGlobalPointerUp); 
   window.addEventListener('pointercancel', onGlobalPointerCancel); 
+  window.addEventListener('click', handleWindowClick); 
   startIdleTimer(); // Start initial idle timer
   unlistenRemoteDownload = await listen<RemoteDownloadProgress>('remote-download-progress', event => {
     remoteDownloadProgress.value = event.payload;
@@ -243,6 +276,7 @@ onUnmounted(() => {
   window.removeEventListener('pointermove', onGlobalPointerMove); 
   window.removeEventListener('pointerup', onGlobalPointerUp); 
   window.removeEventListener('pointercancel', onGlobalPointerCancel); 
+  window.removeEventListener('click', handleWindowClick); 
   if (idleTimer) clearTimeout(idleTimer);
   unlistenRemoteDownload?.();
   unlistenRemoteDownload = null;
@@ -499,6 +533,34 @@ onUnmounted(() => {
       >
         词
       </button>
+
+      <!-- 均衡器按钮与弹出面板 -->
+      <div v-if="settings.audio.showEqualizerInFooter !== false" class="relative flex items-center justify-center h-full z-[70]">
+        <button 
+          ref="eqButtonRef"
+          @click="toggleEqPanel"
+          :class="['transition-colors w-8 h-8 flex items-center justify-center rounded-full', showEqPanel ? 'text-[#EC4141] bg-[#EC4141]/10' : (showPlayerDetail ? 'text-white/80 hover:text-white hover:bg-white/10' : 'text-gray-700 dark:text-white/80 hover:text-black dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10')]"
+          title="均衡器 (EQ)"
+        >
+          <SlidersHorizontal class="h-4 w-4" :stroke-width="2.2" />
+        </button>
+
+        <transition name="fade-scale">
+          <div 
+            v-if="showEqPanel"
+            ref="eqPanelRef"
+            class="absolute bottom-full right-[-10px] pb-4.5 z-[80] filter drop-shadow-[0_8px_20px_rgba(0,0,0,0.15)]"
+          >
+            <!-- 极富流动感、平滑贝塞尔圆弧的气泡指引尾巴 -->
+            <svg width="32" height="10" viewBox="0 0 32 10" class="absolute bottom-[9px] right-[10px] text-[#FFFFFF] dark:text-[#1E1E1E] fill-current z-[81] overflow-visible">
+              <path d="M0,0 C8,0 12,8 16,10 C20,8 24,0 32,0 Z" />
+              <path d="M0,0 C8,0 12,8 16,10 C20,8 24,0 32,0" fill="none" class="stroke-gray-100 dark:stroke-gray-800" stroke-width="1" />
+            </svg>
+            
+            <EqualizerPanel />
+          </div>
+        </transition>
+      </div>
 
       <button @click="togglePin"
         class="transition-colors w-8 h-8 flex items-center justify-center rounded-full"

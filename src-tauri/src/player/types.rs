@@ -1,3 +1,4 @@
+use crate::player::equalizer::EqualizerSettings;
 use rodio::source::SeekError;
 use rodio::Source;
 use serde::{Deserialize, Serialize};
@@ -161,6 +162,9 @@ pub enum AudioCommand {
     SetVolumeBalance {
         enabled: bool,
         target_gain: f32,
+    },
+    SetEqualizerSettings {
+        settings: EqualizerSettings,
     },
     SetDevice(Option<String>),
     SetOutputMode(AudioOutputMode),

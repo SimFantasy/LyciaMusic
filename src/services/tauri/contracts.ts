@@ -395,6 +395,10 @@ export interface TauriCommandMap {
     payload: UpdateLoudnessSettingsOptions;
     response: void;
   };
+  set_equalizer_settings: {
+    payload: { enabled: boolean; preamp: number; gains: number[] };
+    response: void;
+  };
   file_exists: {
     payload: { path: string };
     response: boolean;

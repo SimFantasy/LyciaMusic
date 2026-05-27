@@ -304,6 +304,12 @@ export interface DesktopLyricsSettings {
 
 export type AudioOutputMode = 'shared' | 'wasapiExclusive';
 
+export interface EqualizerSettings {
+  enabled: boolean;
+  preamp: number;
+  gains: number[];
+}
+
 export interface AudioSettings {
   outputMode: AudioOutputMode;
   volumeBalance: {
@@ -311,6 +317,8 @@ export interface AudioSettings {
     gainOffsetDb: number;
     preventClipping: boolean;
   };
+  equalizer: EqualizerSettings;
+  showEqualizerInFooter: boolean; // 运行态必选属性
 }
 
 export type ShortcutActionId =

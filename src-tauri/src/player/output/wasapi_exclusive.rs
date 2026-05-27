@@ -1,10 +1,10 @@
-use crate::player::loudness::GainRamp;
+use crate::player::equalizer::{EqualizerHandle, EqualizerSettings};
 use crate::player::output::OutputError;
 use crate::player::types::{SharedProgress, SharedVisualizer};
 use rodio::{Decoder, Source};
 use std::fs::File;
 use std::io::BufReader;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{channel, sync_channel, Receiver, RecvTimeoutError, Sender, TryRecvError};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
@@ -32,6 +32,8 @@ pub(crate) struct ExclusivePlayRequest {
     pub progress: Arc<SharedProgress>,
     pub start_time: Duration,
     pub volume_balance_gain: f32,
+    pub equalizer_handle: Arc<EqualizerHandle>,
+    pub user_volume: Arc<AtomicU32>,
 }
 
 enum ExclusiveCommand {
@@ -39,15 +41,15 @@ enum ExclusiveCommand {
     Resume,
     Seek { time: Duration, is_playing: bool },
     Stop,
-    SetVolume(f32),
     SetVolumeBalance { enabled: bool, target_gain: f32 },
+    SetEqualizerSettings { settings: EqualizerSettings },
 }
 
 impl WasapiExclusivePlayback {
     pub(crate) fn start(request: ExclusivePlayRequest) -> Result<Self, OutputError> {
         let (command_tx, command_rx) = channel::<ExclusiveCommand>();
         let (init_tx, init_rx) = sync_channel::<Result<String, String>>(1);
-        let (result_tx, result_rx) = channel::<Result<(), String>>();
+        let (result_tx, result_rx) = channel::<Result<(), String>>(); // 独占模式的退出消息类型
 
         let join_handle = thread::spawn(move || {
             let result = run_exclusive_playback(request, command_rx, init_tx);
@@ -101,15 +103,17 @@ impl WasapiExclusivePlayback {
         let _ = self.tx.send(ExclusiveCommand::Seek { time, is_playing });
     }
 
-    pub(crate) fn set_volume(&self, volume: f32) {
-        let _ = self.tx.send(ExclusiveCommand::SetVolume(volume));
-    }
-
     pub(crate) fn set_volume_balance(&self, enabled: bool, target_gain: f32) {
         let _ = self.tx.send(ExclusiveCommand::SetVolumeBalance {
             enabled,
             target_gain,
         });
+    }
+
+    pub(crate) fn set_equalizer_settings(&self, settings: EqualizerSettings) {
+        let _ = self
+            .tx
+            .send(ExclusiveCommand::SetEqualizerSettings { settings });
     }
 
     pub(crate) fn stop(&mut self) {
@@ -143,7 +147,7 @@ struct ExclusiveSource {
     channels: u16,
     channel_sum: f32,
     channel_samples: u16,
-    gain_ramp: GainRamp,
+    normalizer_handle: crate::player::loudness::VolumeNormalizerHandle,
 }
 
 #[derive(Clone, Copy)]
@@ -167,6 +171,8 @@ impl ExclusiveSource {
         start_time: Duration,
         progress: Arc<SharedProgress>,
         volume_balance_gain: f32,
+        equalizer_handle: Arc<EqualizerHandle>,
+        user_volume: Arc<AtomicU32>,
     ) -> Result<(Self, u32, u16), String> {
         let file = File::open(path).map_err(|error| error.to_string())?;
         let reader = BufReader::with_capacity(512 * 1024, file);
@@ -183,17 +189,26 @@ impl ExclusiveSource {
             .store(samples_at_target, Ordering::Relaxed);
         progress.visualizer.reset();
 
-        let gain_ramp = GainRamp::new(volume_balance_gain, sample_rate, 100);
+        // 按照管线顺序装配: Decoder -> VolumeNormalizer -> Equalizer -> UserVolumeSource -> ClipGuardSource
+        let decoded = decoder.convert_samples::<f32>().skip_duration(start_time);
+        let (normalized, normalizer_handle) = crate::player::loudness::VolumeNormalizer::new(
+            decoded,
+            volume_balance_gain,
+            100, // ramp 100ms
+        );
+        let eq_source = crate::player::equalizer::Equalizer::new(normalized, equalizer_handle);
+        let vol_source = crate::player::equalizer::UserVolumeSource::new(eq_source, user_volume);
+        let clip_source = crate::player::equalizer::ClipGuardSource::new(vol_source);
 
         Ok((
             Self {
-                source: Box::new(decoder.convert_samples::<f32>().skip_duration(start_time)),
+                source: Box::new(clip_source),
                 visualizer: progress.visualizer.clone(),
                 progress,
                 channels,
                 channel_sum: 0.0,
                 channel_samples: 0,
-                gain_ramp,
+                normalizer_handle,
             },
             sample_rate,
             channels,
@@ -203,7 +218,6 @@ impl ExclusiveSource {
     fn read_frames_into(
         &mut self,
         frame_count: usize,
-        volume: f32,
         sample_format: ExclusiveSampleFormat,
         output: &mut Vec<u8>,
     ) -> bool {
@@ -211,9 +225,6 @@ impl ExclusiveSource {
         output.clear();
 
         for _ in 0..frame_count {
-            let frame_gain = self.gain_ramp.next_frame_gain();
-            let total_gain = volume * frame_gain;
-
             for _ in 0..self.channels {
                 let sample = match self.source.next() {
                     Some(sample) => {
@@ -236,7 +247,9 @@ impl ExclusiveSource {
                     }
                 };
 
-                push_sample_bytes(output, sample * total_gain, sample_format);
+                // 音量平衡（VolumeNormalizer）已被移至管线最前端，
+                // 在这里我们无需再做任何额外乘以 volume_balance_gain 的操作，直接将样本安全写入 WASAPI
+                push_sample_bytes(output, sample, sample_format);
             }
         }
 
@@ -317,12 +330,19 @@ fn run_exclusive_playback(
         .ok()
         .map_err(|error| format!("COM initialization failed: {error}"))?;
 
+    // 初始化主音量原子浮点数快照
+    request
+        .user_volume
+        .store(request.volume.to_bits(), Ordering::Relaxed);
+
     let mut current_volume_balance_gain = request.volume_balance_gain;
     let (mut source, sample_rate, channels) = ExclusiveSource::open(
         &request.path,
         request.start_time,
         request.progress.clone(),
         current_volume_balance_gain,
+        request.equalizer_handle.clone(),
+        request.user_volume.clone(),
     )?;
 
     let enumerator = DeviceEnumerator::new().map_err(|error| error.to_string())?;
@@ -367,12 +387,10 @@ fn run_exclusive_playback(
         .get_buffer_size()
         .map_err(|error| error.to_string())? as usize;
 
-    let volume = request.volume.clamp(0.0, 1.0);
     let mut write_buffer =
         Vec::with_capacity(buffer_size.saturating_mul(exclusive_format.bytes_per_frame));
     let _ = source.read_frames_into(
         buffer_size,
-        volume,
         exclusive_format.sample_format,
         &mut write_buffer,
     );
@@ -389,7 +407,6 @@ fn run_exclusive_playback(
     let _ = init_tx.send(Ok(active_device_name));
 
     let mut is_playing = request.is_playing;
-    let mut volume = volume;
 
     loop {
         while let Ok(command) = command_rx.try_recv() {
@@ -423,11 +440,12 @@ fn run_exclusive_playback(
                         time,
                         request.progress.clone(),
                         current_volume_balance_gain,
+                        request.equalizer_handle.clone(),
+                        request.user_volume.clone(),
                     )?
                     .0;
                     let _ = source.read_frames_into(
                         buffer_size,
-                        volume,
                         exclusive_format.sample_format,
                         &mut write_buffer,
                     );
@@ -446,16 +464,16 @@ fn run_exclusive_playback(
                     let _ = audio_client.reset_stream();
                     return Ok(());
                 }
-                ExclusiveCommand::SetVolume(next_volume) => {
-                    volume = next_volume.clamp(0.0, 1.0);
-                }
                 ExclusiveCommand::SetVolumeBalance {
                     enabled,
                     target_gain,
                 } => {
                     let next_gain = if enabled { target_gain } else { 1.0 };
                     current_volume_balance_gain = next_gain;
-                    source.gain_ramp.get_handle().set_target_gain(next_gain);
+                    source.normalizer_handle.set_target_gain(next_gain);
+                }
+                ExclusiveCommand::SetEqualizerSettings { settings } => {
+                    request.equalizer_handle.set_settings(settings);
                 }
             }
         }
@@ -475,7 +493,6 @@ fn run_exclusive_playback(
 
         let ended = source.read_frames_into(
             available_frames,
-            volume,
             exclusive_format.sample_format,
             &mut write_buffer,
         );

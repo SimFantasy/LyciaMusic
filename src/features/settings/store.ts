@@ -100,6 +100,12 @@ export const defaultAudioSettings: AudioSettings = {
     gainOffsetDb: 0,
     preventClipping: true,
   },
+  equalizer: {
+    enabled: false,
+    preamp: 0.0,
+    gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  },
+  showEqualizerInFooter: true,
 };
 
 export const defaultAppSettings: AppSettings = {
@@ -208,6 +214,17 @@ export const mergeAudioSettings = (
     preventClipping = volumeBalancePatch.preventClipping ?? preventClipping;
   }
 
+  const equalizerPatch = patch.equalizer;
+  let eqEnabled = base.equalizer?.enabled ?? false;
+  let eqPreamp = base.equalizer?.preamp ?? 0.0;
+  let eqGains = base.equalizer?.gains ?? [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+  if (equalizerPatch && typeof equalizerPatch === 'object') {
+    eqEnabled = equalizerPatch.enabled ?? eqEnabled;
+    eqPreamp = equalizerPatch.preamp ?? eqPreamp;
+    eqGains = equalizerPatch.gains ? [...equalizerPatch.gains] : eqGains;
+  }
+
   return {
     ...base,
     outputMode: patch.outputMode === 'wasapiExclusive' ? 'wasapiExclusive' : 'shared',
@@ -216,6 +233,12 @@ export const mergeAudioSettings = (
       gainOffsetDb,
       preventClipping,
     },
+    equalizer: {
+      enabled: eqEnabled,
+      preamp: eqPreamp,
+      gains: eqGains,
+    },
+    showEqualizerInFooter: patch.showEqualizerInFooter ?? base.showEqualizerInFooter ?? true,
   };
 };
 

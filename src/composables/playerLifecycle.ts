@@ -15,7 +15,7 @@ import {
   type LocalSortMode,
   type PlaylistSortMode,
 } from '../services/storage/playerStorage';
-import { playbackApi } from '../services/tauri/playbackApi';
+import { playbackApi, createEqualizerSignature } from '../services/tauri/playbackApi';
 import { remoteLibraryApi } from '../services/tauri/remoteLibraryApi';
 import { useCollectionsStore } from '../features/collections/store';
 import { useLibraryStore } from '../features/library/store';
@@ -236,6 +236,35 @@ export const createPlayerLifecycle = ({
     });
   };
 
+  const syncEqualizerSettings = async () => {
+    const eq = settings.value.audio.equalizer;
+    
+    // 生成当前即将写入的规范化高精度参数签名
+    const currentParamsSignature = createEqualizerSignature(eq.enabled, eq.preamp, eq.gains);
+    
+    // 从底层查询最后一次成功同步过的签名缓存
+    const lastSynced = playbackApi.getLastSyncedParams();
+    
+    if (currentParamsSignature === lastSynced) {
+      if (import.meta.env.DEV) {
+        console.log(`[playerLifecycle] EQ params already synced (${currentParamsSignature}), skipping duplicate IPC.`);
+      }
+      return;
+    }
+    
+    if (import.meta.env.DEV) {
+      console.log(`[playerLifecycle] EQ params changed from store. Triggering IPC. Signature: ${currentParamsSignature}`);
+    }
+
+    await playbackApi.setEqualizerSettings(
+      eq.enabled,
+      eq.preamp,
+      eq.gains
+    ).catch(err => {
+      console.warn('Failed to update equalizer settings:', err);
+    });
+  };
+
   onMounted(async () => {
     await bootstrapLibrary();
   });
@@ -314,6 +343,13 @@ export const createPlayerLifecycle = ({
       () => settings.value.audio.volumeBalance,
       () => {
         void syncLoudnessSettings();
+      },
+      { deep: true }
+    );
+    watch(
+      () => settings.value.audio.equalizer,
+      () => {
+        void syncEqualizerSettings();
       },
       { deep: true }
     );
@@ -538,6 +574,7 @@ export const createPlayerLifecycle = ({
       if (vb) {
         await syncLoudnessSettings();
       }
+      await syncEqualizerSettings();
 
       await restorePathBackedState();
       await restoreRecentHistory();
