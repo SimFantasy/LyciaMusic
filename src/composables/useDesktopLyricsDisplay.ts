@@ -65,10 +65,7 @@ const DEFAULT_PSEUDO_WORD_DURATION_SECONDS = 3;
 const DEFAULT_SHADOW_RGB = '0 0 0';
 const LATIN_WORD_CHARACTER_PATTERN = /[\p{Script=Latin}\p{Number}'’_-]/u;
 const WHITESPACE_PATTERN = /\s/u;
-const FIRST_LINE_TEXT_SHADOW = [
-  '0 1px 2px rgb(var(--desktop-text-shadow-color) / calc(var(--desktop-first-line-text-shadow-alpha) * 0.55))',
-  '0 0 var(--desktop-first-line-text-shadow-blur) rgb(var(--desktop-text-shadow-color) / var(--desktop-first-line-text-shadow-alpha))',
-].join(', ');
+
 
 export const DESKTOP_LYRICS_ALIGNMENT_OPTIONS: Array<{
   value: DesktopLyricsWindowSettings['playerAlignment'];
@@ -623,7 +620,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     if (progress <= 0) {
       return {
         color: 'var(--desktop-text-primary)',
-        textShadow: FIRST_LINE_TEXT_SHADOW,
+        textShadow: 'none',
       };
     }
 
@@ -635,11 +632,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
       backgroundClip: 'text',
       color: 'transparent',
       WebkitTextFillColor: 'transparent',
-      textShadow: progress >= 1
-        ? `${FIRST_LINE_TEXT_SHADOW}, 0 0 14px color-mix(in srgb, var(--desktop-accent-b) 45%, transparent)`
-        : FIRST_LINE_TEXT_SHADOW,
-      filter: progress > 0 && progress < 1 ? 'drop-shadow(0 0 10px color-mix(in srgb, var(--desktop-accent-a) 30%, transparent))' : 'none',
-      transition: 'filter 120ms linear, text-shadow 120ms linear',
+      textShadow: 'none',
     };
   }
 
@@ -648,7 +641,10 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     const progress = Math.max(0, Math.min(1, (syncedCurrentTime.value - start) / duration));
 
     if (progress <= 0) {
-      return { color: 'var(--desktop-romaji-unplayed-color)' };
+      return {
+        color: 'var(--desktop-romaji-unplayed-color)',
+        textShadow: 'none',
+      };
     }
 
     const highlightStop = `${Math.round(progress * 100)}%`;
@@ -659,6 +655,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
       backgroundClip: 'text',
       color: 'transparent',
       WebkitTextFillColor: 'transparent',
+      textShadow: 'none',
     };
   }
 
@@ -669,7 +666,10 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     const progress = Math.max(0, Math.min(1, (syncedCurrentTime.value - start) / duration));
 
     if (progress <= 0) {
-      return { color: 'var(--desktop-romaji-unplayed-color)' };
+      return {
+        color: 'var(--desktop-romaji-unplayed-color)',
+        textShadow: 'none',
+      };
     }
 
     const highlightStop = `${Math.round(progress * 100)}%`;
@@ -680,8 +680,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
       backgroundClip: 'text',
       color: 'transparent',
       WebkitTextFillColor: 'transparent',
-      filter: progress > 0 && progress < 1 ? 'drop-shadow(0 0 10px color-mix(in srgb, var(--desktop-romaji-played-color) 28%, transparent))' : 'none',
-      transition: 'filter 120ms linear',
+      textShadow: 'none',
     };
   }
 

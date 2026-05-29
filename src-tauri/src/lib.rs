@@ -57,7 +57,11 @@ use taskbar::{
 };
 use toolbox::{
     apply_rename, file_exists, open_external_program, preview_rename, refresh_folder_songs,
+    set_gpu_acceleration,
 };
+
+#[cfg(target_os = "windows")]
+use toolbox::{append_webview2_browser_arg, should_disable_gpu_for_startup};
 use window_boundary::set_mini_boundary_enabled;
 use window_material::get_window_material_capabilities;
 use window_theme::set_dark_mode_for_window;
@@ -65,6 +69,13 @@ use window_z_order::{refresh_current_window_topmost, start_topmost_guard, stop_t
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "windows")]
+    {
+        if should_disable_gpu_for_startup() {
+            append_webview2_browser_arg("--disable-gpu");
+        }
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             handle_single_instance(app, argv);
@@ -181,7 +192,8 @@ pub fn run() {
             install_taskbar_zorder_guard,
             refresh_taskbar_window_topmost,
             uninstall_taskbar_zorder_guard,
-            exit_app
+            exit_app,
+            set_gpu_acceleration
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

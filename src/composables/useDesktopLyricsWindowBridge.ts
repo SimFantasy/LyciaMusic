@@ -2,7 +2,7 @@ import { emitTo, listen } from '@tauri-apps/api/event';
 import { PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { availableMonitors, getCurrentWindow } from '@tauri-apps/api/window';
-import { onMounted, onUnmounted, watch } from 'vue';
+import { onMounted, onUnmounted, watch, toRaw } from 'vue';
 import { storeToRefs } from 'pinia';
 
 import { useLyrics } from './lyrics';
@@ -301,7 +301,7 @@ export function useDesktopLyricsWindowBridge() {
 
   const createStatePayload = (): DesktopLyricsStatePayload => ({
     song: createDesktopLyricsSongSnapshot(currentSong.value),
-    parsedLyrics: JSON.parse(JSON.stringify(parsedLyrics.value)) as DesktopLyricsStatePayload['parsedLyrics'],
+    parsedLyrics: toRaw(parsedLyrics.value) as DesktopLyricsStatePayload['parsedLyrics'],
     lyricsStatus: lyricsStatus.value,
     fallbackText: currentLyricLine.value.text,
     playbackTime: currentTime.value,
@@ -348,15 +348,50 @@ export function useDesktopLyricsWindowBridge() {
     audioDelay: audioDelay.value,
   });
 
-  const emitStateToDesktopLyrics = async () => {
+  let isEmitStateThrottled = false;
+  let hasPendingEmitState = false;
+  let throttleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const emitStateToDesktopLyrics = async (immediate = false) => {
     const targetWindow = await getDesktopLyricsWindow();
     if (!targetWindow) return;
 
-    await emitTo<DesktopLyricsStatePayload>(
-      DESKTOP_LYRICS_WINDOW_LABEL,
-      DESKTOP_LYRICS_STATE_EVENT,
-      createStatePayload(),
-    );
+    if (immediate) {
+      if (throttleTimer) {
+        clearTimeout(throttleTimer);
+        throttleTimer = null;
+      }
+      isEmitStateThrottled = false;
+      hasPendingEmitState = false;
+    }
+
+    if (isEmitStateThrottled) {
+      hasPendingEmitState = true;
+      return;
+    }
+
+    if (!immediate) {
+      isEmitStateThrottled = true;
+    }
+
+    try {
+      await emitTo<DesktopLyricsStatePayload>(
+        DESKTOP_LYRICS_WINDOW_LABEL,
+        DESKTOP_LYRICS_STATE_EVENT,
+        createStatePayload(),
+      );
+    } finally {
+      if (!immediate) {
+        throttleTimer = setTimeout(() => {
+          isEmitStateThrottled = false;
+          throttleTimer = null;
+          if (hasPendingEmitState) {
+            hasPendingEmitState = false;
+            void emitStateToDesktopLyrics(false);
+          }
+        }, 30);
+      }
+    }
   };
 
   const emitPlaybackToDesktopLyrics = async () => {
@@ -388,7 +423,7 @@ export function useDesktopLyricsWindowBridge() {
     const targetWindow = await ensureDesktopLyricsWindow(desktopLyricsSettings.isAlwaysOnTop);
     await desktopLyricsReadyGate.wait();
     await syncWindowFlags();
-    await emitStateToDesktopLyrics();
+    await emitStateToDesktopLyrics(true);
     await emitPlaybackToDesktopLyrics();
     await targetWindow.show();
     await revealDesktopLyricsSurface();
@@ -485,7 +520,7 @@ export function useDesktopLyricsWindowBridge() {
     }));
 
     unlisteners.push(await listen(DESKTOP_LYRICS_REQUEST_STATE_EVENT, () => {
-      void emitStateToDesktopLyrics().catch((error) => {
+      void emitStateToDesktopLyrics(true).catch((error) => {
         logDesktopLyricsBridgeError('sync state to', error);
       });
       void emitPlaybackToDesktopLyrics().catch((error) => {
@@ -614,9 +649,18 @@ export function useDesktopLyricsWindowBridge() {
       () => settingsStore.settings.customLyricsFonts,
       dominantColors,
     ],
-    () => {
+    (newValue, oldValue) => {
       if (!showDesktopLyrics.value) return;
-      void emitStateToDesktopLyrics().catch((error) => {
+
+      let isImmediateChange = false;
+      if (oldValue) {
+        const keyIndices = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+        isImmediateChange = keyIndices.some(idx => newValue[idx] !== oldValue[idx]);
+      } else {
+        isImmediateChange = true;
+      }
+
+      void emitStateToDesktopLyrics(isImmediateChange).catch((error) => {
         logDesktopLyricsBridgeError('sync state to', error);
       });
       void emitPlaybackToDesktopLyrics().catch((error) => {

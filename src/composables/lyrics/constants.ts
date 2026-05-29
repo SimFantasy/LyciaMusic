@@ -14,10 +14,10 @@ export const LEGACY_DESKTOP_LYRICS_SETTINGS_KEY = 'desktop_lyrics_settings';
 
 export const DEFAULT_PLAYER_FONT_SCALE = 1;
 export const MIN_PLAYER_FONT_SCALE = 0.5;
-export const MAX_PLAYER_FONT_SCALE = 1.5;
+export const MAX_PLAYER_FONT_SCALE = 3.0;
 export const DEFAULT_PLAYER_LINE_GAP = 1;
 export const MIN_PLAYER_LINE_GAP = 0.5;
-export const MAX_PLAYER_LINE_GAP = 1.5;
+export const MAX_PLAYER_LINE_GAP = 3.0;
 export const DEFAULT_PLAYER_OFFSET_X = 0;
 export const MIN_PLAYER_OFFSET_X = -30;
 export const MAX_PLAYER_OFFSET_X = 30;

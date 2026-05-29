@@ -130,6 +130,7 @@ export const defaultAppSettings: AppSettings = {
   shortcuts: createDefaultShortcutSettings(),
   showTaskbarPlayer: false,
   taskbarPlayerCanDrag: false,
+  gpuAcceleration: true,
 };
 
 export const createDefaultThemeSettings = (): ThemeSettings => ({

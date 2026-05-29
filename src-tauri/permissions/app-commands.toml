@@ -106,4 +106,5 @@ commands.allow = [
   "setup_taskbar_window",
   "get_taskbar_tray_geometry",
   "file_exists",
+  "set_gpu_acceleration",
 ]

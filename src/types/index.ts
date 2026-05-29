@@ -372,4 +372,5 @@ export interface AppSettings {
   shortcuts: ShortcutSettings;
   showTaskbarPlayer: boolean;
   taskbarPlayerCanDrag: boolean;
+  gpuAcceleration: boolean;
 }
