@@ -60,6 +60,9 @@ fn read_tagged_file_from_path_with_cover_mode(
         Err(original_err) if is_wav_path(path) => {
             read_salvaged_wav_tags(path, read_cover_art).map_err(|_| original_err)
         }
+        Err(original_err) if is_mpeg_path(path) => {
+            read_salvaged_id3_tags(path, read_cover_art).map_err(|_| original_err)
+        }
         Err(original_err) if is_bad_timestamp_error(&original_err) => {
             read_salvaged_id3_tags(path, read_cover_art).map_err(|_| original_err)
         }
@@ -320,6 +323,13 @@ fn is_wav_path(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
         .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "wav" | "wave"))
+        .unwrap_or(false)
+}
+
+fn is_mpeg_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "mp3" | "mpeg" | "mpga"))
         .unwrap_or(false)
 }
 
