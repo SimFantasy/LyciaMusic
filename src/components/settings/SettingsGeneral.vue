@@ -273,9 +273,8 @@ onScopeDispose(() => {
         </div>
 
         <div class="p-4 flex items-center justify-between border-b border-white/30 dark:border-white/5 last:border-0 hover:bg-white/40 dark:hover:bg-white/10 transition-colors">
-          <div class="mr-4">
+          <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">GPU 加速</div>
-            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-xl">启用 WebView 硬件加速以提升动画、模糊、歌词滚动等渲染性能。关闭后将在下次重启后尝试禁用 WebView2 GPU 硬件加速并使用软件渲染，这可能有助于降低部分硬件下的 GPU 占用，但也可能会增加 CPU 占用、降低动画和歌词滚动流畅度。(目前该选项目标定位为兼容性/性能调试选项，仅对 Windows 生效)</div>
           </div>
           <button @click="handleGpuAccelerationChange" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none shrink-0" :class="settings.gpuAcceleration ? 'bg-[#EC4141]' : 'bg-gray-300 dark:bg-gray-700'">
             <span class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out shadow-sm" :class="settings.gpuAcceleration ? 'translate-x-6' : 'translate-x-1'" />
@@ -321,7 +320,6 @@ onScopeDispose(() => {
         <div class="p-4 flex items-center justify-between border-b border-white/30 dark:border-white/5 last:border-0 hover:bg-white/40 dark:hover:bg-white/10 transition-colors">
           <div>
             <div class="text-sm font-medium text-gray-800 dark:text-gray-200">启用任务栏快捷播控</div>
-            <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">在系统任务栏显示免打扰播控条，支持快捷切歌与状态同步</div>
           </div>
           <button @click="settings.showTaskbarPlayer = !settings.showTaskbarPlayer" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none" :class="settings.showTaskbarPlayer ? 'bg-[#EC4141]' : 'bg-gray-300 dark:bg-gray-700'">
             <span class="inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out shadow-sm" :class="settings.showTaskbarPlayer ? 'translate-x-6' : 'translate-x-1'" />
