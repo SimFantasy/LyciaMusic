@@ -202,7 +202,7 @@ mod tests {
     use super::parser::{
         preferred_parse_workers_for_available, song_identity_missing, song_metadata_incomplete,
     };
-    use super::repository::apply_scan_changes;
+    use super::repository::{apply_scan_changes, scan_change_chunk_size};
     use super::ScanOptions;
     use crate::music::types::Song;
     use crate::music::utils::normalize_path;
@@ -280,7 +280,11 @@ mod tests {
                 track_number TEXT,
                 disc_number TEXT,
                 added_at INTEGER,
-                file_modified_at INTEGER
+                file_modified_at INTEGER,
+                cue_source_path TEXT,
+                cue_start_offset INTEGER,
+                cue_end_offset INTEGER,
+                comment TEXT
             );
             CREATE TABLE artists (
                 id INTEGER PRIMARY KEY,
@@ -547,5 +551,10 @@ mod tests {
         assert_eq!(remaining_songs, 0);
         assert_eq!(remaining_artists, 0);
         assert_eq!(remaining_links, 0);
+    }
+
+    #[test]
+    fn large_import_chunk_size_stays_under_sqlite_variable_limit() {
+        assert!(scan_change_chunk_size(0, 6000) <= 999);
     }
 }

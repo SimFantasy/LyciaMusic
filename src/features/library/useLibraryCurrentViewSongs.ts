@@ -1,6 +1,10 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue';
+import { useLibraryStore } from './store';
 
-import { useLibraryAllSongPathCache } from '../../composables/useLibraryAllSongPathCache';
+import {
+  isStaleLibraryPathRequestError,
+  useLibraryAllSongPathCache,
+} from '../../composables/useLibraryAllSongPathCache';
 import { useLibraryCollectionSongPathCache } from '../../composables/useLibraryCollectionSongPathCache';
 import { useLibraryDetailSongPathCache } from '../../composables/useLibraryDetailSongPathCache';
 import { useLibraryFolderSongPathCache } from '../../composables/useLibraryFolderSongPathCache';
@@ -60,6 +64,13 @@ export function useLibraryCurrentViewSongs({
   localCustomOrder,
   playlistSortMode,
 }: UseLibraryCurrentViewSongsOptions) {
+  const libraryStore = useLibraryStore();
+
+  const allViewLoading = ref(false);
+  const allViewUseCanonicalFallback = ref(false);
+  const lastSuccessfulAllViewSongPaths = ref<string[]>([]);
+  const currentQueryKey = ref('');
+
   const { loadAllViewSongPaths } = useLibraryAllSongPathCache();
   const { loadFavoriteSongPaths, loadRecentSongPaths } = useLibraryCollectionSongPathCache();
   const { loadArtistSongPaths, loadAlbumSongPaths } = useLibraryDetailSongPathCache();
@@ -102,25 +113,71 @@ export function useLibraryCurrentViewSongs({
         return;
       }
 
+      const nextQueryKey = `${musicTab}\u0001${artistFilter}\u0001${albumFilter}\u0001${sortMode}\u0001${query}`;
+      const isQueryKeyChanged = currentQueryKey.value !== nextQueryKey;
+      currentQueryKey.value = nextQueryKey;
+
+      // 如果过滤/查询条件变了，立即清空上一次结果，防旧数据筛选错乱
+      if (isQueryKeyChanged) {
+        allViewSongPaths.value = [];
+        allViewUseCanonicalFallback.value = false;
+        lastSuccessfulAllViewSongPaths.value = [];
+      }
+
+      allViewLoading.value = true;
+
+      // 扫描导入版本风暴控制：若正处于扫描中且已有旧成功数据，为防 batch 频繁失效风暴，延迟加载并使用旧列表做过渡渲染
+      const isScanning = !!libraryStore.libraryScanProgress && !libraryStore.libraryScanProgress.done;
+      if (isScanning && lastSuccessfulAllViewSongPaths.value.length > 0) {
+        allViewLoading.value = false;
+        return;
+      }
+
+      const loadCurrentAllViewPaths = () => loadAllViewSongPaths({
+        query,
+        artistFilter: musicTab === 'artist' ? artistFilter : '',
+        albumFilter: musicTab === 'album' ? albumFilter : '',
+        sortMode,
+      });
+
       try {
-        const paths = await loadAllViewSongPaths({
-          query,
-          artistFilter: musicTab === 'artist' ? artistFilter : '',
-          albumFilter: musicTab === 'album' ? albumFilter : '',
-          sortMode,
-        });
+        const paths = await loadCurrentAllViewPaths();
 
         if (requestId !== allViewRequestId) {
           return;
         }
 
         allViewSongPaths.value = paths;
-      } catch {
+        allViewUseCanonicalFallback.value = false;
+        lastSuccessfulAllViewSongPaths.value = paths; // 缓存成功列表
+      } catch (error) {
         if (requestId !== allViewRequestId) {
           return;
         }
-
+        if (isStaleLibraryPathRequestError(error)) {
+          allViewUseCanonicalFallback.value = true;
+          try {
+            const paths = await loadCurrentAllViewPaths();
+            if (requestId !== allViewRequestId) {
+              return;
+            }
+            allViewSongPaths.value = paths;
+            allViewUseCanonicalFallback.value = false;
+            lastSuccessfulAllViewSongPaths.value = paths;
+          } catch (retryError) {
+            if (!isStaleLibraryPathRequestError(retryError)) {
+              allViewSongPaths.value = [];
+              allViewUseCanonicalFallback.value = false;
+            }
+          }
+          return;
+        }
+        allViewUseCanonicalFallback.value = false;
         allViewSongPaths.value = [];
+      } finally {
+        if (requestId === allViewRequestId) {
+          allViewLoading.value = false;
+        }
       }
     },
     { immediate: true },
@@ -581,13 +638,27 @@ export function useLibraryCurrentViewSongs({
 
     if (currentViewMode.value === 'all') {
       if (localSortMode.value !== 'custom') {
+        let pathsToRender = allViewSongPaths.value;
+        const isCurrentlyEmpty = allViewSongPaths.value.length === 0;
+
+        if (isCurrentlyEmpty) {
+          if (lastSuccessfulAllViewSongPaths.value.length > 0) {
+            // 1. 优先展示上一次渲染成功的结果，实现毫秒级快速切回过渡
+            pathsToRender = lastSuccessfulAllViewSongPaths.value;
+          } else if (allViewLoading.value || allViewUseCanonicalFallback.value) {
+            // 2. 首次导入空档期且正在加载中：以常驻内存 canonicalSongPaths 辅以本地简排做临时兜底，根除空白
+            pathsToRender = sortSongPathsByLocalMode(canonicalSongPaths.value, localSortMode.value);
+          }
+        }
+        pathsToRender = pathsToRender.filter(path => songLookup.value.has(path));
+
         if (localSortMode.value === 'title') {
           return sortItemsByAlphabetIndex(
-            allViewSongPaths.value,
+            pathsToRender,
             (path) => getSongTitleLabel(songLookup.value.get(path)!),
           );
         }
-        return allViewSongPaths.value;
+        return pathsToRender;
       }
 
       let base = [...canonicalSongPaths.value];

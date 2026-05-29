@@ -21,6 +21,9 @@ pub fn scan_single_directory_internal(
     folder_total: usize,
     options: ScanOptions,
 ) -> Result<Vec<Song>, String> {
+    #[cfg(debug_assertions)]
+    let start_time = std::time::Instant::now();
+
     let normalized_folder = normalize_path(&folder_path);
     let reporter = app.map(|app| {
         ScanProgressReporter::new(app, normalized_folder.clone(), folder_index, folder_total)
@@ -70,6 +73,18 @@ pub fn scan_single_directory_internal(
 
     if let Some(reporter) = reporter.as_ref() {
         reporter.emit_complete(scan_diff.songs.len());
+    }
+
+    #[cfg(debug_assertions)]
+    {
+        let duration = start_time.elapsed();
+        println!(
+            "[Profiling] scan_single_directory_internal took {:?} (to_add: {}, to_update: {}, to_delete: {})",
+            duration,
+            scan_diff.to_add.len(),
+            scan_diff.to_update.len(),
+            scan_diff.to_delete.len()
+        );
     }
 
     Ok(scan_diff.songs)
