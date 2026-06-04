@@ -80,6 +80,11 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             handle_single_instance(app, argv);
         }))
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_denylist(&["desktop-lyrics", "mini-player", "taskbar-player", "tray-menu"])
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())

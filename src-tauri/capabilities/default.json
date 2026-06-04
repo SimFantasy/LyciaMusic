@@ -49,6 +49,7 @@
     "global-shortcut:allow-unregister-all",
     "opener:default",
     "dialog:default",
+    "window-state:default",
     "allow-app-commands"
   ]
 }
