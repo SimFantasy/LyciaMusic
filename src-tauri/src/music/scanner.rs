@@ -604,4 +604,5 @@ mod tests {
     fn split_artist_names_single_artist_without_separator() {
         let names = super::split_artist_names("周杰伦");
         assert_eq!(names, vec!["周杰伦"]);
+    }
 }

@@ -2,6 +2,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { onMounted, onUnmounted, ref } from 'vue';
 import { appApi } from '../services/tauri/appApi';
+import { usePlaybackStore } from '../features/playback/store';
 
 type ExternalPathSource = 'drop' | 'open';
 
@@ -36,6 +37,7 @@ export function useExternalPathBridge({
   beforeWindowShow,
   afterWindowShow,
 }: UseExternalPathBridgeOptions) {
+  const playbackStore = usePlaybackStore();
   const isExternalDragActive = ref(false);
   let externalPathTask: Promise<void> = Promise.resolve();
   let unlistenDragDrop: (() => void) | null = null;
@@ -53,10 +55,21 @@ export function useExternalPathBridge({
     return externalPathTask;
   };
 
-  const consumePendingOpenPaths = async () => {
-    const paths = await appApi.consumePendingOpenPaths();
-    if (paths.length > 0) {
-      await enqueueExternalPaths(paths, 'open');
+  const consumePendingOpenPaths = async (options: { startup?: boolean } = {}) => {
+    try {
+      const paths = await appApi.consumePendingOpenPaths();
+      if (paths.length > 0) {
+        if (options.startup) {
+          playbackStore.markExternalStartupFile();
+        }
+        await enqueueExternalPaths(paths, 'open');
+      }
+    } catch (error) {
+      console.error('Failed to consume pending open paths:', error);
+    } finally {
+      if (options.startup) {
+        playbackStore.markStartupPathsResolved();
+      }
     }
   };
 
@@ -78,7 +91,7 @@ export function useExternalPathBridge({
       await consumePendingOpenPaths();
     });
 
-    await consumePendingOpenPaths();
+    await consumePendingOpenPaths({ startup: true });
 
     try {
       const appWindow = getCurrentWindow();
