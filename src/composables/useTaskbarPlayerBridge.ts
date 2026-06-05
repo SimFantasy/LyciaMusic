@@ -513,6 +513,7 @@ export function useTaskbarPlayerBridge() {
   onMounted(async () => {
     unlisteners.push(
       await mainWindow.onCloseRequested(async (event) => {
+        if (settings.value.closeToTray) return;
         if (isMainWindowClosing) return;
         isMainWindowClosing = true;
         event.preventDefault();

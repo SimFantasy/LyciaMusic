@@ -510,6 +510,7 @@ export function useDesktopLyricsWindowBridge() {
     }
 
     unlisteners.push(await mainWindow.onCloseRequested(async (event) => {
+      if (settingsStore.settings.closeToTray) return;
       if (isMainWindowClosing) return;
 
       isMainWindowClosing = true;

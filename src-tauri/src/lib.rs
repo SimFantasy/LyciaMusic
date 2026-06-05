@@ -15,6 +15,7 @@ mod window_material;
 mod window_theme;
 mod window_z_order;
 
+use tauri::Manager;
 use app_runtime::{consume_pending_open_paths, exit_app, handle_single_instance, setup_app};
 use custom_fonts::{import_lyrics_font, read_lyrics_font_data_url};
 use database::clear_all_app_data;
@@ -80,6 +81,13 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             handle_single_instance(app, argv);
         }))
+        .on_window_event(|window, event| {
+            if window.label() == "main" {
+                if let tauri::WindowEvent::Destroyed = event {
+                    window.app_handle().exit(0);
+                }
+            }
+        })
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_denylist(&["desktop-lyrics", "mini-player", "taskbar-player", "tray-menu"])

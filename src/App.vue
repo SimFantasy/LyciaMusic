@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { watch } from 'vue';
+import { watch, onMounted } from 'vue';
 
 import MainShell from './components/layout/MainShell.vue';
 import MiniPlayerWindow from './components/layout/MiniPlayerWindow.vue';
@@ -33,6 +33,17 @@ watch(
   (fonts) => registerImportedLyricsFonts(fonts),
   { deep: true, immediate: true },
 );
+
+if (currentWindowLabel === 'main') {
+  onMounted(async () => {
+    await getCurrentWindow().onCloseRequested(async (event) => {
+      if (settings.value.closeToTray) {
+        event.preventDefault();
+        await getCurrentWindow().hide();
+      }
+    });
+  });
+}
 </script>
 
 <template>
