@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 
 import { restoreMainWindowFromMiniMode } from './useMiniPlayerWindowBridge';
@@ -38,7 +38,20 @@ vi.mock('./useCoverCache', () => ({
 }));
 
 describe('mini player window bridge', () => {
+  beforeAll(() => {
+    global.window = {
+      dispatchEvent: () => false,
+    } as any;
+  });
+
+  afterAll(() => {
+    delete (global as any).window;
+  });
+
   it('restores the main window from mini mode before focusing it', async () => {
+    vi.useFakeTimers();
+    const dispatchSpy = vi.spyOn(global.window, 'dispatchEvent');
+
     const isMiniMode = ref(true);
     const hideMiniPlayerWindow = vi.fn().mockResolvedValue(undefined);
     const mainWindow = {
@@ -58,9 +71,21 @@ describe('mini player window bridge', () => {
     expect(mainWindow.unminimize).toHaveBeenCalledTimes(1);
     expect(mainWindow.show).toHaveBeenCalledTimes(1);
     expect(mainWindow.setFocus).toHaveBeenCalledTimes(1);
+
+    vi.runAllTimers();
+
+    expect(dispatchSpy).toHaveBeenCalledTimes(2);
+    expect(dispatchSpy.mock.calls[0][0].type).toBe('resize');
+    expect(dispatchSpy.mock.calls[1][0].type).toBe('resize');
+
+    vi.useRealTimers();
+    dispatchSpy.mockRestore();
   });
 
   it('can restore the main window while keeping the mini player visible', async () => {
+    vi.useFakeTimers();
+    const dispatchSpy = vi.spyOn(global.window, 'dispatchEvent');
+
     const isMiniMode = ref(true);
     const hideMiniPlayerWindow = vi.fn().mockResolvedValue(undefined);
     const mainWindow = {
@@ -81,5 +106,14 @@ describe('mini player window bridge', () => {
     expect(mainWindow.unminimize).toHaveBeenCalledTimes(1);
     expect(mainWindow.show).toHaveBeenCalledTimes(1);
     expect(mainWindow.setFocus).toHaveBeenCalledTimes(1);
+
+    vi.runAllTimers();
+
+    expect(dispatchSpy).toHaveBeenCalledTimes(2);
+    expect(dispatchSpy.mock.calls[0][0].type).toBe('resize');
+    expect(dispatchSpy.mock.calls[1][0].type).toBe('resize');
+
+    vi.useRealTimers();
+    dispatchSpy.mockRestore();
   });
 });

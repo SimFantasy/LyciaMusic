@@ -11,7 +11,7 @@ import { getPreblurredBackgroundUrl } from '../../composables/preblurredBackgrou
 import { useRenderingPower } from '../../composables/renderingPower';
 import { calculateCoverGeometry } from '../../composables/useThemeBackgroundGeometry';
 
-const { currentCover, currentCoverFull, dominantColors, showPlayerDetail } = usePlayer();
+const { currentCover, currentCoverFull, dominantColors, showPlayerDetail, isMiniMode } = usePlayer();
 const { theme, isDarkTheme, patchTheme } = useThemeSettings();
 const { activeWindowMaterial } = useWindowMaterial();
 const { loadFullCover } = useCoverCache();
@@ -468,6 +468,14 @@ watch(
   },
   { immediate: true },
 );
+
+watch(isMiniMode, async (mini, prevMini) => {
+  if (prevMini && !mini) {
+    await nextTick();
+    updateContainerSize();
+    setTimeout(updateContainerSize, 100);
+  }
+});
 
 onMounted(() => {
   updateContainerSize();

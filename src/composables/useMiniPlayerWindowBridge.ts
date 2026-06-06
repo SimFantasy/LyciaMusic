@@ -241,6 +241,15 @@ export async function restoreMainWindowFromMiniMode(options: {
   await options.mainWindow.unminimize();
   await options.mainWindow.show();
   await options.mainWindow.setFocus();
+
+  if (typeof window !== 'undefined') {
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 0);
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 100);
+  }
 }
 
 export function useMiniPlayerWindowBridge() {
