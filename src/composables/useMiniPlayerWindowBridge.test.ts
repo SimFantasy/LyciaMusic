@@ -39,18 +39,18 @@ vi.mock('./useCoverCache', () => ({
 
 describe('mini player window bridge', () => {
   beforeAll(() => {
-    global.window = {
+    (globalThis as any).window = {
       dispatchEvent: () => false,
     } as any;
   });
 
   afterAll(() => {
-    delete (global as any).window;
+    delete (globalThis as any).window;
   });
 
   it('restores the main window from mini mode before focusing it', async () => {
     vi.useFakeTimers();
-    const dispatchSpy = vi.spyOn(global.window, 'dispatchEvent');
+    const dispatchSpy = vi.spyOn((globalThis as any).window, 'dispatchEvent') as any;
 
     const isMiniMode = ref(true);
     const hideMiniPlayerWindow = vi.fn().mockResolvedValue(undefined);
@@ -84,7 +84,7 @@ describe('mini player window bridge', () => {
 
   it('can restore the main window while keeping the mini player visible', async () => {
     vi.useFakeTimers();
-    const dispatchSpy = vi.spyOn(global.window, 'dispatchEvent');
+    const dispatchSpy = vi.spyOn((globalThis as any).window, 'dispatchEvent') as any;
 
     const isMiniMode = ref(true);
     const hideMiniPlayerWindow = vi.fn().mockResolvedValue(undefined);

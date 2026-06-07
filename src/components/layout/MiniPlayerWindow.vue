@@ -349,8 +349,8 @@ onUnmounted(() => {
               <div
                 v-if="showVolumePopover || isDraggingVolume"
                 ref="volumePopoverRef"
-                class="fixed z-[200] w-40 h-[46px] bg-white/95 dark:bg-gray-800/95 backdrop-blur shadow-xl rounded-xl border border-gray-200 dark:border-white/10 px-2.5 py-2 flex items-center gap-2"
-                :class="[isDarkTheme ? 'dark !bg-gray-800/95 !border-white/10' : '!bg-white/95 !border-gray-200']"
+                class="fixed z-[200] w-40 h-[46px] bg-white/95 dark:bg-zinc-900/85 backdrop-blur shadow-xl rounded-xl border border-gray-200 dark:border-white/10 px-2.5 py-2 flex items-center gap-2"
+                :class="[isDarkTheme ? 'dark !bg-zinc-900/85 !border-white/10' : '!bg-white/95 !border-gray-200']"
                 :style="volumePopoverStyle"
                 @wheel.prevent.stop="handleVolumeWheel"
               >

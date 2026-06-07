@@ -478,13 +478,13 @@ onUnmounted(() => {
           <div class="absolute top-full left-0 w-full h-4"></div>
           
           <div class="w-9 h-32 backdrop-blur-md shadow-2xl rounded-2xl border flex flex-col items-center justify-between py-3 transition-colors"
-            :class="showPlayerDetail ? 'bg-black/90 border-white/5' : 'bg-white/90 dark:bg-black/90 border-gray-100 dark:border-white/5'"
+            :class="showPlayerDetail ? 'bg-[#1c1c1c]/80 border-white/10' : 'bg-white/90 dark:bg-zinc-900/85 border-gray-100 dark:border-white/10'"
           >
             <div class="text-[10px] font-bold select-none transition-colors"
               :class="showPlayerDetail ? 'text-white/60' : 'text-gray-500 dark:text-white/60'"
             >{{ volume }}%</div>
             <div ref="volumeBarRef" class="relative flex-1 w-1.5 rounded-full cursor-pointer my-1 transition-colors [touch-action:none]" 
-                 :class="showPlayerDetail ? 'bg-white/20' : 'bg-gray-200 dark:bg-white/20'"
+                 :class="showPlayerDetail ? 'bg-white/15' : 'bg-gray-200 dark:bg-white/15'"
                  @pointerdown="startDrag">
                <div class="absolute bottom-0 w-full bg-[#EC4141] rounded-full" :style="{ height: volume + '%' }"></div>
                <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-white rounded-full shadow-sm cursor-grab active:cursor-grabbing" :style="{ bottom: `calc(${volume}% - 7px)` }"></div>
