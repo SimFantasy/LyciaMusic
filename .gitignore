@@ -59,3 +59,8 @@ website/
 
 # --- CD 镜像文件目录 ---
 CDImage/
+
+# --- Local Agent Configurations ---
+.agents/
+AGENTS.md
+
