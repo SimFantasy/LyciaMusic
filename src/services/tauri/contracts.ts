@@ -200,7 +200,7 @@ export interface TauriCommandMap {
     payload: {
       folderPath: string;
       query?: string;
-      sortMode: 'title' | 'name' | 'artist' | 'added_at' | 'added_at_asc';
+      sortMode: 'title' | 'name' | 'artist' | 'added_at' | 'added_at_asc' | 'track_number';
     };
     response: string[];
   };

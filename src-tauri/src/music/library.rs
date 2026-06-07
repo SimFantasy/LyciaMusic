@@ -58,6 +58,7 @@ pub enum FolderSongSortMode {
     Artist,
     AddedAt,
     AddedAtAsc,
+    TrackNumber,
 }
 
 #[derive(Debug)]
@@ -70,6 +71,8 @@ struct FolderViewSongRow {
     artist_names: Vec<String>,
     effective_artist_names: Vec<String>,
     added_at: Option<u64>,
+    track_number: Option<String>,
+    disc_number: Option<String>,
 }
 
 fn deserialize_string_list(raw: Option<String>) -> Vec<String> {
@@ -703,6 +706,16 @@ pub async fn get_library_song_paths_for_all_view(
     Ok(result)
 }
 
+fn parse_track_or_disc_number(val: &Option<String>) -> Option<i32> {
+    val.as_ref().and_then(|s| {
+        let digits: String = s.chars()
+            .skip_while(|c| !c.is_ascii_digit())
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        digits.parse::<i32>().ok()
+    })
+}
+
 #[tauri::command]
 pub async fn get_library_song_paths_for_folder_view(
     folder_path: String,
@@ -718,7 +731,7 @@ pub async fn get_library_song_paths_for_folder_view(
         let (forward_like, backward_like) = super::utils::descendant_like_patterns(&normalized_folder);
         let mut stmt = conn
             .prepare(
-                "SELECT path, title, artist, artist_names, effective_artist_names, album, album_artist, added_at
+                "SELECT path, title, artist, artist_names, effective_artist_names, album, album_artist, added_at, track_number, disc_number
                  FROM songs
                  WHERE path = ?1
                     OR path LIKE ?2 ESCAPE '^'
@@ -739,6 +752,8 @@ pub async fn get_library_song_paths_for_folder_view(
                         album: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
                         album_artist: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
                         added_at: i64_to_u64_opt(row.get::<_, Option<i64>>(7)?),
+                        track_number: row.get::<_, Option<String>>(8)?,
+                        disc_number: row.get::<_, Option<String>>(9)?,
                     })
                 },
             )
@@ -790,6 +805,34 @@ pub async fn get_library_song_paths_for_folder_view(
                         .to_lowercase()
                         .cmp(&song_title_label(&right.title, &right.path).to_lowercase())
                 }),
+            FolderSongSortMode::TrackNumber => {
+                let left_disc = parse_track_or_disc_number(&left.disc_number);
+                let right_disc = parse_track_or_disc_number(&right.disc_number);
+                
+                let disc_cmp = match (left_disc, right_disc) {
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (Some(l), Some(r)) => l.cmp(&r),
+                    (None, None) => std::cmp::Ordering::Equal,
+                };
+                
+                disc_cmp.then_with(|| {
+                    let left_track = parse_track_or_disc_number(&left.track_number);
+                    let right_track = parse_track_or_disc_number(&right.track_number);
+                    match (left_track, right_track) {
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (Some(l), Some(r)) => l.cmp(&r),
+                        (None, None) => std::cmp::Ordering::Equal,
+                    }
+                }).then_with(|| {
+                    song_title_label(&left.title, &left.path)
+                        .to_lowercase()
+                        .cmp(&song_title_label(&right.title, &right.path).to_lowercase())
+                }).then_with(|| {
+                    left.path.cmp(&right.path)
+                })
+            }
         });
 
         Ok::<Vec<String>, String>(song_rows.into_iter().map(|row| row.path).collect())
@@ -1046,4 +1089,102 @@ mod tests {
         assert_eq!(songs.len(), 1);
         assert_eq!(songs[0].comment.as_deref(), Some("Live version"));
     }
+
+    #[test]
+    fn test_parse_track_or_disc_number() {
+        assert_eq!(parse_track_or_disc_number(&Some("02".to_string())), Some(2));
+        assert_eq!(parse_track_or_disc_number(&Some("1/12".to_string())), Some(1));
+        assert_eq!(parse_track_or_disc_number(&Some("Disc 2".to_string())), Some(2));
+        assert_eq!(parse_track_or_disc_number(&Some("A".to_string())), None);
+        assert_eq!(parse_track_or_disc_number(&None), None);
+    }
+
+    #[test]
+    fn test_track_number_sort_logic() {
+        let mut songs = vec![
+            FolderViewSongRow {
+                path: "/a/song1.flac".to_string(),
+                title: "Song 1".to_string(),
+                artist: "Artist".to_string(),
+                album: "Album".to_string(),
+                album_artist: "Artist".to_string(),
+                artist_names: vec![],
+                effective_artist_names: vec![],
+                added_at: None,
+                track_number: Some("1".to_string()),
+                disc_number: Some("2".to_string()),
+            },
+            FolderViewSongRow {
+                path: "/a/song2.flac".to_string(),
+                title: "Song 2".to_string(),
+                artist: "Artist".to_string(),
+                album: "Album".to_string(),
+                album_artist: "Artist".to_string(),
+                artist_names: vec![],
+                effective_artist_names: vec![],
+                added_at: None,
+                track_number: Some("2".to_string()),
+                disc_number: Some("1".to_string()),
+            },
+            FolderViewSongRow {
+                path: "/a/song3.flac".to_string(),
+                title: "Song 3".to_string(),
+                artist: "Artist".to_string(),
+                album: "Album".to_string(),
+                album_artist: "Artist".to_string(),
+                artist_names: vec![],
+                effective_artist_names: vec![],
+                added_at: None,
+                track_number: Some("1".to_string()),
+                disc_number: Some("1".to_string()),
+            },
+            FolderViewSongRow {
+                path: "/a/song4.flac".to_string(),
+                title: "Song 4".to_string(),
+                artist: "Artist".to_string(),
+                album: "Album".to_string(),
+                album_artist: "Artist".to_string(),
+                artist_names: vec![],
+                effective_artist_names: vec![],
+                added_at: None,
+                track_number: None,
+                disc_number: Some("1".to_string()),
+            },
+        ];
+
+        songs.sort_by(|left, right| {
+            let left_disc = parse_track_or_disc_number(&left.disc_number);
+            let right_disc = parse_track_or_disc_number(&right.disc_number);
+            
+            let disc_cmp = match (left_disc, right_disc) {
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (Some(l), Some(r)) => l.cmp(&r),
+                (None, None) => std::cmp::Ordering::Equal,
+            };
+            
+            disc_cmp.then_with(|| {
+                let left_track = parse_track_or_disc_number(&left.track_number);
+                let right_track = parse_track_or_disc_number(&right.track_number);
+                match (left_track, right_track) {
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (Some(l), Some(r)) => l.cmp(&r),
+                    (None, None) => std::cmp::Ordering::Equal,
+                }
+            }).then_with(|| {
+                song_title_label(&left.title, &left.path)
+                    .to_lowercase()
+                    .cmp(&song_title_label(&right.title, &right.path).to_lowercase())
+            }).then_with(|| {
+                left.path.cmp(&right.path)
+            })
+        });
+
+        assert_eq!(songs[0].path, "/a/song3.flac");
+        assert_eq!(songs[1].path, "/a/song2.flac");
+        assert_eq!(songs[2].path, "/a/song4.flac");
+        assert_eq!(songs[3].path, "/a/song1.flac");
+    }
 }
+

@@ -137,7 +137,7 @@ const restoreSortSettings = ({
   }
 
   const storedFolderSort = playerStorage.getString(playerStorageKeys.folderSortMode);
-  if (storedFolderSort && ['title', 'name', 'artist', 'added_at', 'custom'].includes(storedFolderSort)) {
+  if (storedFolderSort && ['title', 'name', 'artist', 'track_number', 'added_at', 'added_at_asc', 'custom'].includes(storedFolderSort)) {
     folderSortMode.value = storedFolderSort as FolderSortMode;
   }
 

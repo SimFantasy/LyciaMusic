@@ -12,6 +12,7 @@ import type { AlbumDetailSortMode, FolderSortMode, LocalSortMode, PlaylistSortMo
 import type { HistoryItem, Playlist, Song } from '../../types';
 import { sortItemsByAlphabetIndex } from '../../utils/alphabetIndex';
 import {
+  compareSongPathsByTrackNumber,
   getSongArtistSearchText,
   getSongFileNameLabel,
   getSongTitleLabel,
@@ -481,26 +482,6 @@ export function useLibraryCurrentViewSongs({
     return sortedPaths;
   };
 
-  const parseSortIndexValue = (value?: string) => {
-    if (!value) {
-      return null;
-    }
-
-    const match = value.trim().match(/\d+/);
-    if (!match) {
-      return null;
-    }
-
-    const parsed = Number.parseInt(match[0], 10);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-
-  const compareSongLabel = (left: string, right: string) =>
-    getSongTitleLabel(songLookup.value.get(left)!).localeCompare(
-      getSongTitleLabel(songLookup.value.get(right)!),
-      'zh-CN',
-    );
-
   const sortSongPathsByAlbumDetailMode = (paths: string[], mode: AlbumDetailSortMode) => {
     if (mode !== 'track_number' && mode !== 'track_number_desc') {
       return sortSongPathsByLocalMode(paths, mode as LocalSortMode);
@@ -508,37 +489,7 @@ export function useLibraryCurrentViewSongs({
 
     const sortedPaths = [...paths];
     sortedPaths.sort((left, right) => {
-      const leftSong = songLookup.value.get(left);
-      const rightSong = songLookup.value.get(right);
-      const leftDisc = parseSortIndexValue(leftSong?.disc_number);
-      const rightDisc = parseSortIndexValue(rightSong?.disc_number);
-      let result = 0;
-
-      if (leftDisc === null && rightDisc !== null) {
-        result = 1;
-      } else if (leftDisc !== null && rightDisc === null) {
-        result = -1;
-      } else if (leftDisc !== null && rightDisc !== null && leftDisc !== rightDisc) {
-        result = leftDisc - rightDisc;
-      }
-
-      if (result === 0) {
-        const leftTrack = parseSortIndexValue(leftSong?.track_number);
-        const rightTrack = parseSortIndexValue(rightSong?.track_number);
-
-        if (leftTrack === null && rightTrack !== null) {
-          result = 1;
-        } else if (leftTrack !== null && rightTrack === null) {
-          result = -1;
-        } else if (leftTrack !== null && rightTrack !== null && leftTrack !== rightTrack) {
-          result = leftTrack - rightTrack;
-        }
-      }
-
-      if (result === 0) {
-        result = compareSongLabel(left, right) || left.localeCompare(right, 'zh-CN');
-      }
-
+      const result = compareSongPathsByTrackNumber(left, right, songLookup.value);
       return mode === 'track_number_desc' ? -result : result;
     });
 

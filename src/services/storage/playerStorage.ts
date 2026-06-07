@@ -3,7 +3,7 @@ import { localStore } from './localStore';
 
 export type ArtistSortMode = 'count' | 'name' | 'custom';
 export type AlbumSortMode = 'count' | 'name' | 'artist' | 'custom';
-export type FolderSortMode = 'title' | 'name' | 'artist' | 'added_at' | 'added_at_asc' | 'custom';
+export type FolderSortMode = 'title' | 'name' | 'artist' | 'track_number' | 'added_at' | 'added_at_asc' | 'custom';
 export type LocalSortMode = 'title' | 'artist' | 'added_at' | 'added_at_asc' | 'file_modified_at' | 'file_modified_at_asc' | 'custom';
 export type AlbumDetailSortMode = 'track_number' | 'track_number_desc' | 'title' | 'artist' | 'added_at' | 'added_at_asc' | 'file_modified_at' | 'file_modified_at_asc';
 export type PlaylistSortMode = 'title' | 'name' | 'artist' | 'added_at' | 'added_at_asc' | 'custom';

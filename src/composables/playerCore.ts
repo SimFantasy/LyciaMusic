@@ -711,7 +711,7 @@ function createPlayerCore() {
         localSortMode.value = 'custom';
       }
     },
-    setFolderSortMode: (mode: 'title' | 'name' | 'artist' | 'added_at' | 'custom') => {
+    setFolderSortMode: (mode: 'title' | 'name' | 'artist' | 'track_number' | 'added_at' | 'added_at_asc' | 'custom') => {
       folderSortMode.value = mode;
     },
     setLocalSortMode: (mode: 'title' | 'artist' | 'added_at' | 'added_at_asc' | 'file_modified_at' | 'file_modified_at_asc' | 'custom') => {

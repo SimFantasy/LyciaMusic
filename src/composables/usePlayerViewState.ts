@@ -14,7 +14,7 @@ export function usePlayerViewState() {
   const navigationRefs = storeToRefs(navigationStore);
   const uiRefs = storeToRefs(uiStore);
 
-  const setFolderSortMode = (mode: 'title' | 'name' | 'artist' | 'added_at' | 'added_at_asc' | 'custom') => {
+  const setFolderSortMode = (mode: 'title' | 'name' | 'artist' | 'track_number' | 'added_at' | 'added_at_asc' | 'custom') => {
     libraryRefs.folderSortMode.value = mode;
   };
 
