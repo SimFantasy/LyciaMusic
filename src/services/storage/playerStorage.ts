@@ -1,4 +1,4 @@
-import type { AppSettings, HistoryItem, Playlist, Song } from '../../types';
+import type { AppSettings, HistoryItem, Playlist, Song, EqualizerPreset } from '../../types';
 import { localStore } from './localStore';
 
 export type ArtistSortMode = 'count' | 'name' | 'custom';
@@ -29,6 +29,7 @@ export const playerStorageKeys = {
   folderCustomOrder: 'player_folder_custom_order',
   localCustomOrder: 'player_local_custom_order',
   legacyAppSettings: 'app_settings',
+  equalizerPresets: 'player_equalizer_presets',
 } as const;
 
 const isSong = (value: unknown): value is Song =>
@@ -146,6 +147,41 @@ export const playerStorage = {
       const playlist = item as Playlist;
       return typeof playlist.id === 'string' && typeof playlist.name === 'string' && Array.isArray(playlist.songPaths);
     });
+  },
+
+  // 均衡器预设管理
+  readEqualizerPresets(): EqualizerPreset[] {
+    const parsed = localStore.getJson<unknown>(playerStorageKeys.equalizerPresets);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    
+    return parsed.filter((item): item is EqualizerPreset => {
+      if (!item || typeof item !== 'object') return false;
+      
+      const preset = item as Record<string, unknown>;
+      
+      // 完整校验所有必需字段
+      return (
+        typeof preset.id === 'string' &&
+        preset.id.length > 0 &&
+        typeof preset.name === 'string' &&
+        typeof preset.preamp === 'number' &&
+        Number.isFinite(preset.preamp) &&
+        Array.isArray(preset.gains) &&
+        preset.gains.length === 10 &&
+        preset.gains.every((g: unknown) => typeof g === 'number' && Number.isFinite(g)) &&
+        typeof preset.isBuiltin === 'boolean' &&
+        typeof preset.createdAt === 'number' &&
+        Number.isFinite(preset.createdAt) &&
+        typeof preset.updatedAt === 'number' &&
+        Number.isFinite(preset.updatedAt)
+      );
+    });
+  },
+  
+  writeEqualizerPresets(presets: EqualizerPreset[]) {
+    localStore.setJson(playerStorageKeys.equalizerPresets, presets);
   },
 
   writePlayerState(options: {

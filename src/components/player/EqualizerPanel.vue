@@ -51,6 +51,52 @@ watch(
   { deep: true }
 );
 
+// 预设管理相关状态
+const showSaveDialog = ref(false);
+const showEditDialog = ref(false);
+const newPresetName = ref('');
+const editPresetName = ref('');
+const selectedPresetId = computed(() => eq.value.currentPresetId || null);
+
+// 保存当前设置为预设
+const handleSavePreset = () => {
+  if (newPresetName.value.trim()) {
+    settingsStore.saveEqualizerPreset(newPresetName.value.trim());
+    newPresetName.value = '';
+    showSaveDialog.value = false;
+  }
+};
+
+// 更新现有预设
+const handleUpdatePreset = () => {
+  if (selectedPresetId.value && editPresetName.value.trim()) {
+    settingsStore.updateEqualizerPreset(selectedPresetId.value, editPresetName.value.trim());
+    editPresetName.value = '';
+    showEditDialog.value = false;
+  }
+};
+
+// 打开编辑对话框并回填当前预设名称
+const openEditDialog = () => {
+  const preset = settingsStore.userPresets.find(p => p.id === selectedPresetId.value);
+  if (preset) {
+    editPresetName.value = preset.name;
+    showEditDialog.value = true;
+  }
+};
+
+// 删除预设
+const handleDeletePreset = () => {
+  if (selectedPresetId.value && confirm('确定要删除这个预设吗？')) {
+    settingsStore.deleteEqualizerPreset(selectedPresetId.value);
+  }
+};
+
+// 加载预设
+const handleLoadPreset = (presetId: string) => {
+  settingsStore.loadEqualizerPreset(presetId);
+};
+
 // 统一的、强健的 Pinia 状态修改函数，包含属性保留与非深合并展开防御
 const commitSettings = (patch: Partial<EqualizerSettings>) => {
   const currentEq = settings.value.audio.equalizer;
@@ -159,6 +205,7 @@ const handleReset = () => {
   commitSettings({
     preamp: displayPreamp.value,
     gains: displayGains.value,
+    currentPresetId: null,
   });
 };
 
@@ -170,6 +217,7 @@ const handleApplyPreset = (preset: typeof PRESETS[0]) => {
     enabled: true,
     preamp: displayPreamp.value,
     gains: displayGains.value,
+    currentPresetId: null,
   });
 };
 
@@ -243,18 +291,67 @@ onScopeDispose(() => {
       </button>
     </div>
 
-    <!-- 预设选择区：单行排列 -->
-    <div class="flex gap-1.5 mb-5 overflow-x-auto pb-0.5 scrollbar-none">
+    <!-- 预设选择区：两行布局，防止按钮溢出 -->
+    <div class="mb-5">
+      <!-- 第一行：内置预设 -->
+      <div class="flex flex-wrap gap-1.5 mb-2">
+        <button
+          v-for="preset in PRESETS"
+          :key="preset.name"
+          @click="handleApplyPreset(preset)"
+          class="px-2.5 py-1 text-xs rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+          :class="eq.enabled && eq.preamp === preset.preamp && JSON.stringify(eq.gains) === JSON.stringify(preset.gains)
+            ? 'bg-[#EC4141] text-white shadow-sm' 
+            : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'"
+        >
+          {{ preset.name }}
+        </button>
+      </div>
+      
+      <!-- 第二行：用户自定义预设 + 保存按钮 -->
+      <div class="flex flex-wrap gap-1.5">
+        <button
+          v-for="preset in settingsStore.userPresets"
+          :key="preset.id"
+          @click="handleLoadPreset(preset.id)"
+          class="px-2.5 py-1 text-xs rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+          :class="selectedPresetId === preset.id
+            ? 'bg-[#EC4141] text-white shadow-sm' 
+            : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'"
+        >
+          {{ preset.name }}
+        </button>
+        
+        <!-- 保存预设按钮 -->
+        <button
+          @click="showSaveDialog = true"
+          class="px-2.5 py-1 text-xs rounded-lg transition-colors cursor-pointer whitespace-nowrap border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-[#EC4141] hover:text-[#EC4141] dark:hover:border-[#EC4141] dark:hover:text-[#EC4141]"
+        >
+          + 保存预设
+        </button>
+      </div>
+    </div>
+    
+    <!-- 预设管理按钮（仅当选中用户预设时显示） -->
+    <div v-if="selectedPresetId && !selectedPresetId.startsWith('builtin_')" class="flex items-center gap-2 mb-4 px-1">
+      <span class="text-xs text-gray-500 dark:text-gray-400">操作：</span>
       <button
-        v-for="preset in PRESETS"
-        :key="preset.name"
-        @click="handleApplyPreset(preset)"
-        class="px-2.5 py-1 text-xs rounded-lg transition-colors cursor-pointer whitespace-nowrap flex-shrink-0"
-        :class="eq.enabled && eq.preamp === preset.preamp && JSON.stringify(eq.gains) === JSON.stringify(preset.gains)
-          ? 'bg-[#EC4141] text-white' 
-          : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'"
+        @click="openEditDialog"
+        class="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 transition-colors"
       >
-        {{ preset.name }}
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+        </svg>
+        编辑
+      </button>
+      <button
+        @click="handleDeletePreset"
+        class="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md bg-gray-100 dark:bg-gray-800 hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+      >
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+        </svg>
+        删除
       </button>
     </div>
 
@@ -368,18 +465,65 @@ onScopeDispose(() => {
       </button>
     </div>
   </div>
+  
+  <!-- 保存预设对话框 -->
+  <div v-if="showSaveDialog" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm" @click.self="showSaveDialog = false">
+    <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 w-80 shadow-xl" @click.stop>
+      <h3 class="text-lg font-semibold mb-2">保存预设</h3>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">将当前均衡器设置保存为自定义预设</p>
+      <input
+        v-model="newPresetName"
+        placeholder="输入预设名称"
+        class="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-600 rounded-lg mb-4 outline-none focus:border-[#EC4141] focus:ring-2 focus:ring-[#EC4141]/20 transition-all"
+        @keyup.enter="handleSavePreset"
+      />
+      <div class="flex justify-end gap-2">
+        <button
+          @click="showSaveDialog = false"
+          class="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 transition-colors"
+        >
+          取消
+        </button>
+        <button
+          @click="handleSavePreset"
+          class="px-4 py-2 text-sm rounded-lg bg-[#EC4141] text-white hover:bg-[#d63636] transition-colors shadow-sm"
+        >
+          保存
+        </button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 编辑预设对话框 -->
+  <div v-if="showEditDialog" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm" @click.self="showEditDialog = false">
+    <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 w-80 shadow-xl" @click.stop>
+      <h3 class="text-lg font-semibold mb-2">编辑预设</h3>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">修改预设名称</p>
+      <input
+        v-model="editPresetName"
+        placeholder="输入预设名称"
+        class="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-600 rounded-lg mb-4 outline-none focus:border-[#EC4141] focus:ring-2 focus:ring-[#EC4141]/20 transition-all"
+        @keyup.enter="handleUpdatePreset"
+      />
+      <div class="flex justify-end gap-2">
+        <button
+          @click="showEditDialog = false"
+          class="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 transition-colors"
+        >
+          取消
+        </button>
+        <button
+          @click="handleUpdatePreset"
+          class="px-4 py-2 text-sm rounded-lg bg-[#EC4141] text-white hover:bg-[#d63636] transition-colors shadow-sm"
+        >
+          保存
+        </button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
-/* 隐藏滚动条（预设列表横向滚动用） */
-.scrollbar-none::-webkit-scrollbar {
-  display: none;
-}
-.scrollbar-none {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
 /* 竖向滑动推子基础样式 */
 .eq-slider {
   position: absolute;
