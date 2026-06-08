@@ -719,8 +719,8 @@ describe('P2: loading a custom preset enables EQ', () => {
 // ---------------------------------------------------------------------------
 
 describe('P3: edit dialog prefills current preset name', () => {
-  it('EqualizerPanel source: openEditDialog function exists and prefills editPresetName', () => {
-    expect(eqPanelSource).toContain('openEditDialog');
+  it('EqualizerPanel source: openEditDialogForPreset function exists and prefills editPresetName', () => {
+    expect(eqPanelSource).toContain('openEditDialogForPreset');
     expect(eqPanelSource).toContain('editPresetName.value = preset.name');
   });
 
@@ -1027,7 +1027,7 @@ describe('EqualizerPanel source code verification', () => {
     expect(source).toContain('settingsStore.loadEqualizerPreset');
   });
 
-  it('handleDeletePreset delegates to settingsStore.deleteEqualizerPreset', () => {
+  it('handleDeletePresetById delegates to settingsStore.deleteEqualizerPreset', () => {
     expect(source).toContain('settingsStore.deleteEqualizerPreset');
   });
 

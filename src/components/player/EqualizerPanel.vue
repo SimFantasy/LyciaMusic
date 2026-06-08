@@ -79,15 +79,6 @@ const handleUpdatePreset = () => {
   }
 };
 
-// 打开编辑对话框并回填当前预设名称
-const openEditDialog = () => {
-  const preset = settingsStore.userPresets.find(p => p.id === selectedPresetId.value);
-  if (preset) {
-    editPresetId.value = preset.id;
-    editPresetName.value = preset.name;
-    showEditDialog.value = true;
-  }
-};
 
 // 双击打开特定预设的重命名对话框
 const openEditDialogForPreset = (preset: { id: string; name: string }) => {
@@ -96,12 +87,6 @@ const openEditDialogForPreset = (preset: { id: string; name: string }) => {
   showEditDialog.value = true;
 };
 
-// 删除预设
-const handleDeletePreset = () => {
-  if (selectedPresetId.value && confirm('确定要删除这个预设吗？')) {
-    settingsStore.deleteEqualizerPreset(selectedPresetId.value);
-  }
-};
 
 // 通过ID删除特定预设
 const handleDeletePresetById = (presetId: string) => {
