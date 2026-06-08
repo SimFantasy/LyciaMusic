@@ -46,13 +46,19 @@ src-tauri/examples/*_probe.rs
 
 .codex/
 
-tools/
+tool/
 
 MD/
 
 图标备选/
 
 website/
+
+# --- 本地临时文档与设计草稿 ---
+*.resolved
+lyrics_architecture_analysis.md
+lyrics_refactor_plan.md
+.mailmap
 
 # --- Claude Code 本地配置 ---
 .claude/
