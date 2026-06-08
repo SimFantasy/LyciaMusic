@@ -2,7 +2,7 @@
 import { computed, ref, watch, onScopeDispose } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useSettingsStore } from '../../features/settings/store';
-import { RefreshCw } from 'lucide-vue-next';
+import { RefreshCw, Plus } from 'lucide-vue-next';
 import type { EqualizerSettings } from '../../types';
 import { playbackApi } from '../../services/tauri/playbackApi';
 
@@ -56,6 +56,7 @@ const showSaveDialog = ref(false);
 const showEditDialog = ref(false);
 const newPresetName = ref('');
 const editPresetName = ref('');
+const editPresetId = ref('');
 const selectedPresetId = computed(() => eq.value.currentPresetId || null);
 
 // 保存当前设置为预设
@@ -69,9 +70,11 @@ const handleSavePreset = () => {
 
 // 更新现有预设
 const handleUpdatePreset = () => {
-  if (selectedPresetId.value && editPresetName.value.trim()) {
-    settingsStore.updateEqualizerPreset(selectedPresetId.value, editPresetName.value.trim());
+  const targetId = editPresetId.value || selectedPresetId.value;
+  if (targetId && editPresetName.value.trim()) {
+    settingsStore.updateEqualizerPreset(targetId, editPresetName.value.trim());
     editPresetName.value = '';
+    editPresetId.value = '';
     showEditDialog.value = false;
   }
 };
@@ -80,15 +83,31 @@ const handleUpdatePreset = () => {
 const openEditDialog = () => {
   const preset = settingsStore.userPresets.find(p => p.id === selectedPresetId.value);
   if (preset) {
+    editPresetId.value = preset.id;
     editPresetName.value = preset.name;
     showEditDialog.value = true;
   }
+};
+
+// 双击打开特定预设的重命名对话框
+const openEditDialogForPreset = (preset: { id: string; name: string }) => {
+  editPresetId.value = preset.id;
+  editPresetName.value = preset.name;
+  showEditDialog.value = true;
 };
 
 // 删除预设
 const handleDeletePreset = () => {
   if (selectedPresetId.value && confirm('确定要删除这个预设吗？')) {
     settingsStore.deleteEqualizerPreset(selectedPresetId.value);
+  }
+};
+
+// 通过ID删除特定预设
+const handleDeletePresetById = (presetId: string) => {
+  const preset = settingsStore.userPresets.find(p => p.id === presetId);
+  if (preset && confirm(`确定要删除预设 "${preset.name}" 吗？`)) {
+    settingsStore.deleteEqualizerPreset(presetId);
   }
 };
 
@@ -276,7 +295,19 @@ onScopeDispose(() => {
     
     <!-- 顶部状态栏：仅保留开关 (在嵌入模式下隐藏) -->
     <div v-if="!embedded" class="flex items-center justify-between mb-4 pb-2 border-b border-gray-100 dark:border-gray-800">
-      <span class="font-semibold text-sm text-gray-700 dark:text-gray-300">均衡器</span>
+      <div class="flex items-center gap-2">
+        <span class="font-semibold text-sm text-gray-700 dark:text-gray-300">均衡器</span>
+        
+        <!-- 添加当前数值为预设按钮，仅在开启均衡器状态下显示 -->
+        <button
+          v-if="eq.enabled"
+          @click="showSaveDialog = true"
+          class="flex items-center justify-center w-5 h-5 rounded-full border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-[#EC4141] hover:text-[#EC4141] dark:hover:border-[#EC4141] dark:hover:text-[#EC4141] transition-colors cursor-pointer"
+          title="添加当前数值为预设"
+        >
+          <Plus class="w-3 h-3" />
+        </button>
+      </div>
       
       <!-- 启用/禁用 Toggle 开关 -->
       <button 
@@ -291,29 +322,30 @@ onScopeDispose(() => {
       </button>
     </div>
 
-    <!-- 预设选择区：两行布局，防止按钮溢出 -->
-    <div class="mb-5">
-      <!-- 第一行：内置预设 -->
-      <div class="flex flex-wrap gap-1.5 mb-2">
-        <button
-          v-for="preset in PRESETS"
-          :key="preset.name"
-          @click="handleApplyPreset(preset)"
-          class="px-2.5 py-1 text-xs rounded-lg transition-colors cursor-pointer whitespace-nowrap"
-          :class="eq.enabled && eq.preamp === preset.preamp && JSON.stringify(eq.gains) === JSON.stringify(preset.gains)
-            ? 'bg-[#EC4141] text-white shadow-sm' 
-            : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'"
-        >
-          {{ preset.name }}
-        </button>
-      </div>
+    <!-- 预设选择区：合并内置预设与用户自定义预设，实现自然流式折行，空间不足时自动折行且不超过边界 -->
+    <div class="mb-5 flex flex-wrap gap-1.5">
+      <!-- 内置预设 -->
+      <button
+        v-for="preset in PRESETS"
+        :key="preset.name"
+        @click="handleApplyPreset(preset)"
+        class="px-2.5 py-1 text-xs rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+        :class="eq.enabled && eq.preamp === preset.preamp && JSON.stringify(eq.gains) === JSON.stringify(preset.gains)
+          ? 'bg-[#EC4141] text-white shadow-sm' 
+          : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'"
+      >
+        {{ preset.name }}
+      </button>
       
-      <!-- 第二行：用户自定义预设 + 保存按钮 -->
-      <div class="flex flex-wrap gap-1.5">
+      <!-- 用户自定义预设 -->
+      <div
+        v-for="preset in settingsStore.userPresets"
+        :key="preset.id"
+        class="group relative inline-block"
+      >
         <button
-          v-for="preset in settingsStore.userPresets"
-          :key="preset.id"
           @click="handleLoadPreset(preset.id)"
+          @dblclick="openEditDialogForPreset(preset)"
           class="px-2.5 py-1 text-xs rounded-lg transition-colors cursor-pointer whitespace-nowrap"
           :class="selectedPresetId === preset.id
             ? 'bg-[#EC4141] text-white shadow-sm' 
@@ -322,37 +354,15 @@ onScopeDispose(() => {
           {{ preset.name }}
         </button>
         
-        <!-- 保存预设按钮 -->
+        <!-- 删除圆形叉叉按钮 -->
         <button
-          @click="showSaveDialog = true"
-          class="px-2.5 py-1 text-xs rounded-lg transition-colors cursor-pointer whitespace-nowrap border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-[#EC4141] hover:text-[#EC4141] dark:hover:border-[#EC4141] dark:hover:text-[#EC4141]"
+          @click.stop="handleDeletePresetById(preset.id)"
+          class="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 flex items-center justify-center w-3.5 h-3.5 rounded-full bg-[#EC4141] hover:bg-[#d63636] text-white text-[9px] font-bold shadow-sm transition-all duration-150 cursor-pointer"
+          title="删除预设"
         >
-          + 保存预设
+          ×
         </button>
       </div>
-    </div>
-    
-    <!-- 预设管理按钮（仅当选中用户预设时显示） -->
-    <div v-if="selectedPresetId && !selectedPresetId.startsWith('builtin_')" class="flex items-center gap-2 mb-4 px-1">
-      <span class="text-xs text-gray-500 dark:text-gray-400">操作：</span>
-      <button
-        @click="openEditDialog"
-        class="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 transition-colors"
-      >
-        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-        </svg>
-        编辑
-      </button>
-      <button
-        @click="handleDeletePreset"
-        class="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md bg-gray-100 dark:bg-gray-800 hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-      >
-        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-        </svg>
-        删除
-      </button>
     </div>
 
     <!-- 均衡器推子区 -->

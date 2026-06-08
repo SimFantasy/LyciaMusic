@@ -724,15 +724,10 @@ describe('P3: edit dialog prefills current preset name', () => {
     expect(eqPanelSource).toContain('editPresetName.value = preset.name');
   });
 
-  it('EqualizerPanel source: edit button uses openEditDialog instead of direct showEditDialog', () => {
-    // The template should use @click="openEditDialog" — verify the click handler
-    // comes BEFORE the button text "编辑预设"
-    const editButtonMatch = eqPanelSource.match(/@click="(openEditDialog)"[\s\S]*?编辑预设/);
-    expect(editButtonMatch).toBeTruthy();
-    expect(editButtonMatch![1]).toBe('openEditDialog');
-
-    // Should NOT use inline showEditDialog = true for the edit button
-    expect(eqPanelSource).not.toContain('@click="showEditDialog = true"');
+  it('EqualizerPanel source: double click on preset uses openEditDialogForPreset instead of direct showEditDialog', () => {
+    // The template should use @dblclick="openEditDialogForPreset(preset)" to trigger edit dialog, not direct showEditDialog = true
+    expect(eqPanelSource).toContain('@dblclick="openEditDialogForPreset(preset)"');
+    expect(eqPanelSource).not.toContain('@dblclick="showEditDialog = true"');
   });
 });
 
@@ -1052,8 +1047,8 @@ describe('EqualizerPanel source code verification', () => {
     expect(source).toContain('JSON.stringify(eq.gains) === JSON.stringify(preset.gains)');
   });
 
-  it('manage preset buttons are conditional on selectedPresetId', () => {
-    expect(source).toContain('v-if="selectedPresetId');
+  it('add preset button is conditional on eq.enabled', () => {
+    expect(source).toContain('v-if="eq.enabled"');
   });
 
   it('save dialog input has focus:border-[#EC4141] for visual feedback', () => {
