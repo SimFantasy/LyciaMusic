@@ -13,6 +13,7 @@
   [![Tailwind](https://img.shields.io/badge/TailwindCSS-v4.0-38B2AC?style=flat-square&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
   
   [![Dev Last Commit](https://img.shields.io/github/last-commit/Billy636/LyciaMusic/dev?style=flat-square&logo=git&logoColor=white&label=dev%20last%20commit)](https://github.com/Billy636/LyciaMusic/commits/dev)
+  [![Stars](https://img.shields.io/github/stars/Billy636/LyciaMusic?style=flat-square&logo=github&label=stars)](https://github.com/Billy636/LyciaMusic/stargazers)
   [![Contributors](https://img.shields.io/github/contributors/Billy636/LyciaMusic?style=flat-square&color=blueviolet)](https://github.com/Billy636/LyciaMusic/graphs/contributors)
   [![License](https://img.shields.io/badge/License-AGPL--3.0-orange?style=flat-square)](./LICENSE)
   [![QQ Group](https://img.shields.io/badge/QQ%E7%BE%A4-1085716541-df3e3e?style=flat-square&logo=tencent-qq&logoColor=white)](https://qm.qq.com/cgi-bin/qm/qr?k=xxxx)
@@ -49,40 +50,6 @@
 * 📝 **Lyrics & File Management**
   - **All-format Lyrics**: Supports embedded tags, external `.lrc` files, and AMLL-based word-by-word lyrics animation.
   - **Physical Organization**: Built-in folder management mode, batch rename preview, external tag editor, and background library refresh.
-
----
-
-## 📐 Technology Architecture
-
-Lycia Player adopts a classic separation of frontend and backend architecture, utilizing Tauri's IPC channel for high-performance cross-process communication:
-
-```mermaid
-graph TD
-    subgraph Frontend [Frontend UI - Vue 3 / TS]
-        A[Views] --> B[Components]
-        B --> C[Composables]
-        C --> D[Playback State / Metadata / Lyrics]
-    end
-
-    subgraph Bridge [Cross-Process IPC]
-        D <-->|Tauri IPC invoke/listen| E[Tauri Command Router]
-    end
-
-    subgraph Backend [Rust Backend Services]
-        E --> F[Audio Engine Rodio]
-        E --> G[Database SQLite/rusqlite]
-        E --> H[File Scanner & Metadata Parser]
-        H -->|Concurrency Limit Semaphore| I[Local Music Folder]
-    end
-    
-    style Frontend fill:#f5faff,stroke:#3178C6,stroke-width:2px;
-    style Bridge fill:#fff7e6,stroke:#ffa940,stroke-width:2px;
-    style Backend fill:#f6ffed,stroke:#52c41a,stroke-width:2px;
-```
-
-- **Frontend Stack**: Vue 3 (Composition API), Vite, TypeScript, Tailwind CSS 4.0
-- **Backend Stack**: Rust, Tauri v2.0, SQLite (via `rusqlite` for high-performance indexing)
-- **Audio Playback Engine**: Under the hood control powered by the `rodio` library
 
 ---
 
@@ -166,6 +133,40 @@ graph TD
 
 ---
 
+## 📐 Technology Architecture
+
+Lycia Player adopts a classic separation of frontend and backend architecture, utilizing Tauri's IPC channel for high-performance cross-process communication:
+
+```mermaid
+graph TD
+    subgraph Frontend [Frontend UI - Vue 3 / TS]
+        A[Views] --> B[Components]
+        B --> C[Composables]
+        C --> D[Playback State / Metadata / Lyrics]
+    end
+
+    subgraph Bridge [Cross-Process IPC]
+        D <-->|Tauri IPC invoke/listen| E[Tauri Command Router]
+    end
+
+    subgraph Backend [Rust Backend Services]
+        E --> F[Audio Engine Rodio]
+        E --> G[Database SQLite/rusqlite]
+        E --> H[File Scanner & Metadata Parser]
+        H -->|Concurrency Limit Semaphore| I[Local Music Folder]
+    end
+    
+    style Frontend fill:#f5faff,stroke:#3178C6,stroke-width:2px;
+    style Bridge fill:#fff7e6,stroke:#ffa940,stroke-width:2px;
+    style Backend fill:#f6ffed,stroke:#52c41a,stroke-width:2px;
+```
+
+- **Frontend Stack**: Vue 3 (Composition API), Vite, TypeScript, Tailwind CSS 4.0
+- **Backend Stack**: Rust, Tauri v2.0, SQLite (via `rusqlite` for high-performance indexing)
+- **Audio Playback Engine**: Under the hood control powered by the `rodio` library
+
+---
+
 ## 💝 Special Thanks
 
 - **[AMLL (Apple Music-like Lyrics)](https://github.com/Steve-xmh/Apple-Music-Like-Lyrics)**: Adaptations and rendering implementations of lyrics in this project are heavily inspired and adapted from AMLL. Special thanks to the original author and all contributors!
@@ -182,6 +183,12 @@ Thanks to everyone who has contributed to Lycia Player through commits and issue
 | **[Xiyue Cheng](https://github.com/silver-wolf-little-wife)** | <img src="https://github.com/silver-wolf-little-wife.png" width="36" height="36" style="border-radius: 50%;" /> | **7** |
 
 *If you submit a Pull Request and it gets merged, your avatar and commit stats will be shown here in the next document update.*
+
+---
+
+## 📈 Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Billy636/LyciaMusic&type=Date)](https://star-history.com/#Billy636/LyciaMusic&Date)
 
 ---
 
