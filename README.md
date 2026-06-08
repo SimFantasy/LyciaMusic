@@ -1,9 +1,9 @@
 <div align="center">
-  <img src="图标备选/icon_1024_v2.png" width="120" height="120" alt="Lycia Player Logo" style="border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);" />
+  <img src="logo.png" width="120" height="120" alt="Lycia Player Logo" style="border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);" />
   
   # Lycia Player (铃音播放器)
 
-  一款基于 **Tauri v2** 和 **Vue 3** 构建的现代化、高颜值本地音乐播放器，专为 Windows 平台打造，聚焦于极致的播放体验、卓越的歌词显示和流畅的系统整合。
+  一款基于 **Tauri v2** 和 **Vue 3** 构建的现代化、高颜值本地音乐播放器，专为 Windows 平台打造，聚焦于良好的播放体验、歌词显示和系统整合。
 
   [![English](https://img.shields.io/badge/Document-English-blue?style=flat-square)](./README_EN.md)
   [![Tauri](https://img.shields.io/badge/Tauri-v2.0-2496ED?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app/)
@@ -13,6 +13,7 @@
   [![Tailwind](https://img.shields.io/badge/TailwindCSS-v4.0-38B2AC?style=flat-square&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
   
   [![Dev Last Commit](https://img.shields.io/github/last-commit/Billy636/LyciaMusic/dev?style=flat-square&logo=git&logoColor=white&label=dev%20last%20commit)](https://github.com/Billy636/LyciaMusic/commits/dev)
+  [![Stars](https://img.shields.io/github/stars/Billy636/LyciaMusic?style=flat-square&logo=github&label=stars)](https://github.com/Billy636/LyciaMusic/stargazers)
   [![Contributors](https://img.shields.io/github/contributors/Billy636/LyciaMusic?style=flat-square&color=blueviolet)](https://github.com/Billy636/LyciaMusic/graphs/contributors)
   [![License](https://img.shields.io/badge/License-AGPL--3.0-orange?style=flat-square)](./LICENSE)
   [![QQ Group](https://img.shields.io/badge/QQ%E7%BE%A4-1085716541-df3e3e?style=flat-square&logo=tencent-qq&logoColor=white)](https://qm.qq.com/cgi-bin/qm/qr?k=xxxx)
@@ -24,7 +25,7 @@
 > **项目状态：开发阶段 (Alpha)**
 > 本项目基于个人兴趣开发。功能会优先围绕作者本人的本地音乐使用场景推进，部分功能测试覆盖仍有限，未经严格测试。如果您在日常使用中遇到问题，欢迎通过 [GitHub Issues](https://github.com/Billy636/LyciaMusic/issues) 反馈。
 >
-> 个人精力有限，开发节奏较慢。如果您是程序员，或者熟悉 AI 辅助编程（Vibe Coding），非常欢迎使用 AI 工具来扩展功能并提交 Pull Request（请优先针对 `dev` 分支进行提交）。
+> 个人精力有限，开发节奏较慢。如果您是程序员，或者非常熟悉 AI 辅助编程（Vibe Coding），非常欢迎使用 AI 工具来扩展功能并提交 Pull Request（请优先针对 `dev` 分支进行提交，提交时请尽可能的审核代码，同时自己在本地进行测试确认无误）。
 
 ---
 
@@ -52,47 +53,13 @@
 
 ---
 
-## 📐 技术架构
-
-Lycia Player 采用经典的前后端分离架构，通过 Tauri 提供的 IPC 通道进行高性能的跨进程通信：
-
-```mermaid
-graph TD
-    subgraph Frontend [前端 UI 层 - Vue 3 / TS]
-        A[页面视图 Views] --> B[核心组件 Components]
-        B --> C[状态管理 Composables]
-        C --> D[播放状态/元数据/歌词解析]
-    end
-
-    subgraph Bridge [跨进程通信 IPC]
-        D <-->|Tauri IPC invoke/listen| E[Tauri Command Router]
-    end
-
-    subgraph Backend [Rust 后端服务层]
-        E --> F[音频引擎 Rodio]
-        E --> G[数据库 SQLite/rusqlite]
-        E --> H[物理文件扫描与元数据解析]
-        H -->|并发限制 Semaphore| I[本地音乐文件夹]
-    end
-    
-    style Frontend fill:#f5faff,stroke:#3178C6,stroke-width:2px;
-    style Bridge fill:#fff7e6,stroke:#ffa940,stroke-width:2px;
-    style Backend fill:#f6ffed,stroke:#52c41a,stroke-width:2px;
-```
-
-- **前端技术栈**：Vue 3 (Composition API)、Vite、TypeScript、Tailwind CSS 4.0
-- **后端技术栈**：Rust、Tauri v2.0、SQLite (通过 `rusqlite` 实现音乐库高性能索引)
-- **音频播放引擎**：基于 `rodio` 库的底层控制
-
----
-
 ## 📸 界面截图
 
 ### 核心界面
 
 | 🎵 首页概览 | 💿 沉浸式播放页 |
 | --- | --- |
-| <img src="./screenshots/首页.png" width="100%"> | <img src="./screenshots/播放页.png" width="100%"> |
+| <img src="./screenshots/%E9%A6%96%E9%A1%B5.png" width="100%"> | <img src="./screenshots/%E6%92%AD%E6%94%BE%E9%A1%B5.png" width="100%"> |
 
 <details>
 <summary>📂 点击展开查看更多功能截图</summary>
@@ -101,25 +68,25 @@ graph TD
 
 | 📂 文件夹视图 | ⚙️ 文件夹管理模式 |
 | --- | --- |
-| <img src="./screenshots/文件夹.png" width="100%"> | <img src="./screenshots/文件夹-管理模式.png" width="100%"> |
+| <img src="./screenshots/%E6%96%87%E4%BB%B6%E5%A4%B9.png" width="100%"> | <img src="./screenshots/%E6%96%87%E4%BB%B6%E5%A4%B9-%E7%AE%A1%E7%90%86%E6%A8%A1%E5%BC%8F.png" width="100%"> |
 
 ### 歌单、统计与辅助功能
 
 | 🎶 歌单页面 | 📊 听歌历史统计 |
 | --- | --- |
-| <img src="./screenshots/歌单页面.png" width="100%"> | <img src="./screenshots/统计.png" width="100%"> |
+| <img src="./screenshots/%E6%AD%8C%E5%8D%95%E9%A1%B5%E9%9D%A2.png" width="100%"> | <img src="./screenshots/%E7%BB%9F%E8%AE%A1.png" width="100%"> |
 
 ### 设置与个性化
 
 | 🔧 常规设置 | 📦 音乐库设置 |
 | --- | --- |
-| <img src="./screenshots/设置-常规.png" width="100%"> | <img src="./screenshots/设置-音乐库.png" width="100%"> |
+| <img src="./screenshots/%E8%AE%BE%E7%BD%AE-%E5%B8%B8%E8%A7%84.png" width="100%"> | <img src="./screenshots/%E8%AE%BE%E7%BD%AE-%E9%9F%B3%E4%B9%90%E5%BA%93.png" width="100%"> |
 
 ### 外置功能集成
 
 | 🔗 支持 Lyricify 歌词集成 |
 | --- |
-| <img src="./screenshots/支持Lyricify.png" width="50%"> |
+| <img src="./screenshots/%E6%94%AF%E6%8C%81Lyricify.png" width="50%"> |
 
 </details>
 
@@ -166,6 +133,40 @@ graph TD
 
 ---
 
+## 📐 技术架构
+
+Lycia Player 采用经典的前后端分离架构，通过 Tauri 提供的 IPC 通道进行高性能的跨进程通信：
+
+```mermaid
+graph TD
+    subgraph Frontend [前端 UI 层 - Vue 3 / TS]
+        A[页面视图 Views] --> B[核心组件 Components]
+        B --> C[状态管理 Composables]
+        C --> D[播放状态/元数据/歌词解析]
+    end
+
+    subgraph Bridge [跨进程通信 IPC]
+        D <-->|Tauri IPC invoke/listen| E[Tauri Command Router]
+    end
+
+    subgraph Backend [Rust 后端服务层]
+        E --> F[音频引擎 Rodio]
+        E --> G[数据库 SQLite/rusqlite]
+        E --> H[物理文件扫描与元数据解析]
+        H -->|并发限制 Semaphore| I[本地音乐文件夹]
+    end
+    
+    style Frontend fill:#f5faff,stroke:#3178C6,stroke-width:2px;
+    style Bridge fill:#fff7e6,stroke:#ffa940,stroke-width:2px;
+    style Backend fill:#f6ffed,stroke:#52c41a,stroke-width:2px;
+```
+
+- **前端技术栈**：Vue 3 (Composition API)、Vite、TypeScript、Tailwind CSS 4.0
+- **后端技术栈**：Rust、Tauri v2.0、SQLite (通过 `rusqlite` 实现音乐库高性能索引)
+- **音频播放引擎**：基于 `rodio` 库的底层控制
+
+---
+
 ## 💝 特别致谢 (Special Thanks)
 
 - **[AMLL (Apple Music-like Lyrics)](https://github.com/Steve-xmh/Apple-Music-Like-Lyrics)**：本项目歌词部分的渲染与适配，深度参考并改编了 AMLL 项目的优秀实现。特此向其作者及所有贡献者致以最诚挚的谢意！
@@ -182,6 +183,12 @@ graph TD
 | **[Xiyue Cheng](https://github.com/silver-wolf-little-wife)** | <img src="https://github.com/silver-wolf-little-wife.png" width="36" height="36" style="border-radius: 50%;" /> | **7** |
 
 *如果您提交了 Pull Request 并被合并，您的头像和 Commit 数量统计将会在下一次文档更新中在此体现。*
+
+---
+
+## 📈 Star 历史趋势 (Star History)
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Billy636/LyciaMusic&type=Date)](https://star-history.com/#Billy636/LyciaMusic&Date)
 
 ---
 

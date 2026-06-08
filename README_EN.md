@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="图标备选/icon_1024_v2.png" width="120" height="120" alt="Lycia Player Logo" style="border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);" />
+  <img src="logo.png" width="120" height="120" alt="Lycia Player Logo" style="border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);" />
   
   # Lycia Player
 
@@ -13,6 +13,7 @@
   [![Tailwind](https://img.shields.io/badge/TailwindCSS-v4.0-38B2AC?style=flat-square&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
   
   [![Dev Last Commit](https://img.shields.io/github/last-commit/Billy636/LyciaMusic/dev?style=flat-square&logo=git&logoColor=white&label=dev%20last%20commit)](https://github.com/Billy636/LyciaMusic/commits/dev)
+  [![Stars](https://img.shields.io/github/stars/Billy636/LyciaMusic?style=flat-square&logo=github&label=stars)](https://github.com/Billy636/LyciaMusic/stargazers)
   [![Contributors](https://img.shields.io/github/contributors/Billy636/LyciaMusic?style=flat-square&color=blueviolet)](https://github.com/Billy636/LyciaMusic/graphs/contributors)
   [![License](https://img.shields.io/badge/License-AGPL--3.0-orange?style=flat-square)](./LICENSE)
   [![QQ Group](https://img.shields.io/badge/QQ%E7%BE%A4-1085716541-df3e3e?style=flat-square&logo=tencent-qq&logoColor=white)](https://qm.qq.com/cgi-bin/qm/qr?k=xxxx)
@@ -52,47 +53,13 @@
 
 ---
 
-## 📐 Technology Architecture
-
-Lycia Player adopts a classic separation of frontend and backend architecture, utilizing Tauri's IPC channel for high-performance cross-process communication:
-
-```mermaid
-graph TD
-    subgraph Frontend [Frontend UI - Vue 3 / TS]
-        A[Views] --> B[Components]
-        B --> C[Composables]
-        C --> D[Playback State / Metadata / Lyrics]
-    end
-
-    subgraph Bridge [Cross-Process IPC]
-        D <-->|Tauri IPC invoke/listen| E[Tauri Command Router]
-    end
-
-    subgraph Backend [Rust Backend Services]
-        E --> F[Audio Engine Rodio]
-        E --> G[Database SQLite/rusqlite]
-        E --> H[File Scanner & Metadata Parser]
-        H -->|Concurrency Limit Semaphore| I[Local Music Folder]
-    end
-    
-    style Frontend fill:#f5faff,stroke:#3178C6,stroke-width:2px;
-    style Bridge fill:#fff7e6,stroke:#ffa940,stroke-width:2px;
-    style Backend fill:#f6ffed,stroke:#52c41a,stroke-width:2px;
-```
-
-- **Frontend Stack**: Vue 3 (Composition API), Vite, TypeScript, Tailwind CSS 4.0
-- **Backend Stack**: Rust, Tauri v2.0, SQLite (via `rusqlite` for high-performance indexing)
-- **Audio Playback Engine**: Under the hood control powered by the `rodio` library
-
----
-
 ## 📸 Screenshots
 
 ### Core Interface
 
 | 🎵 Home Overview | 💿 Immersive Player |
 | --- | --- |
-| <img src="./screenshots/首页.png" width="100%"> | <img src="./screenshots/播放页.png" width="100%"> |
+| <img src="./screenshots/%E9%A6%96%E9%A1%B5.png" width="100%"> | <img src="./screenshots/%E6%92%AD%E6%94%BE%E9%A1%B5.png" width="100%"> |
 
 <details>
 <summary>📂 Click to expand for more feature screenshots</summary>
@@ -101,25 +68,25 @@ graph TD
 
 | 📂 Folder View | ⚙️ Folder Management Mode |
 | --- | --- |
-| <img src="./screenshots/文件夹.png" width="100%"> | <img src="./screenshots/文件夹-管理模式.png" width="100%"> |
+| <img src="./screenshots/%E6%96%87%E4%BB%B6%E5%A4%B9.png" width="100%"> | <img src="./screenshots/%E6%96%87%E4%BB%B6%E5%A4%B9-%E7%AE%A1%E7%90%86%E6%A8%A1%E5%BC%8F.png" width="100%"> |
 
 ### Playlists, Statistics & Tools
 
 | 🎶 Playlist Page | 📊 Playback History Stats |
 | --- | --- |
-| <img src="./screenshots/歌单页面.png" width="100%"> | <img src="./screenshots/统计.png" width="100%"> |
+| <img src="./screenshots/%E6%AD%8C%E5%8D%95%E9%A1%B5%E9%9D%A2.png" width="100%"> | <img src="./screenshots/%E7%BB%9F%E8%AE%A1.png" width="100%"> |
 
 ### Settings & Personalization
 
 | 🔧 General Settings | 📦 Library Settings |
 | --- | --- |
-| <img src="./screenshots/设置-常规.png" width="100%"> | <img src="./screenshots/设置-音乐库.png" width="100%"> |
+| <img src="./screenshots/%E8%AE%BE%E7%BD%AE-%E5%B8%B8%E8%A7%84.png" width="100%"> | <img src="./screenshots/%E8%AE%BE%E7%BD%AE-%E9%9F%B3%E4%B9%90%E5%BA%93.png" width="100%"> |
 
 ### External Integration
 
 | 🔗 Lyricify Integration Support |
 | --- |
-| <img src="./screenshots/支持Lyricify.png" width="50%"> |
+| <img src="./screenshots/%E6%94%AF%E6%8C%81Lyricify.png" width="50%"> |
 
 </details>
 
@@ -166,6 +133,40 @@ graph TD
 
 ---
 
+## 📐 Technology Architecture
+
+Lycia Player adopts a classic separation of frontend and backend architecture, utilizing Tauri's IPC channel for high-performance cross-process communication:
+
+```mermaid
+graph TD
+    subgraph Frontend [Frontend UI - Vue 3 / TS]
+        A[Views] --> B[Components]
+        B --> C[Composables]
+        C --> D[Playback State / Metadata / Lyrics]
+    end
+
+    subgraph Bridge [Cross-Process IPC]
+        D <-->|Tauri IPC invoke/listen| E[Tauri Command Router]
+    end
+
+    subgraph Backend [Rust Backend Services]
+        E --> F[Audio Engine Rodio]
+        E --> G[Database SQLite/rusqlite]
+        E --> H[File Scanner & Metadata Parser]
+        H -->|Concurrency Limit Semaphore| I[Local Music Folder]
+    end
+    
+    style Frontend fill:#f5faff,stroke:#3178C6,stroke-width:2px;
+    style Bridge fill:#fff7e6,stroke:#ffa940,stroke-width:2px;
+    style Backend fill:#f6ffed,stroke:#52c41a,stroke-width:2px;
+```
+
+- **Frontend Stack**: Vue 3 (Composition API), Vite, TypeScript, Tailwind CSS 4.0
+- **Backend Stack**: Rust, Tauri v2.0, SQLite (via `rusqlite` for high-performance indexing)
+- **Audio Playback Engine**: Under the hood control powered by the `rodio` library
+
+---
+
 ## 💝 Special Thanks
 
 - **[AMLL (Apple Music-like Lyrics)](https://github.com/Steve-xmh/Apple-Music-Like-Lyrics)**: Adaptations and rendering implementations of lyrics in this project are heavily inspired and adapted from AMLL. Special thanks to the original author and all contributors!
@@ -182,6 +183,12 @@ Thanks to everyone who has contributed to Lycia Player through commits and issue
 | **[Xiyue Cheng](https://github.com/silver-wolf-little-wife)** | <img src="https://github.com/silver-wolf-little-wife.png" width="36" height="36" style="border-radius: 50%;" /> | **7** |
 
 *If you submit a Pull Request and it gets merged, your avatar and commit stats will be shown here in the next document update.*
+
+---
+
+## 📈 Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Billy636/LyciaMusic&type=Date)](https://star-history.com/#Billy636/LyciaMusic&Date)
 
 ---
 
