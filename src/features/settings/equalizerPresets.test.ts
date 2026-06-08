@@ -1043,8 +1043,8 @@ describe('EqualizerPanel source code verification', () => {
     expect(source).toContain('selectedPresetId === preset.id');
   });
 
-  it('built-in preset highlight uses preamp and gains comparison', () => {
-    expect(source).toContain('JSON.stringify(eq.gains) === JSON.stringify(preset.gains)');
+  it('built-in preset highlight uses isBuiltInPresetActive helper', () => {
+    expect(source).toContain('isBuiltInPresetActive');
   });
 
   it('add preset button is conditional on eq.enabled', () => {

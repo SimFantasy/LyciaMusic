@@ -57,7 +57,7 @@ const showEditDialog = ref(false);
 const newPresetName = ref('');
 const editPresetName = ref('');
 const editPresetId = ref('');
-const selectedPresetId = computed(() => eq.value.currentPresetId || null);
+const selectedPresetId = computed(() => eq.value.currentPresetId ?? null);
 
 // 保存当前设置为预设
 const handleSavePreset = () => {
@@ -111,6 +111,16 @@ const handleDeletePresetById = (presetId: string) => {
   }
 };
 
+// 判断特定的内置预设是否处于激活高亮状态
+const isBuiltInPresetActive = (preset: typeof PRESETS[0]) => {
+  return (
+    eq.value.enabled &&
+    selectedPresetId.value === null &&
+    eq.value.preamp === preset.preamp &&
+    JSON.stringify(eq.value.gains) === JSON.stringify(preset.gains)
+  );
+};
+
 // 加载预设
 const handleLoadPreset = (presetId: string) => {
   settingsStore.loadEqualizerPreset(presetId);
@@ -138,6 +148,12 @@ const commitSettings = (patch: Partial<EqualizerSettings>) => {
 
   if (preampVal !== undefined) mergedEq.preamp = preampVal;
   if (gainsVal !== undefined) mergedEq.gains = gainsVal;
+
+  // 手动调整 preamp/gains 时自动清空预设 ID，避免状态残留。
+  // 如果 patch 中显式提供了 currentPresetId (包含为 null)，则说明是加载或应用预设，不做干扰。
+  if ((patch.preamp !== undefined || patch.gains !== undefined) && !('currentPresetId' in patch)) {
+    mergedEq.currentPresetId = null;
+  }
 
   settingsStore.patchSettings({
     audio: {
@@ -330,7 +346,7 @@ onScopeDispose(() => {
         :key="preset.name"
         @click="handleApplyPreset(preset)"
         class="px-2.5 py-1 text-xs rounded-lg transition-colors cursor-pointer whitespace-nowrap"
-        :class="eq.enabled && eq.preamp === preset.preamp && JSON.stringify(eq.gains) === JSON.stringify(preset.gains)
+        :class="isBuiltInPresetActive(preset)
           ? 'bg-[#EC4141] text-white shadow-sm' 
           : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'"
       >
