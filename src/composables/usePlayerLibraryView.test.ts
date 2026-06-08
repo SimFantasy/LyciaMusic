@@ -543,4 +543,77 @@ describe('player library view', () => {
       discTwoSong.path,
     ]);
   });
+
+  it('applies playlist view sorting rules', async () => {
+    const libraryStore = useLibraryStore();
+    const collectionsStore = useCollectionsStore();
+    const navigationStore = useNavigationStore();
+
+    const alpha = makeSong({ path: '/music/alpha.flac', title: 'Alpha', added_at: 20 });
+    const beta = makeSong({ path: '/music/beta.flac', title: 'Beta', added_at: 10 });
+    const gamma = makeSong({ path: '/music/gamma.flac', title: 'Gamma', added_at: 30 });
+
+    libraryStore.librarySongs = [alpha, beta, gamma];
+    collectionsStore.playlists = [
+      {
+        id: 'test-playlist-1',
+        name: 'Test Playlist',
+        songPaths: [gamma.path, alpha.path, beta.path],
+      }
+    ];
+
+    navigationStore.currentViewMode = 'playlist';
+    navigationStore.filterCondition = 'test-playlist-1';
+    collectionsStore.playlistSortMode = 'title';
+
+    const { displaySongList } = usePlayerLibraryView();
+    await flushPromises();
+
+    expect(displaySongList.value.map(song => song.title)).toEqual(['Alpha', 'Beta', 'Gamma']);
+
+    collectionsStore.playlistSortMode = 'added_at';
+    await flushPromises();
+    expect(displaySongList.value.map(song => song.title)).toEqual(['Gamma', 'Alpha', 'Beta']);
+
+    collectionsStore.playlistSortMode = 'custom';
+    await flushPromises();
+    expect(displaySongList.value.map(song => song.title)).toEqual(['Gamma', 'Alpha', 'Beta']);
+  });
+
+  it('applies playlist view sorting rules when search query is active', async () => {
+    const libraryStore = useLibraryStore();
+    const collectionsStore = useCollectionsStore();
+    const navigationStore = useNavigationStore();
+
+    const alpha = makeSong({ path: '/music/alpha.flac', title: 'Alpha', name: 'alpha.flac', album: 'X', added_at: 20 });
+    const beta = makeSong({ path: '/music/beta.flac', title: 'Beta', name: 'beta.flac', album: 'Y', added_at: 10 });
+    const gamma = makeSong({ path: '/music/gamma.flac', title: 'Gamma', name: 'gamma.flac', album: 'Z', added_at: 30 });
+
+    libraryStore.librarySongs = [alpha, beta, gamma];
+    collectionsStore.playlists = [
+      {
+        id: 'test-playlist-1',
+        name: 'Test Playlist',
+        songPaths: [gamma.path, alpha.path, beta.path],
+      }
+    ];
+
+    navigationStore.currentViewMode = 'playlist';
+    navigationStore.filterCondition = 'test-playlist-1';
+    navigationStore.searchQuery = 'alpha';
+    collectionsStore.playlistSortMode = 'title';
+
+    const { displaySongList } = usePlayerLibraryView();
+    await flushPromises();
+
+    expect(displaySongList.value.map(song => song.title)).toEqual(['Alpha']);
+
+    collectionsStore.playlistSortMode = 'added_at';
+    await flushPromises();
+    expect(displaySongList.value.map(song => song.title)).toEqual(['Alpha']);
+
+    collectionsStore.playlistSortMode = 'custom';
+    await flushPromises();
+    expect(displaySongList.value.map(song => song.title)).toEqual(['Alpha']);
+  });
 });

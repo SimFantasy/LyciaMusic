@@ -496,6 +496,46 @@ export function useLibraryCurrentViewSongs({
     return sortedPaths;
   };
 
+  const sortSongPathsByPlaylistMode = (paths: string[], mode: PlaylistSortMode) => {
+    const sortedPaths = [...paths];
+
+    if (mode === 'title') {
+      sortedPaths.sort((left, right) =>
+        (songLookup.value.get(left)?.title || songLookup.value.get(left)?.name || '').localeCompare(
+          songLookup.value.get(right)?.title || songLookup.value.get(right)?.name || '',
+          'zh-CN',
+        ),
+      );
+    } else if (mode === 'name') {
+      sortedPaths.sort((left, right) =>
+        (songLookup.value.get(left)?.name || '').localeCompare(songLookup.value.get(right)?.name || '', 'zh-CN'),
+      );
+    } else if (mode === 'artist') {
+      sortedPaths.sort((left, right) =>
+        (songLookup.value.get(left)?.artist || '').localeCompare(songLookup.value.get(right)?.artist || '', 'zh-CN'),
+      );
+    } else if (mode === 'added_at') {
+      sortedPaths.sort((left, right) =>
+        (songLookup.value.get(right)?.added_at || 0) - (songLookup.value.get(left)?.added_at || 0),
+      );
+    } else if (mode === 'added_at_asc') {
+      sortedPaths.sort((left, right) =>
+        (songLookup.value.get(left)?.added_at || 0) - (songLookup.value.get(right)?.added_at || 0),
+      );
+    }
+
+    return sortedPaths;
+  };
+
+  const resolvePlaylistSongPaths = () => {
+    const playlist = playlists.value.find(item => item.id === filterCondition.value);
+    if (!playlist) {
+      return [];
+    }
+
+    return playlist.songPaths.filter(path => songLookup.value.has(path));
+  };
+
   const currentViewSongPaths = computed(() => {
     if (searchQuery.value.trim()) {
       const query = searchQuery.value.toLowerCase();
@@ -515,7 +555,6 @@ export function useLibraryCurrentViewSongs({
         if (!song) {
           return false;
         }
-
         return song.name.toLowerCase().includes(query)
           || getSongArtistSearchText(song).includes(query)
           || song.album.toLowerCase().includes(query);
@@ -581,6 +620,13 @@ export function useLibraryCurrentViewSongs({
         return sortSongPathsByAlbumDetailMode(
           detailViewSongPaths.value.filter(matchesQuery),
           albumDetailSortMode.value,
+        );
+      }
+
+      if (currentViewMode.value === 'playlist') {
+        return sortSongPathsByPlaylistMode(
+          resolvePlaylistSongPaths().filter(matchesQuery),
+          playlistSortMode.value,
         );
       }
 
@@ -677,39 +723,10 @@ export function useLibraryCurrentViewSongs({
     }
 
     if (currentViewMode.value === 'playlist') {
-      const playlist = playlists.value.find(item => item.id === filterCondition.value);
-      if (!playlist) {
-        return [];
-      }
-
-      const paths = playlist.songPaths.filter(path => songLookup.value.has(path));
-
-      if (playlistSortMode.value === 'title') {
-        paths.sort((left, right) =>
-          (songLookup.value.get(left)?.title || songLookup.value.get(left)?.name || '').localeCompare(
-            songLookup.value.get(right)?.title || songLookup.value.get(right)?.name || '',
-            'zh-CN',
-          ),
-        );
-      } else if (playlistSortMode.value === 'name') {
-        paths.sort((left, right) =>
-          (songLookup.value.get(left)?.name || '').localeCompare(songLookup.value.get(right)?.name || '', 'zh-CN'),
-        );
-      } else if (playlistSortMode.value === 'artist') {
-        paths.sort((left, right) =>
-          (songLookup.value.get(left)?.artist || '').localeCompare(songLookup.value.get(right)?.artist || '', 'zh-CN'),
-        );
-      } else if (playlistSortMode.value === 'added_at') {
-        paths.sort((left, right) =>
-          (songLookup.value.get(right)?.added_at || 0) - (songLookup.value.get(left)?.added_at || 0),
-        );
-      } else if (playlistSortMode.value === 'added_at_asc') {
-        paths.sort((left, right) =>
-          (songLookup.value.get(left)?.added_at || 0) - (songLookup.value.get(right)?.added_at || 0),
-        );
-      }
-
-      return paths;
+      return sortSongPathsByPlaylistMode(
+        resolvePlaylistSongPaths(),
+        playlistSortMode.value,
+      );
     }
 
     return [];
