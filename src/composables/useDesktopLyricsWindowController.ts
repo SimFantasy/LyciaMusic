@@ -1,5 +1,6 @@
 import { emitTo } from '@tauri-apps/api/event';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWindow, availableMonitors, currentMonitor } from '@tauri-apps/api/window';
+import { PhysicalPosition } from '@tauri-apps/api/dpi';
 import { computed, onMounted, onUnmounted, ref, watch, type CSSProperties, type Ref } from 'vue';
 
 import { loadSystemLyricsFonts } from './lyrics';
@@ -60,6 +61,64 @@ export function useDesktopLyricsWindowController(options: {
   } = options;
 
   const appWindow = getCurrentWindow();
+  let isApplyingCenterPosition = false;
+  let centerPositionFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+  let centerPositionDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  async function forceCenterHorizontally() {
+    if (isApplyingCenterPosition) return;
+    try {
+      let monitor = await currentMonitor();
+      if (!monitor) {
+        const monitors = await availableMonitors();
+        if (monitors.length > 0) {
+          monitor = monitors[0];
+        }
+      }
+      if (!monitor) return;
+
+      const workArea = monitor.workArea;
+      const size = await appWindow.outerSize();
+      const position = await appWindow.outerPosition();
+      const targetX = workArea.position.x + Math.round((workArea.size.width - size.width) / 2);
+
+      if (Math.abs(position.x - targetX) > 1) {
+        isApplyingCenterPosition = true;
+        if (centerPositionFallbackTimer) {
+          clearTimeout(centerPositionFallbackTimer);
+        }
+        centerPositionFallbackTimer = setTimeout(() => {
+          isApplyingCenterPosition = false;
+          centerPositionFallbackTimer = null;
+        }, 300);
+
+        try {
+          await appWindow.setPosition(new PhysicalPosition(targetX, position.y));
+        } catch (err) {
+          console.warn('Failed to call setPosition:', err);
+          isApplyingCenterPosition = false;
+          if (centerPositionFallbackTimer) {
+            clearTimeout(centerPositionFallbackTimer);
+            centerPositionFallbackTimer = null;
+          }
+        }
+
+        await emitWindowBounds({
+          x: targetX,
+          y: position.y,
+          width: size.width,
+          height: size.height,
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to force center horizontally:', error);
+      isApplyingCenterPosition = false;
+      if (centerPositionFallbackTimer) {
+        clearTimeout(centerPositionFallbackTimer);
+        centerPositionFallbackTimer = null;
+      }
+    }
+  }
   const isSystemHidden = ref(false);
   const isHoverDimmed = ref(false);
   const isToolbarVisible = ref(false);
@@ -324,9 +383,37 @@ export function useDesktopLyricsWindowController(options: {
     unlistenMoved = await appWindow.onMoved(async ({ payload }) => {
       revealDragShadow();
 
+      if (isApplyingCenterPosition) {
+        isApplyingCenterPosition = false;
+        if (centerPositionFallbackTimer) {
+          clearTimeout(centerPositionFallbackTimer);
+          centerPositionFallbackTimer = null;
+        }
+        const size = await appWindow.outerSize();
+        await emitWindowBounds({
+          x: payload.x,
+          y: payload.y,
+          width: size.width,
+          height: size.height,
+        });
+        return;
+      }
+
       const size = await appWindow.outerSize();
+      let x = payload.x;
+
+      if (settings.value.centerHorizontally) {
+        if (centerPositionDebounceTimer) {
+          clearTimeout(centerPositionDebounceTimer);
+        }
+        centerPositionDebounceTimer = setTimeout(async () => {
+          centerPositionDebounceTimer = null;
+          await forceCenterHorizontally();
+        }, 300);
+      }
+
       await emitWindowBounds({
-        x: payload.x,
+        x,
         y: payload.y,
         width: size.width,
         height: size.height,
@@ -336,9 +423,37 @@ export function useDesktopLyricsWindowController(options: {
     unlistenResized = await appWindow.onResized(async ({ payload }) => {
       holdVisibleForResize();
 
+      if (isApplyingCenterPosition) {
+        isApplyingCenterPosition = false;
+        if (centerPositionFallbackTimer) {
+          clearTimeout(centerPositionFallbackTimer);
+          centerPositionFallbackTimer = null;
+        }
+        const position = await appWindow.outerPosition();
+        await emitWindowBounds({
+          x: position.x,
+          y: position.y,
+          width: payload.width,
+          height: payload.height,
+        });
+        return;
+      }
+
       const position = await appWindow.outerPosition();
+      let x = position.x;
+
+      if (settings.value.centerHorizontally) {
+        if (centerPositionDebounceTimer) {
+          clearTimeout(centerPositionDebounceTimer);
+        }
+        centerPositionDebounceTimer = setTimeout(async () => {
+          centerPositionDebounceTimer = null;
+          await forceCenterHorizontally();
+        }, 300);
+      }
+
       await emitWindowBounds({
-        x: position.x,
+        x,
         y: position.y,
         width: payload.width,
         height: payload.height,
@@ -366,6 +481,16 @@ export function useDesktopLyricsWindowController(options: {
     unlistenMoved?.();
     unlistenResized?.();
     void windowApi.stopTopmostGuard();
+
+    if (centerPositionFallbackTimer) {
+      clearTimeout(centerPositionFallbackTimer);
+      centerPositionFallbackTimer = null;
+    }
+
+    if (centerPositionDebounceTimer) {
+      clearTimeout(centerPositionDebounceTimer);
+      centerPositionDebounceTimer = null;
+    }
 
     if (dragShadowTimer) {
       clearTimeout(dragShadowTimer);
@@ -400,6 +525,15 @@ export function useDesktopLyricsWindowController(options: {
       void applyAlwaysOnTopState(enabled);
     },
     { immediate: true },
+  );
+
+  watch(
+    () => settings.value.centerHorizontally,
+    (enabled) => {
+      if (enabled) {
+        void forceCenterHorizontally();
+      }
+    },
   );
 
   return {

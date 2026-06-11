@@ -32,6 +32,7 @@ import {
   DESKTOP_LYRICS_WINDOW_MIN_HEIGHT,
   DESKTOP_LYRICS_WINDOW_MIN_WIDTH,
   restoreDesktopLyricsBounds,
+  resolveDesktopLyricsWorkArea,
   type DesktopLyricsAction,
   type DesktopLyricsPlaybackPayload,
   type DesktopLyricsStatePayload,
@@ -178,7 +179,7 @@ export function clearDesktopLyricsStoredBounds() {
   localStorage.removeItem(DESKTOP_LYRICS_BOUNDS_KEY);
 }
 
-async function resolveDesktopLyricsBounds() {
+async function resolveDesktopLyricsBounds(centerHorizontally: boolean) {
   const bounds = readDesktopLyricsBounds();
   if (!bounds) return null;
 
@@ -194,7 +195,14 @@ async function resolveDesktopLyricsBounds() {
       return bounds;
     }
 
-    return restoreDesktopLyricsBounds(bounds, workAreas);
+    const restored = restoreDesktopLyricsBounds(bounds, workAreas);
+    if (restored && centerHorizontally) {
+      const workArea = resolveDesktopLyricsWorkArea(workAreas, restored);
+      if (workArea) {
+        restored.x = workArea.x + Math.round((workArea.width - restored.width) / 2);
+      }
+    }
+    return restored;
   } catch {
     return bounds;
   }
@@ -230,13 +238,13 @@ export function createDesktopLyricsWindowOptions({
   };
 }
 
-async function ensureDesktopLyricsWindow(alwaysOnTop: boolean) {
+async function ensureDesktopLyricsWindow(alwaysOnTop: boolean, centerHorizontally: boolean) {
   const existing = await getDesktopLyricsWindow();
   if (existing) return existing;
 
   if (!desktopLyricsWindowPromise) {
     desktopLyricsReadyGate.reset();
-    const bounds = await resolveDesktopLyricsBounds();
+    const bounds = await resolveDesktopLyricsBounds(centerHorizontally);
     const windowInstance = new WebviewWindow(DESKTOP_LYRICS_WINDOW_LABEL, createDesktopLyricsWindowOptions({
       alwaysOnTop,
       hasStoredBounds: !!bounds,
@@ -336,6 +344,7 @@ export function useDesktopLyricsWindowBridge() {
       playerOffsetY: desktopLyricsSettings.playerOffsetY,
       playerAlignment: desktopLyricsSettings.playerAlignment,
       playerFontPreset: desktopLyricsSettings.playerFontPreset,
+      centerHorizontally: desktopLyricsSettings.centerHorizontally,
     },
     customLyricsFonts: [...settingsStore.settings.customLyricsFonts],
     themeColors: [...dominantColors.value],
@@ -420,7 +429,10 @@ export function useDesktopLyricsWindowBridge() {
   };
 
   const openDesktopLyricsWindow = async () => {
-    const targetWindow = await ensureDesktopLyricsWindow(desktopLyricsSettings.isAlwaysOnTop);
+    const targetWindow = await ensureDesktopLyricsWindow(
+      desktopLyricsSettings.isAlwaysOnTop,
+      desktopLyricsSettings.centerHorizontally,
+    );
     await desktopLyricsReadyGate.wait();
     await syncWindowFlags();
     await emitStateToDesktopLyrics(true);
@@ -630,6 +642,7 @@ export function useDesktopLyricsWindowBridge() {
       () => desktopLyricsSettings.enableWordEffect,
       () => desktopLyricsSettings.isLocked,
       () => desktopLyricsSettings.persistLock,
+      () => desktopLyricsSettings.centerHorizontally,
       () => desktopLyricsSettings.colorScheme,
       () => desktopLyricsSettings.customPlayedColor,
       () => desktopLyricsSettings.customUnplayedColor,

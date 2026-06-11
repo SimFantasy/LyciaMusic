@@ -109,6 +109,7 @@ export function useDesktopLyricsDisplay(showDragShadow: Ref<boolean>) {
     enableWordEffect: true,
     isLocked: false,
     persistLock: false,
+    centerHorizontally: false,
     colorScheme: 'auto',
     customPlayedColor: DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR,
     customUnplayedColor: DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR,

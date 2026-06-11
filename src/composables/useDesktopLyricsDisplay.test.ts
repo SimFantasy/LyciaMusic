@@ -41,6 +41,7 @@ function createPayload(enableWordEffect: boolean): DesktopLyricsStatePayload {
       enableWordEffect,
       isLocked: false,
       persistLock: false,
+      centerHorizontally: false,
       colorScheme: 'auto',
       customPlayedColor: '#EC4141',
       customUnplayedColor: '#FFFFFF',

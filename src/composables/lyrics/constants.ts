@@ -119,6 +119,7 @@ export const defaultDesktopLyricsSettings: DesktopLyricsSettings = {
   enableWordEffect: true,
   isLocked: false,
   persistLock: false,
+  centerHorizontally: false,
   colorScheme: 'auto',
   customPlayedColor: DEFAULT_DESKTOP_CUSTOM_PLAYED_COLOR,
   customUnplayedColor: DEFAULT_DESKTOP_CUSTOM_UNPLAYED_COLOR,
@@ -331,6 +332,9 @@ export function normalizeDesktopLyricsSettingsPatch(
     persistLock: typeof patch.persistLock === 'boolean'
       ? patch.persistLock
       : defaultDesktopLyricsSettings.persistLock,
+    centerHorizontally: typeof patch.centerHorizontally === 'boolean'
+      ? patch.centerHorizontally
+      : defaultDesktopLyricsSettings.centerHorizontally,
     colorScheme: normalizeLyricsColorScheme(patch.colorScheme),
     customPlayedColor: normalizeHexColor(
       patch.customPlayedColor,

@@ -906,6 +906,19 @@ onUnmounted(() => {
           </span>
         </button>
 
+        <button
+          type="button"
+          class="desktop-setting-row"
+          @click="desktopLyricsSettings.centerHorizontally = !desktopLyricsSettings.centerHorizontally"
+        >
+          <div>
+            <div class="text-sm font-medium text-gray-800 dark:text-gray-200">桌面歌词自动居中</div>
+          </div>
+          <span class="desktop-switch" :class="desktopLyricsSettings.centerHorizontally ? 'desktop-switch--on' : ''">
+            <span class="desktop-switch-thumb" :class="desktopLyricsSettings.centerHorizontally ? 'translate-x-5' : ''" />
+          </span>
+        </button>
+
 
 
         <div class="desktop-setting-row">

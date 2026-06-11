@@ -283,6 +283,7 @@ export interface DesktopLyricsSettings {
   enableWordEffect: boolean;
   isLocked: boolean;
   persistLock: boolean;
+  centerHorizontally: boolean;
   colorScheme: LyricsColorScheme;
   customPlayedColor: string;
   customUnplayedColor: string;
