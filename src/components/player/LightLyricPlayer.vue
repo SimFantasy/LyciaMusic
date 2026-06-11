@@ -387,15 +387,35 @@ onBeforeUnmount(() => {
       :style="stackStyle"
     >
       <template v-for="(line, index) in lyricLines" :key="`${index}:${line.time}:${line.text}`">
-        <!-- 制作团队团队信息行：纯展示 div 容器以防止滑动误触 -->
-        <div
+        <!-- 制作团队团队信息行：支持高亮和点击切歌 -->
+        <button
           v-if="index < firstRealLyricIndex"
           :ref="el => setLyricLineRef(el, index)"
+          type="button"
           class="light-lyric-line light-lyric-line--credit"
+          :class="{ 'light-lyric-line--active': index === activeLineIndex }"
           :style="getLineStyle(index)"
+          @click="handleLineClick(line)"
         >
           <span class="light-lyric-main">
-            {{ getLineText(line) }}
+            <template v-if="line.words && line.words.length > 0">
+              <span
+                v-for="{ word, index: wordIndex } in getLightLyricRenderableWords(line)"
+                :key="`${wordIndex}:${word.start}:${word.text}`"
+                class="light-lyric-word"
+                :class="{ 'light-lyric-word--active': index === activeLineIndex && activeWord?.index === wordIndex }"
+                :style="getWordStyle(index, wordIndex)"
+              >
+                <span class="light-lyric-word-base">{{ word.text }}</span>
+                <span class="light-lyric-word-fill">{{ word.text }}</span>
+              </span>
+            </template>
+            <template v-else>
+              <span class="light-lyric-line-text">
+                <span class="light-lyric-line-base">{{ getLineText(line) }}</span>
+                <span class="light-lyric-line-fill">{{ getLineText(line) }}</span>
+              </span>
+            </template>
           </span>
           <span v-if="showRomaji && line.romaji" class="light-lyric-subline light-lyric-romaji">
             {{ line.romaji }}
@@ -403,7 +423,7 @@ onBeforeUnmount(() => {
           <span v-if="showTranslation && line.translation" class="light-lyric-subline light-lyric-translation">
             {{ line.translation }}
           </span>
-        </div>
+        </button>
 
         <!-- 普通正文歌词句：支持高亮和点击切歌 -->
         <button
@@ -525,9 +545,9 @@ onBeforeUnmount(() => {
   font-size: 0.72em !important;
   align-items: flex-start !important;
   text-align: left !important;
-  color: rgba(255, 255, 255, 0.45) !important;
+  color: rgba(255, 255, 255, 0.45);
   opacity: 0.45;
-  cursor: default;
+  cursor: pointer;
 }
 
 .light-lyric-line:hover {
@@ -617,11 +637,7 @@ onBeforeUnmount(() => {
 }
 
 .light-lyric-line--active .light-lyric-word-base {
-  color: rgba(255, 255, 255, 0.56);
-}
-
-.light-lyric-line--active .light-lyric-word--active .light-lyric-word-base {
-  color: rgba(255, 255, 255, 0.34);
+  color: rgba(255, 255, 255, 0.35);
 }
 
 @media screen and (max-width: 768px) {
