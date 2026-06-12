@@ -25,8 +25,8 @@ pub fn scan_single_directory_internal(
     let start_time = std::time::Instant::now();
 
     let normalized_folder = normalize_path(&folder_path);
-    let reporter = app.map(|app| {
-        ScanProgressReporter::new(app, normalized_folder.clone(), folder_index, folder_total)
+    let reporter = app.as_ref().map(|app| {
+        ScanProgressReporter::new(app.clone(), normalized_folder.clone(), folder_index, folder_total)
     });
 
     let db_snapshot = {
@@ -48,6 +48,7 @@ pub fn scan_single_directory_internal(
         return Err(error);
     }
 
+    let covers_dir = app.as_ref().map(|a| crate::music::covers::get_cover_cache_dir(a));
     {
         let mut conn = db_conn.lock().map_err(|error| error.to_string())?;
         apply_scan_changes(
@@ -55,6 +56,7 @@ pub fn scan_single_directory_internal(
             &scan_diff.to_add,
             &scan_diff.to_update,
             &scan_diff.to_delete,
+            covers_dir,
             reporter.as_ref(),
         )?;
     }

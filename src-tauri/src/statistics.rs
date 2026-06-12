@@ -1971,16 +1971,29 @@ pub fn get_favorite_artist_catalog(
         }
     }
 
-    let mut result: Vec<crate::music::types::ArtistCatalogItem> = map
-        .into_iter()
-        .map(
-            |(name, (count, first_song_path))| crate::music::types::ArtistCatalogItem {
-                name,
-                count,
-                first_song_path,
-            },
-        )
-        .collect();
+    let mut stmt = conn
+        .prepare("SELECT id, avatar_path FROM artists WHERE name = ?")
+        .map_err(|e| e.to_string())?;
+
+    let mut result: Vec<crate::music::types::ArtistCatalogItem> = Vec::new();
+    for (name, (count, first_song_path)) in map {
+        let (id, avatar_path) = stmt
+            .query_row([&name], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                ))
+            })
+            .unwrap_or((0, None));
+
+        result.push(crate::music::types::ArtistCatalogItem {
+            id,
+            name,
+            count,
+            first_song_path,
+            avatar_path,
+        });
+    }
 
     result.sort_by(|a, b| {
         b.count

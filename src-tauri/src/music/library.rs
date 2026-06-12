@@ -405,7 +405,8 @@ pub async fn get_library_artist_catalog(
         let conn = db_conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
             .prepare(
-                "SELECT artists.name,
+                "SELECT artists.id,
+                        artists.name,
                         COUNT(song_artists.song_id) AS song_count,
                         COALESCE((
                             SELECT songs.path
@@ -414,7 +415,8 @@ pub async fn get_library_artist_catalog(
                             WHERE nested_song_artists.artist_id = artists.id
                             ORDER BY songs.added_at DESC, songs.id ASC
                             LIMIT 1
-                        ), '')
+                        ), ''),
+                        artists.avatar_path
                  FROM artists
                  JOIN song_artists ON song_artists.artist_id = artists.id
                  GROUP BY artists.id, artists.name
@@ -425,9 +427,11 @@ pub async fn get_library_artist_catalog(
         let rows = stmt
             .query_map([], |row| {
                 Ok(ArtistCatalogItem {
-                    name: row.get::<_, String>(0)?,
-                    count: clamp_i64_to_u32_count(row.get::<_, i64>(1)?),
-                    first_song_path: row.get::<_, String>(2)?,
+                    id: row.get::<_, i64>(0)?,
+                    name: row.get::<_, String>(1)?,
+                    count: clamp_i64_to_u32_count(row.get::<_, i64>(2)?),
+                    first_song_path: row.get::<_, String>(3)?,
+                    avatar_path: row.get::<_, Option<String>>(4)?,
                 })
             })
             .map_err(|e| e.to_string())?;

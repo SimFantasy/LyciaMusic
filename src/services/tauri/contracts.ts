@@ -14,6 +14,7 @@ import type {
   RemoteSyncResult,
   Song,
   SongDetail,
+  SaveArtistAvatarResponse,
 } from '../../types';
 import type { AudioOutputMode } from '../../types';
 
@@ -184,6 +185,7 @@ export interface TauriCommandMap {
   remove_sidebar_folder: { payload: { path: string }; response: void };
   get_library_hierarchy: { payload: undefined; response: FolderNode[] };
   get_library_artist_catalog: { payload: undefined; response: ArtistCatalogItem[] };
+  save_artist_avatar: { payload: { artistId: number; imagePath: string; writeToTags: boolean }; response: SaveArtistAvatarResponse };
   get_library_album_catalog: { payload: undefined; response: AlbumCatalogItem[] };
   get_library_song_paths_by_artist: { payload: { artistName: string }; response: string[] };
   get_library_song_paths_by_album: { payload: { albumKey: string }; response: string[] };

@@ -163,7 +163,7 @@ describe('playerLibraryRuntime.scanLibrary', () => {
         is_expanded: false,
       },
     ]);
-    libraryStore.setArtistCatalog([{ name: 'Artist', count: 1, firstSongPath: staleSong.path }]);
+    libraryStore.setArtistCatalog([{ id: 1, name: 'Artist', count: 1, firstSongPath: staleSong.path }]);
     libraryStore.setAlbumCatalog([{ key: 'album::artist', name: 'Album', artist: 'Artist', count: 1, firstSongPath: staleSong.path }]);
 
     const refreshStateSongReferences = vi.fn();

@@ -29,7 +29,7 @@ use music::{
     get_library_songs_cached, get_sidebar_folders, get_sidebar_hierarchy, get_song_cover,
     get_song_cover_thumbnail, get_song_detail, get_song_lyrics, get_song_lyrics_for_edit,
     get_song_lyrics_payload, is_directory, move_file_to_folder, move_music_file, parse_audio_files,
-    remove_library_folder, remove_sidebar_folder, save_song_info, save_song_lyrics,
+    remove_library_folder, remove_sidebar_folder, save_artist_avatar, save_song_info, save_song_lyrics,
     scan_folder_as_playlists, scan_library, scan_music_folder, show_in_folder,
 };
 use player::{
@@ -134,6 +134,7 @@ pub fn run() {
             set_audio_output_mode,
             get_library_folders,
             is_directory,
+            save_artist_avatar,
             add_library_folder,
             remove_library_folder,
             get_library_songs_cached,

@@ -2,6 +2,7 @@
 defineOptions({ name: 'Artists' });
 
 import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { useRoute, useRouter } from 'vue-router';
 import { artistHeaderCache, artistViewportCoverSnapshotCache } from '../caches/imageCaches';
 import { dragSession } from '../composables/dragState';
@@ -38,12 +39,12 @@ const ARTIST_ROW_SPAN = ARTIST_ITEM_HEIGHT + ARTIST_GRID_GAP_Y;
 const ARTIST_SECTION_HEADER_HEIGHT = 24;
 const ARTIST_OVERSCAN_ROWS = 2;
 
-const handleArtistClick = (artistName: string, firstSongPath?: string) => {
-  const cachedCover = getDisplayedCoverUrl(firstSongPath);
-  if (cachedCover) {
-    artistHeaderCache.set(artistName, cachedCover);
+const handleArtistClick = (artist: any) => {
+  const avatarUrl = getArtistAvatarUrl(artist);
+  if (avatarUrl) {
+    artistHeaderCache.set(artist.name, avatarUrl);
   }
-  void openHomeArtist(artistName);
+  void openHomeArtist(artist.name);
 };
 
 const handleSortChange = (mode: 'count' | 'name' | 'custom') => {
@@ -87,6 +88,20 @@ const getDisplayedCoverUrl = (path: string | undefined) => {
   }
 
   return displayedCoverUrls.get(path) ?? coverCache.get(path) ?? '';
+};
+
+const getArtistAvatarUrl = (artist: any) => {
+  if (artist.avatarPath) {
+    return convertFileSrc(artist.avatarPath);
+  }
+  return getDisplayedCoverUrl(artist.firstSongPath);
+};
+
+const isArtistAvatarLoading = (artist: any) => {
+  if (artist.avatarPath) {
+    return false;
+  }
+  return isCoverLoading(artist.firstSongPath);
 };
 
 const restoreViewportCoverSnapshot = () => {
@@ -657,7 +672,7 @@ onUnmounted(() => {
               ]"
               @pointerdown="handlePointerDown($event, item.index, item.artist)"
               @pointermove="handleItemPointerMove($event, item.artist.name)"
-              @click="handleArtistClick(item.artist.name, item.artist.firstSongPath)"
+              @click="handleArtistClick(item.artist)"
             >
               <div
                 class="relative w-12 h-12 md:w-14 md:h-14 shrink-0"
@@ -665,8 +680,8 @@ onUnmounted(() => {
                 :class="{ 'ring-2 ring-[#EC4141] ring-offset-2 ring-offset-gray-50 dark:ring-offset-[#222222] rounded-full': dragSession.active && dragSession.type === 'artist' && dragOverName === item.artist.name && dragSession.data?.name !== item.artist.name }"
               >
                 <div class="w-full h-full rounded-full overflow-hidden shadow-sm group-hover:shadow transition-shadow duration-300 relative bg-gray-100 dark:bg-white/5 flex items-center justify-center">
-                  <img v-if="getDisplayedCoverUrl(item.artist.firstSongPath)" :src="getDisplayedCoverUrl(item.artist.firstSongPath)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="item.artist.name">
-                  <div v-else class="w-full h-full flex items-center justify-center text-lg md:text-xl font-bold text-white bg-gradient-to-br animate-in fade-in duration-300" :class="[getGradientForArtist(item.artist.name), { 'animate-pulse': isCoverLoading(item.artist.firstSongPath) }]">
+                  <img v-if="getArtistAvatarUrl(item.artist)" :src="getArtistAvatarUrl(item.artist)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="item.artist.name">
+                  <div v-else class="w-full h-full flex items-center justify-center text-lg md:text-xl font-bold text-white bg-gradient-to-br animate-in fade-in duration-300" :class="[getGradientForArtist(item.artist.name), { 'animate-pulse': isArtistAvatarLoading(item.artist) }]">
                     {{ item.artist.name.charAt(0).toUpperCase() }}
                   </div>
                   <div class="absolute inset-0 bg-white/0 group-hover:bg-white/10 dark:bg-black/5 dark:group-hover:bg-transparent transition-colors duration-300"></div>
@@ -697,7 +712,7 @@ onUnmounted(() => {
           ]"
           @pointerdown="handlePointerDown($event, item.index, item.artist)"
           @pointermove="handleItemPointerMove($event, item.artist.name)"
-          @click="handleArtistClick(item.artist.name, item.artist.firstSongPath)"
+          @click="handleArtistClick(item.artist)"
         >
           <div
             class="relative w-12 h-12 md:w-14 md:h-14 shrink-0"
@@ -705,8 +720,8 @@ onUnmounted(() => {
             :class="{ 'ring-2 ring-[#EC4141] ring-offset-2 ring-offset-gray-50 dark:ring-offset-[#222222] rounded-full': dragSession.active && dragSession.type === 'artist' && dragOverName === item.artist.name && dragSession.data?.name !== item.artist.name }"
           >
             <div class="w-full h-full rounded-full overflow-hidden shadow-sm group-hover:shadow transition-shadow duration-300 relative bg-gray-100 dark:bg-white/5 flex items-center justify-center">
-              <img v-if="getDisplayedCoverUrl(item.artist.firstSongPath)" :src="getDisplayedCoverUrl(item.artist.firstSongPath)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="item.artist.name">
-              <div v-else class="w-full h-full flex items-center justify-center text-lg md:text-xl font-bold text-white bg-gradient-to-br animate-in fade-in duration-300" :class="[getGradientForArtist(item.artist.name), { 'animate-pulse': isCoverLoading(item.artist.firstSongPath) }]">
+              <img v-if="getArtistAvatarUrl(item.artist)" :src="getArtistAvatarUrl(item.artist)" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="item.artist.name">
+              <div v-else class="w-full h-full flex items-center justify-center text-lg md:text-xl font-bold text-white bg-gradient-to-br animate-in fade-in duration-300" :class="[getGradientForArtist(item.artist.name), { 'animate-pulse': isArtistAvatarLoading(item.artist) }]">
                 {{ item.artist.name.charAt(0).toUpperCase() }}
               </div>
               <div class="absolute inset-0 bg-white/0 group-hover:bg-white/10 dark:bg-black/5 dark:group-hover:bg-transparent transition-colors duration-300"></div>

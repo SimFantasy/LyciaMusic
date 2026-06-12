@@ -3,6 +3,7 @@ import { useLibraryBrowse } from '../../features/library/useLibraryBrowse';
 import { usePlayerViewState } from '../../composables/usePlayerViewState';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useCoverCache } from '../../composables/useCoverCache';
+import { convertFileSrc } from '@tauri-apps/api/core';
 
 const { favTab } = usePlayerViewState();
 const { favArtistList, favAlbumList } = useLibraryBrowse();
@@ -291,8 +292,8 @@ onUnmounted(() => {
                  group-hover:shadow-xl transition-all duration-300 ease-out group-hover:scale-[1.03]"
         >
           <img
-            v-if="coverCache.get(item.firstSongPath)"
-            :src="coverCache.get(item.firstSongPath)"
+            v-if="item.type === 'artist' && (item.artist.avatarPath || coverCache.get(item.firstSongPath))"
+            :src="item.type === 'artist' && item.artist.avatarPath ? convertFileSrc(item.artist.avatarPath) : coverCache.get(item.firstSongPath)"
             class="w-full h-full object-cover"
             alt="Artist"
             loading="lazy"

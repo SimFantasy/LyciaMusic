@@ -215,6 +215,7 @@ mod tests {
     fn make_song(path: &str) -> Song {
         Song {
             id: None,
+            artist_avatar_bytes: None,
             name: PathBuf::from(path)
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
@@ -479,7 +480,7 @@ mod tests {
         let mut conn = setup_test_db();
         let added_song = make_song("/music/first.flac");
 
-        apply_scan_changes(&mut conn, &[added_song.clone()], &[], &[], None).expect("insert batch");
+        apply_scan_changes(&mut conn, &[added_song.clone()], &[], &[], None, None).expect("insert batch");
 
         let inserted_title: String = conn
             .query_row(
@@ -502,7 +503,7 @@ mod tests {
         updated_song.album_artist = "Updated Artist".to_string();
         updated_song.album_key = "album::updated artist".to_string();
 
-        apply_scan_changes(&mut conn, &[], &[updated_song.clone()], &[], None)
+        apply_scan_changes(&mut conn, &[], &[updated_song.clone()], &[], None, None)
             .expect("update batch");
 
         let updated_title: String = conn
@@ -535,6 +536,7 @@ mod tests {
             &[],
             &[],
             std::slice::from_ref(&updated_song.path),
+            None,
             None,
         )
         .expect("delete batch");

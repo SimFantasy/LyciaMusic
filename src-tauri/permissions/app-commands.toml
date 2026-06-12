@@ -42,6 +42,7 @@ commands.allow = [
   "remove_library_folder",
   "get_library_songs_cached",
   "get_library_artist_catalog",
+  "save_artist_avatar",
   "get_library_album_catalog",
   "get_library_song_paths_by_artist",
   "get_library_song_paths_by_album",

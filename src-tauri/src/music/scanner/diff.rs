@@ -108,6 +108,7 @@ pub(super) fn load_db_snapshot_for_folder(
                         file_size: file_size_i64,
                         song: Song {
                             id: row.get::<_, i64>(0).ok(),
+                            artist_avatar_bytes: None,
                             name,
                             path,
                             title: row.get::<_, Option<String>>(2)?.unwrap_or_default(),

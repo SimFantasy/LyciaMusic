@@ -111,6 +111,7 @@ pub(crate) fn parse_song_from_file(path: &Path, path_str: &str, format: &str) ->
     let mut comment: Option<String> = None;
     let mut container = Some(normalize_container_from_extension(format));
     let mut codec = None;
+    let mut artist_avatar_bytes: Option<Vec<u8>> = None;
 
     if let Ok(meta) = fs::metadata(path) {
         file_size = meta.len();
@@ -143,6 +144,10 @@ pub(crate) fn parse_song_from_file(path: &Path, path_str: &str, format: &str) ->
         track_number = detail_metadata.track_number;
         disc_number = detail_metadata.disc_number;
         comment = detail_metadata.comment;
+
+        if let Some(pic) = super::super::tags::find_embedded_artist_picture(&tagged_file) {
+            artist_avatar_bytes = Some(pic.data().to_vec());
+        }
     }
 
     if duration == 0 || sample_rate == 0 || bit_depth.is_none() {
@@ -182,6 +187,7 @@ pub(crate) fn parse_song_from_file(path: &Path, path_str: &str, format: &str) ->
 
     Some(Song {
         id: None,
+        artist_avatar_bytes,
         name: path.file_name()?.to_string_lossy().to_string(),
         path: path_str.to_string(),
         title,
@@ -481,6 +487,7 @@ pub(crate) fn build_cue_track_song(
 
     Some(Song {
         id: None,
+        artist_avatar_bytes: None,
         name,
         path: synthetic_path,
         title,

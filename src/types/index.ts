@@ -52,9 +52,11 @@ export interface SongDetail {
 }
 
 export interface ArtistCatalogItem {
+  id: number;
   name: string;
   count: number;
   firstSongPath: string;
+  avatarPath?: string;
 }
 
 export interface AlbumCatalogItem {
@@ -385,4 +387,12 @@ export interface AppSettings {
   showTaskbarPlayer: boolean;
   taskbarPlayerCanDrag: boolean;
   gpuAcceleration: boolean;
+  writeArtistAvatarToTags: boolean;
 }
+
+export interface SaveArtistAvatarResponse {
+  artistId: number;
+  avatarPath: string;
+  taskId?: string;
+}
+

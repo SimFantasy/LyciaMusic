@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
+import { open } from '@tauri-apps/plugin-dialog';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { tauriInvoke } from '../../services/tauri/invoke';
+import { useLibraryStore } from '../../features/library/store';
+import { useSettings } from '../../features/settings/useSettings';
+import { useToast } from '../../composables/toast';
 import { artistHeaderCache } from '../../caches/imageCaches';
 import { useCoverCache } from '../../composables/useCoverCache';
 import { type ArtistTabId, getOrderedArtistTabs, saveTabsOrder } from '../../utils/artistTabsOrder';
@@ -150,6 +157,189 @@ const onPointerUp = () => {
   }, 50);
 };
 
+const libraryStore = useLibraryStore();
+const { settings } = useSettings();
+const { showToast } = useToast();
+
+const currentArtist = computed(() => {
+  return libraryStore.artistCatalog.find(item => item.name === props.artistName);
+});
+
+const displayedCover = computed(() => {
+  if (currentArtist.value?.avatarPath) {
+    return convertFileSrc(currentArtist.value.avatarPath);
+  }
+  return coverUrl.value;
+});
+
+const isSavingAvatar = ref(false);
+const showWriteBackDialog = ref(false);
+const pendingImagePath = ref('');
+const activeTaskId = ref<string | null>(null);
+
+interface WriteTagsProgress {
+  taskId: string;
+  current: number;
+  total: number;
+  successCount: number;
+  failureCount: number;
+  skippedCount: number;
+  skippedMultiArtist: number;
+  skippedRemote: number;
+  skippedCue: number;
+  skippedReadonly: number;
+  skippedMissing: number;
+  done: boolean;
+}
+const writeProgress = ref<WriteTagsProgress | null>(null);
+
+const triggerAvatarSave = async (imagePath: string, writeToTags: boolean) => {
+  if (!currentArtist.value) return;
+  isSavingAvatar.value = true;
+
+  try {
+    const result = await tauriInvoke('save_artist_avatar', {
+      artistId: currentArtist.value.id,
+      imagePath,
+      writeToTags,
+    });
+
+    // Update store to trigger reactivity
+    const updatedCatalog = libraryStore.artistCatalog.map(item => {
+      if (item.id === result.artistId) {
+        return { ...item, avatarPath: result.avatarPath };
+      }
+      return item;
+    });
+    libraryStore.setArtistCatalog(updatedCatalog);
+
+    if (result.taskId) {
+      activeTaskId.value = result.taskId;
+      writeProgress.value = {
+        taskId: result.taskId,
+        current: 0,
+        total: 0,
+        successCount: 0,
+        failureCount: 0,
+        skippedCount: 0,
+        skippedMultiArtist: 0,
+        skippedRemote: 0,
+        skippedCue: 0,
+        skippedReadonly: 0,
+        skippedMissing: 0,
+        done: false,
+      };
+    } else {
+      showToast('修改歌手头像成功', 'success');
+      isSavingAvatar.value = false;
+    }
+  } catch (error) {
+    console.error('Failed to save artist avatar:', error);
+    showToast(typeof error === 'string' ? error : '修改歌手头像失败', 'error');
+    isSavingAvatar.value = false;
+  }
+};
+
+const triggerAvatarSaveWithWriteBack = () => {
+  showWriteBackDialog.value = false;
+  if (pendingImagePath.value) {
+    triggerAvatarSave(pendingImagePath.value, true);
+    pendingImagePath.value = '';
+  }
+};
+
+const triggerAvatarSaveOnlyApp = () => {
+  showWriteBackDialog.value = false;
+  if (pendingImagePath.value) {
+    triggerAvatarSave(pendingImagePath.value, false);
+    pendingImagePath.value = '';
+  }
+};
+
+const handleAvatarClick = async () => {
+  if (!currentArtist.value || isSavingAvatar.value) return;
+
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: '选择歌手头像',
+    filters: [
+      {
+        name: '图片',
+        extensions: ['jpg', 'jpeg', 'png', 'webp'],
+      },
+    ],
+  });
+
+  if (!selected || Array.isArray(selected)) {
+    return;
+  }
+
+  if (settings.value.writeArtistAvatarToTags) {
+    pendingImagePath.value = selected as string;
+    showWriteBackDialog.value = true;
+  } else {
+    triggerAvatarSave(selected as string, false);
+  }
+};
+
+let unlistenWriteTagsProgress: UnlistenFn | null = null;
+
+onMounted(async () => {
+  unlistenWriteTagsProgress = await listen<any>('artist-avatar:write-tags-progress', (event) => {
+    const payload = event.payload;
+    if (activeTaskId.value && payload.taskId === activeTaskId.value) {
+      writeProgress.value = {
+        taskId: payload.taskId,
+        current: payload.current,
+        total: payload.total,
+        successCount: payload.successCount,
+        failureCount: payload.failureCount,
+        skippedCount: payload.skippedCount,
+        skippedMultiArtist: payload.skippedMultiArtist,
+        skippedRemote: payload.skippedRemote,
+        skippedCue: payload.skippedCue,
+        skippedReadonly: payload.skippedReadonly,
+        skippedMissing: payload.skippedMissing,
+        done: payload.done,
+      };
+
+      if (payload.done) {
+        let skipDetails = [];
+        if (payload.skippedMultiArtist > 0) skipDetails.push(`多歌手: ${payload.skippedMultiArtist}`);
+        if (payload.skippedRemote > 0) skipDetails.push(`远程: ${payload.skippedRemote}`);
+        if (payload.skippedCue > 0) skipDetails.push(`CUE: ${payload.skippedCue}`);
+        if (payload.skippedReadonly > 0) skipDetails.push(`只读: ${payload.skippedReadonly}`);
+        if (payload.skippedMissing > 0) skipDetails.push(`缺失: ${payload.skippedMissing}`);
+
+        const detailsText = skipDetails.length > 0 ? ` (${skipDetails.join(', ')})` : '';
+
+        if (payload.error) {
+          showToast(`写回标签出错: ${payload.error}`, 'error');
+        } else if (payload.total === 0 || (payload.successCount === 0 && payload.skippedCount === payload.total && payload.total > 0)) {
+          showToast(`头像已保存，但没有可写入的本地单人歌曲${detailsText}。`, 'info');
+        } else {
+          showToast(
+            `歌手头像保存并写回标签完成！成功: ${payload.successCount} 首，跳过: ${payload.skippedCount} 首${detailsText}，失败: ${payload.failureCount} 首`,
+            payload.failureCount > 0 ? 'error' : 'success'
+          );
+        }
+
+        activeTaskId.value = null;
+        writeProgress.value = null;
+        isSavingAvatar.value = false;
+      }
+    }
+  });
+});
+
+onUnmounted(() => {
+  if (unlistenWriteTagsProgress) {
+    unlistenWriteTagsProgress();
+    unlistenWriteTagsProgress = null;
+  }
+});
+
 const coverUrl = ref<string>('');
 const isLoading = ref<boolean>(false);
 const { loadCover, peekCoverUrl } = useCoverCache();
@@ -259,11 +449,36 @@ const handlePlayAll = () => {
     <!-- 正常模式: 歌手详情展示区 -->
     <div v-else class="flex gap-6 h-auto mt-2 mb-6">
       <!-- 封面图 (圆形) -->
-      <div class="w-36 h-36 rounded-full shadow-sm flex items-center justify-center shrink-0 overflow-hidden group relative select-none bg-gray-100 dark:bg-white/5 border-4 border-white/50 dark:border-white/5">
+      <div 
+        @click="handleAvatarClick"
+        class="w-36 h-36 rounded-full shadow-sm flex items-center justify-center shrink-0 overflow-hidden group relative select-none bg-gray-100 dark:bg-white/5 border-4 border-white/50 dark:border-white/5 cursor-pointer"
+      >
         <div v-if="isLoading" class="w-full h-full bg-gray-200 dark:bg-white/10 animate-pulse"></div>
-        <img v-else-if="coverUrl" :src="coverUrl" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="artistName"/>
+        <img v-else-if="displayedCover" :src="displayedCover" class="w-full h-full object-cover select-none animate-in fade-in duration-300" draggable="false" :alt="artistName"/>
         <div v-else class="w-full h-full flex items-center justify-center text-4xl font-bold text-white bg-gradient-to-br animate-in fade-in duration-300" :class="getGradientForArtist(artistName)">
           {{ artistName.charAt(0).toUpperCase() }}
+        </div>
+        
+        <!-- Progress Overlay Mask -->
+        <div v-if="writeProgress && !writeProgress.done" class="absolute inset-0 bg-black/75 flex flex-col items-center justify-center text-white z-10 p-2 text-center select-none animate-in fade-in duration-200">
+          <svg class="animate-spin h-5 w-5 mb-1.5 text-white" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+          <span class="text-[10px] font-semibold">同步标签中...</span>
+          <span class="text-[10px] opacity-80 mt-0.5 tabular-nums">{{ writeProgress.current }}/{{ writeProgress.total }}</span>
+        </div>
+        
+        <!-- Hover Overlay Mask -->
+        <div 
+          v-else
+          class="absolute inset-0 bg-black/50 opacity-0 flex flex-col items-center justify-center text-white transition-opacity duration-300 gap-1.5"
+          :class="isSavingAvatar ? 'hidden' : 'group-hover:opacity-100'"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          <span class="text-xs font-semibold">修改头像</span>
         </div>
       </div>
       
@@ -346,6 +561,44 @@ const handlePlayAll = () => {
         ></div>
       </div>
     </TransitionGroup>
+
+    <!-- Custom Three-Choice Modal for Avatar Upload with Write-back -->
+    <Teleport to="body">
+      <div v-if="showWriteBackDialog" class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40 backdrop-blur-[2px] select-none" @click.self="showWriteBackDialog = false">
+        <div class="bg-white dark:bg-zinc-900 rounded-lg shadow-xl w-[360px] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div class="px-6 pt-6 pb-2 text-center">
+            <h3 class="text-lg font-bold text-gray-800 dark:text-zinc-100">更新歌手头像</h3>
+          </div>
+          <div class="px-6 pb-6 text-center">
+            <p class="text-xs text-gray-500 dark:text-zinc-400 leading-relaxed">
+              您已开启了“同步写回标签”设置。<br />
+              您可以选择将新头像同步写入本地单歌手歌曲的标签中。<br />
+              <span class="text-amber-500 dark:text-amber-400 block mt-1">注意：多歌手合作、分轨 CUE、远程歌曲及只读文件将被自动跳过。</span>
+            </p>
+          </div>
+          <div class="flex flex-col border-t border-gray-100 dark:border-zinc-800">
+            <button 
+              @click="triggerAvatarSaveWithWriteBack" 
+              class="w-full py-3 text-sm text-[#EC4141] font-semibold hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors focus:outline-none border-b border-gray-100 dark:border-zinc-800"
+            >
+              保存并同步写回音频标签
+            </button>
+            <button 
+              @click="triggerAvatarSaveOnlyApp" 
+              class="w-full py-3 text-sm text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors focus:outline-none border-b border-gray-100 dark:border-zinc-800"
+            >
+              仅保存至软件（不修改文件）
+            </button>
+            <button 
+              @click="showWriteBackDialog = false" 
+              class="w-full py-3 text-sm text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors focus:outline-none"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 

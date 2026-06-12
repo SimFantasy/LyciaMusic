@@ -272,6 +272,25 @@ where
     None
 }
 
+pub fn find_embedded_artist_picture<'a, T>(tagged_file: &'a T) -> Option<&'a Picture>
+where
+    T: TaggedFileExt + ?Sized,
+{
+    let tags = ordered_tags(tagged_file);
+
+    for tag in &tags {
+        if let Some(picture) = tag
+            .pictures()
+            .iter()
+            .find(|picture| picture.pic_type() == PictureType::Artist)
+        {
+            return Some(picture);
+        }
+    }
+
+    None
+}
+
 pub fn contains_lrc_timestamp(text: &str) -> bool {
     let bytes = text.as_bytes();
     let mut index = 0usize;

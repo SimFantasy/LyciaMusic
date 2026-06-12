@@ -113,6 +113,7 @@ fn song_from_remote_file(source: &RemoteSourceCredentials, file: &RemoteFileEntr
 
     let mut song = Song {
         id: None,
+        artist_avatar_bytes: None,
         name: file.name.clone(),
         title,
         path: remote_uri,
@@ -347,6 +348,7 @@ fn load_remote_song_snapshots(
 
                     Some(Song {
                         id: row.get::<_, Option<i64>>(4)?,
+                        artist_avatar_bytes: None,
                         name,
                         path,
                         title: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
@@ -551,8 +553,9 @@ pub(crate) async fn sync_source(
             .filter(|path| !next_paths.contains(path))
             .collect::<Vec<_>>();
 
+        let covers_dir = Some(crate::music::covers::get_cover_cache_dir(&app));
         replace_remote_files(&mut conn, &source.id, &files)?;
-        apply_scan_changes(&mut conn, &songs, &[], &to_delete, None)?;
+        apply_scan_changes(&mut conn, &songs, &[], &to_delete, covers_dir, None)?;
         mark_remote_songs(&conn, &source, &files)?;
         for (remote_uri, cache_path) in &cache_updates {
             update_song_cache_path(&conn, remote_uri, cache_path)?;
