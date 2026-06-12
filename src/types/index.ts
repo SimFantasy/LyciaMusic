@@ -56,7 +56,7 @@ export interface ArtistCatalogItem {
   name: string;
   count: number;
   firstSongPath: string;
-  avatarPath?: string;
+  avatarPath: string | null;
 }
 
 export interface AlbumCatalogItem {

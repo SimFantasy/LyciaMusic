@@ -77,7 +77,6 @@ fn sync_song_artists_batch(
     song_ids: &HashMap<String, i64>,
     artist_cache: &mut HashMap<String, i64>,
     skip_delete: bool,
-    covers_dir: Option<&std::path::Path>,
 ) -> Result<(), String> {
     if songs.is_empty() || song_ids.is_empty() {
         return Ok(());
@@ -99,8 +98,6 @@ fn sync_song_artists_batch(
         )
         .map_err(|error| error.to_string())?;
 
-    use rusqlite::OptionalExtension;
-
     for song in songs {
         let Some(song_id) = song_ids.get(&song.path).copied() else {
             continue;
@@ -117,55 +114,24 @@ fn sync_song_artists_batch(
             song.artist_names.clone()
         };
 
+        let has_single_artist = super::get_song_single_valid_artist(song).is_some();
+
         for (sort_order, artist_name) in normalized_names.iter().enumerate() {
             let artist_id = ensure_artist_id(conn, artist_cache, artist_name)?;
             insert_stmt
                 .execute(params![song_id, artist_id, sort_order as i64])
                 .map_err(|error| error.to_string())?;
 
-            if let (Some(ref bytes), Some(ref dir)) = (&song.artist_avatar_bytes, covers_dir) {
-                let current_avatar: Option<String> = conn
-                    .query_row(
-                        "SELECT avatar_path FROM artists WHERE id = ?1",
-                        params![artist_id],
-                        |row| row.get(0),
+            if has_single_artist {
+                if let Some(ref avatar_path) = song.artist_avatar_path {
+                    conn.execute(
+                        "UPDATE artists 
+                         SET avatar_path = ?1 
+                         WHERE id = ?2 
+                           AND (avatar_path IS NULL OR TRIM(avatar_path) = '')",
+                        params![Some(avatar_path), artist_id],
                     )
-                    .optional()
-                    .map_err(|e| e.to_string())?
-                    .flatten();
-
-                if current_avatar.is_none() || current_avatar.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true) {
-                    use sha2::{Digest, Sha256};
-                    let mut hasher = Sha256::new();
-                    hasher.update(bytes);
-                    let sha256_hex = format!("{:x}", hasher.finalize());
-
-                    let ext = if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
-                        "jpg"
-                    } else if bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
-                        "png"
-                    } else if bytes.starts_with(b"RIFF") && bytes.len() >= 12 && &bytes[8..12] == b"WEBP" {
-                        "webp"
-                    } else {
-                        "jpg"
-                    };
-
-                    let target_filename = format!("artist-avatar-{}-{}.{}", artist_id, sha256_hex, ext);
-                    let target_path = dir.join(target_filename);
-
-                    if !dir.exists() {
-                        let _ = std::fs::create_dir_all(dir);
-                    }
-                    if let Ok(mut file) = std::fs::File::create(&target_path) {
-                        use std::io::Write;
-                        if file.write_all(bytes).is_ok() {
-                            let target_path_str = crate::music::utils::normalize_path(&target_path.to_string_lossy());
-                            let _ = conn.execute(
-                                "UPDATE artists SET avatar_path = ?1 WHERE id = ?2",
-                                params![Some(&target_path_str), artist_id],
-                            );
-                        }
-                    }
+                    .map_err(|error| format!("Failed to update artist avatar: {}", error))?;
                 }
             }
         }
@@ -179,7 +145,6 @@ fn apply_insert_batch(
     songs: &[Song],
     artist_cache: &mut HashMap<String, i64>,
     skip_delete: bool,
-    covers_dir: Option<&std::path::Path>,
 ) -> Result<(), String> {
     if songs.is_empty() {
         return Ok(());
@@ -293,7 +258,7 @@ fn apply_insert_batch(
 
         let song_paths: Vec<String> = songs.iter().map(|song| song.path.clone()).collect();
         let song_ids = load_song_ids_by_paths(&tx, &song_paths)?;
-        sync_song_artists_batch(&tx, songs, &song_ids, artist_cache, skip_delete, covers_dir)?;
+        sync_song_artists_batch(&tx, songs, &song_ids, artist_cache, skip_delete)?;
     }
 
     tx.commit().map_err(|error| error.to_string())?;
@@ -315,7 +280,6 @@ fn apply_update_batch(
     conn: &mut rusqlite::Connection,
     songs: &[Song],
     artist_cache: &mut HashMap<String, i64>,
-    covers_dir: Option<&std::path::Path>,
 ) -> Result<(), String> {
     if songs.is_empty() {
         return Ok(());
@@ -397,7 +361,7 @@ fn apply_update_batch(
 
         let song_paths: Vec<String> = songs.iter().map(|song| song.path.clone()).collect();
         let song_ids = load_song_ids_by_paths(&tx, &song_paths)?;
-        sync_song_artists_batch(&tx, songs, &song_ids, artist_cache, false, covers_dir)?;
+        sync_song_artists_batch(&tx, songs, &song_ids, artist_cache, false)?;
     }
 
     tx.commit().map_err(|error| error.to_string())
@@ -438,7 +402,6 @@ pub(crate) fn apply_scan_changes(
     to_add: &[Song],
     to_update: &[Song],
     to_delete: &[String],
-    covers_dir: Option<std::path::PathBuf>,
     reporter: Option<&ScanProgressReporter>,
 ) -> Result<(), String> {
     if to_add.is_empty() && to_update.is_empty() && to_delete.is_empty() {
@@ -469,7 +432,7 @@ pub(crate) fn apply_scan_changes(
     }
 
     for chunk in to_add.chunks(chunk_size) {
-        apply_insert_batch(conn, chunk, &mut artist_cache, is_first_large_import, covers_dir.as_deref())?;
+        apply_insert_batch(conn, chunk, &mut artist_cache, is_first_large_import)?;
         written_operations += chunk.len();
         if let Some(reporter) = reporter {
             reporter.emit_writing(written_operations, total_operations);
@@ -478,7 +441,7 @@ pub(crate) fn apply_scan_changes(
     }
 
     for chunk in to_update.chunks(chunk_size) {
-        apply_update_batch(conn, chunk, &mut artist_cache, covers_dir.as_deref())?;
+        apply_update_batch(conn, chunk, &mut artist_cache)?;
         written_operations += chunk.len();
         if let Some(reporter) = reporter {
             reporter.emit_writing(written_operations, total_operations);

@@ -33,6 +33,8 @@ pub struct Song {
     pub id: Option<i64>, // 数据库主键 (新增用于行为统计关联)
     #[serde(skip)]
     pub artist_avatar_bytes: Option<Vec<u8>>,
+    #[serde(skip)]
+    pub artist_avatar_path: Option<String>,
     pub name: String,
     pub title: String,
     pub path: String,

@@ -137,6 +137,7 @@ pub(super) fn load_db_snapshot_for_folder(
                             cue_start_offset: row.get::<_, Option<i64>>(25)?.map(|v| v as u32),
                             cue_end_offset: row.get::<_, Option<i64>>(26)?.map(|v| v as u32),
                             comment: row.get::<_, Option<String>>(27)?,
+                            artist_avatar_path: None,
                         },
                     },
                 ))

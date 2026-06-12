@@ -216,7 +216,7 @@ fn update_cached_remote_audio_metadata(
         return None;
     }
     if let Ok(mut conn) = db_state.conn.lock() {
-        let _ = apply_scan_changes(&mut conn, &[], std::slice::from_ref(&song), &[], None, None);
+        let _ = apply_scan_changes(&mut conn, &[], std::slice::from_ref(&song), &[], None);
     }
     Some(song)
 }

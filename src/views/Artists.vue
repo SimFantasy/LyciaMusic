@@ -39,7 +39,7 @@ const ARTIST_ROW_SPAN = ARTIST_ITEM_HEIGHT + ARTIST_GRID_GAP_Y;
 const ARTIST_SECTION_HEADER_HEIGHT = 24;
 const ARTIST_OVERSCAN_ROWS = 2;
 
-const handleArtistClick = (artist: any) => {
+const handleArtistClick = (artist: ArtistListItem) => {
   const avatarUrl = getArtistAvatarUrl(artist);
   if (avatarUrl) {
     artistHeaderCache.set(artist.name, avatarUrl);
@@ -90,14 +90,14 @@ const getDisplayedCoverUrl = (path: string | undefined) => {
   return displayedCoverUrls.get(path) ?? coverCache.get(path) ?? '';
 };
 
-const getArtistAvatarUrl = (artist: any) => {
+const getArtistAvatarUrl = (artist: ArtistListItem) => {
   if (artist.avatarPath) {
     return convertFileSrc(artist.avatarPath);
   }
   return getDisplayedCoverUrl(artist.firstSongPath);
 };
 
-const isArtistAvatarLoading = (artist: any) => {
+const isArtistAvatarLoading = (artist: ArtistListItem) => {
   if (artist.avatarPath) {
     return false;
   }
@@ -381,12 +381,14 @@ const visibleArtistCoverPaths = computed(() => {
       }
 
       return row.items
+        .filter(item => !item.artist.avatarPath)
         .map(item => item.artist.firstSongPath)
         .filter((path): path is string => !!path);
     });
   }
 
   return flatArtistVirtualState.value.items
+    .filter(item => !item.artist.avatarPath)
     .map(item => item.artist.firstSongPath)
     .filter((path): path is string => !!path);
 });
@@ -676,7 +678,7 @@ onUnmounted(() => {
             >
               <div
                 class="relative w-12 h-12 md:w-14 md:h-14 shrink-0"
-                :data-cover-path="item.artist.firstSongPath"
+                :data-cover-path="item.artist.avatarPath ? undefined : item.artist.firstSongPath"
                 :class="{ 'ring-2 ring-[#EC4141] ring-offset-2 ring-offset-gray-50 dark:ring-offset-[#222222] rounded-full': dragSession.active && dragSession.type === 'artist' && dragOverName === item.artist.name && dragSession.data?.name !== item.artist.name }"
               >
                 <div class="w-full h-full rounded-full overflow-hidden shadow-sm group-hover:shadow transition-shadow duration-300 relative bg-gray-100 dark:bg-white/5 flex items-center justify-center">
@@ -716,7 +718,7 @@ onUnmounted(() => {
         >
           <div
             class="relative w-12 h-12 md:w-14 md:h-14 shrink-0"
-            :data-cover-path="item.artist.firstSongPath"
+            :data-cover-path="item.artist.avatarPath ? undefined : item.artist.firstSongPath"
             :class="{ 'ring-2 ring-[#EC4141] ring-offset-2 ring-offset-gray-50 dark:ring-offset-[#222222] rounded-full': dragSession.active && dragSession.type === 'artist' && dragOverName === item.artist.name && dragSession.data?.name !== item.artist.name }"
           >
             <div class="w-full h-full rounded-full overflow-hidden shadow-sm group-hover:shadow transition-shadow duration-300 relative bg-gray-100 dark:bg-white/5 flex items-center justify-center">

@@ -35,7 +35,7 @@ pub fn scan_single_directory_internal(
     };
 
     let original_db_count = db_snapshot.len();
-    let scan_diff = collect_scan_diff(&normalized_folder, db_snapshot, reporter.as_ref(), options)?;
+    let mut scan_diff = collect_scan_diff(&normalized_folder, db_snapshot, reporter.as_ref(), options)?;
 
     let folder_is_accessible =
         Path::new(&normalized_folder).is_dir() && fs::read_dir(&normalized_folder).is_ok();
@@ -49,6 +49,23 @@ pub fn scan_single_directory_internal(
     }
 
     let covers_dir = app.as_ref().map(|a| crate::music::covers::get_cover_cache_dir(a));
+
+    // 按歌曲规范化路径进行稳定排序，保证入库及头像更新时序的唯一性
+    scan_diff.to_add.sort_by(|a, b| a.path.cmp(&b.path));
+    scan_diff.to_update.sort_by(|a, b| a.path.cmp(&b.path));
+
+    // 缓存写盘并在结束后无条件释放字节内存
+    for song in scan_diff.to_add.iter_mut().chain(scan_diff.to_update.iter_mut()) {
+        if let Some(ref bytes) = song.artist_avatar_bytes {
+            if let Some(ref dir) = covers_dir {
+                if super::get_song_single_valid_artist(song).is_some() {
+                    song.artist_avatar_path = crate::music::covers::save_artist_avatar_auto(bytes, dir);
+                }
+            }
+        }
+        let _ = song.artist_avatar_bytes.take();
+    }
+
     {
         let mut conn = db_conn.lock().map_err(|error| error.to_string())?;
         apply_scan_changes(
@@ -56,7 +73,6 @@ pub fn scan_single_directory_internal(
             &scan_diff.to_add,
             &scan_diff.to_update,
             &scan_diff.to_delete,
-            covers_dir,
             reporter.as_ref(),
         )?;
     }

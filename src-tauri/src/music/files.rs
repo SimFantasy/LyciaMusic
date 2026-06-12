@@ -471,7 +471,7 @@ pub async fn save_song_lyrics(
 
 #[tauri::command]
 pub fn save_song_info(
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
     path: String,
     payload: SongInfoEditPayload,
     db_state: State<'_, DbState>,
@@ -502,13 +502,12 @@ pub fn save_song_info(
         .ok_or_else(|| "保存后无法重新读取歌曲信息".to_string())?;
     song.id = existing_song_id;
 
-    let covers_dir = Some(super::covers::get_cover_cache_dir(&app));
     {
         let mut conn = db_state.conn.lock().map_err(|e| e.to_string())?;
         if existing_song_id.is_some() {
-            apply_scan_changes(&mut conn, &[], std::slice::from_ref(&song), &[], covers_dir.clone(), None)?;
+            apply_scan_changes(&mut conn, &[], std::slice::from_ref(&song), &[], None)?;
         } else {
-            apply_scan_changes(&mut conn, std::slice::from_ref(&song), &[], &[], covers_dir.clone(), None)?;
+            apply_scan_changes(&mut conn, std::slice::from_ref(&song), &[], &[], None)?;
             song.id = load_song_id(&conn, &normalized_path)?;
         }
     }

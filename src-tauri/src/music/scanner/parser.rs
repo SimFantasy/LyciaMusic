@@ -217,6 +217,7 @@ pub(crate) fn parse_song_from_file(path: &Path, path_str: &str, format: &str) ->
         cue_start_offset: None,
         cue_end_offset: None,
         comment,
+        artist_avatar_path: None,
     })
 }
 
@@ -521,6 +522,7 @@ pub(crate) fn build_cue_track_song(
         cue_start_offset: Some(track.index01_start_ms as u32),
         cue_end_offset: Some(end_ms as u32),
         comment: None,
+        artist_avatar_path: None,
     })
 }
 

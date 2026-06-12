@@ -153,6 +153,30 @@ pub(super) fn primary_artist_name(song: &Song) -> String {
         .unwrap_or_else(|| song.artist.clone())
 }
 
+pub(crate) fn get_song_single_valid_artist(song: &Song) -> Option<String> {
+    let names = if song.artist_names.is_empty() {
+        vec![UNKNOWN_ARTIST.to_string()]
+    } else {
+        song.artist_names.clone()
+    };
+
+    if names.len() != 1 {
+        return None;
+    }
+
+    let artist_name = names[0].trim();
+    if artist_name.is_empty()
+        || artist_name.eq_ignore_ascii_case(UNKNOWN_ARTIST)
+        || artist_name.eq_ignore_ascii_case("Unknown Artist")
+        || artist_name.eq_ignore_ascii_case("Unknown")
+        || artist_name.eq_ignore_ascii_case(VARIOUS_ARTISTS)
+    {
+        return None;
+    }
+
+    Some(artist_name.to_string())
+}
+
 pub(super) fn normalize_album_key_part(value: &str, fallback: &str) -> String {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -247,6 +271,7 @@ mod tests {
             cue_start_offset: None,
             cue_end_offset: None,
             comment: None,
+            artist_avatar_path: None,
         }
     }
 
@@ -480,7 +505,7 @@ mod tests {
         let mut conn = setup_test_db();
         let added_song = make_song("/music/first.flac");
 
-        apply_scan_changes(&mut conn, &[added_song.clone()], &[], &[], None, None).expect("insert batch");
+        apply_scan_changes(&mut conn, &[added_song.clone()], &[], &[], None).expect("insert batch");
 
         let inserted_title: String = conn
             .query_row(
@@ -503,7 +528,7 @@ mod tests {
         updated_song.album_artist = "Updated Artist".to_string();
         updated_song.album_key = "album::updated artist".to_string();
 
-        apply_scan_changes(&mut conn, &[], &[updated_song.clone()], &[], None, None)
+        apply_scan_changes(&mut conn, &[], &[updated_song.clone()], &[], None)
             .expect("update batch");
 
         let updated_title: String = conn
@@ -536,7 +561,6 @@ mod tests {
             &[],
             &[],
             std::slice::from_ref(&updated_song.path),
-            None,
             None,
         )
         .expect("delete batch");
@@ -606,5 +630,74 @@ mod tests {
     fn split_artist_names_single_artist_without_separator() {
         let names = super::split_artist_names("周杰伦");
         assert_eq!(names, vec!["周杰伦"]);
+    }
+
+    // 最小真实可解码的 1x1 透明 PNG 图片数据 (真实为 68 字节)
+    const MINIMAL_PNG: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+        0x89, 0x00, 0x00, 0x00, 0x0B, 0x49, 0x44, 0x41, 0x54, 0x78, 0xDA, 0x63, 0x60, 0x00, 0x02, 0x00,
+        0x00, 0x05, 0x00, 0x01, 0xE7, 0x2A, 0x24, 0x8C, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44,
+        0xAE, 0x42, 0x60, 0x82
+    ];
+
+    #[test]
+    fn test_single_and_multi_artist_filtering() {
+        // 复用 make_song
+        let mut song_single = make_song("/music/test.flac");
+        song_single.artist_names = vec!["周杰伦".to_string()];
+        assert_eq!(super::get_song_single_valid_artist(&song_single), Some("周杰伦".to_string()));
+
+        let mut song_multi = make_song("/music/test.flac");
+        song_multi.artist_names = vec!["周杰伦".to_string(), "方文山".to_string()];
+        assert!(super::get_song_single_valid_artist(&song_multi).is_none());
+
+        let mut song_unknown = make_song("/music/test.flac");
+        song_unknown.artist_names = vec!["未知歌手".to_string()];
+        assert!(super::get_song_single_valid_artist(&song_unknown).is_none());
+    }
+
+    #[test]
+    fn test_avatar_format_validation() {
+        // 复用 create_empty_temp_dir
+        let temp_dir = create_empty_temp_dir();
+
+        // 真实 PNG 格式保存
+        let path = crate::music::covers::save_artist_avatar_auto(MINIMAL_PNG, &temp_dir);
+        assert!(path.is_some());
+        assert!(path.unwrap().ends_with(".png"));
+
+        // 未知格式跳过
+        let raw_bytes = vec![0x11, 0x22, 0x33, 0x44];
+        let path = crate::music::covers::save_artist_avatar_auto(&raw_bytes, &temp_dir);
+        assert!(path.is_none());
+
+        let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn test_db_avatar_no_override() {
+        // 复用 setup_test_db
+        let mut conn = setup_test_db();
+        let mut song = make_song("/music/test.flac");
+        song.artist_names = vec!["周杰伦".to_string()];
+        song.artist_avatar_path = Some("/cache/avatar.jpg".to_string());
+
+        // 首次写入
+        super::apply_scan_changes(&mut conn, &[song.clone()], &[], &[], None).unwrap();
+        let db_path: Option<String> = conn
+            .query_row("SELECT avatar_path FROM artists WHERE name = '周杰伦'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(db_path, Some("/cache/avatar.jpg".to_string()));
+
+        // 已有头像不覆盖验证
+        let mut song_new = song.clone();
+        song_new.artist_avatar_path = Some("/cache/new_avatar.jpg".to_string());
+        super::apply_scan_changes(&mut conn, &[], &[song_new], &[], None).unwrap();
+
+        let db_path_after: Option<String> = conn
+            .query_row("SELECT avatar_path FROM artists WHERE name = '周杰伦'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(db_path_after, Some("/cache/avatar.jpg".to_string()));
     }
 }
