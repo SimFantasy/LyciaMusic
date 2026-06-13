@@ -72,6 +72,7 @@ async function main() {
       config.bundle.windows.webviewInstallMode = {
         type: target.type
       };
+      config.bundle.targets = ["nsis"];
       writeJson(tauriConfigPath, config);
 
       // Clean old bundle output directory to avoid picking up old files
