@@ -30,6 +30,7 @@ const {
 const {
   isSystemHidden,
   isToolbarVisible,
+  isCursorOverLockButton,
   widgetShellStyle,
   handlePointerEnter,
   handlePointerMove,
@@ -57,8 +58,13 @@ const {
       >
         <DesktopLyricsToolbar
           class="desktop-widget-toolbar"
-          :class="{ 'desktop-widget-toolbar--visible': isToolbarVisible }"
+          :class="{
+            'desktop-widget-toolbar--visible': isToolbarVisible,
+            'desktop-widget-toolbar--locked': settings.isLocked,
+          }"
           :is-playing="isPlaying"
+          :is-locked="settings.isLocked"
+          :is-hovering-lock="isCursorOverLockButton"
           @action="emitAction"
         />
 
@@ -187,6 +193,18 @@ const {
 }
 
 .desktop-widget-toolbar--visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.desktop-widget-toolbar--locked {
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -10px) scale(0.96);
+}
+
+.desktop-widget-toolbar--locked.desktop-widget-toolbar--visible {
   opacity: 1;
   pointer-events: auto;
   transform: translate(-50%, 0) scale(1);

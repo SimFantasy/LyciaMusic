@@ -1,5 +1,5 @@
 import { emitTo } from '@tauri-apps/api/event';
-import { getCurrentWindow, availableMonitors, currentMonitor } from '@tauri-apps/api/window';
+import { getCurrentWindow, availableMonitors, currentMonitor, cursorPosition } from '@tauri-apps/api/window';
 import { PhysicalPosition } from '@tauri-apps/api/dpi';
 import { computed, onMounted, onUnmounted, ref, watch, type CSSProperties, type Ref } from 'vue';
 
@@ -123,6 +123,9 @@ export function useDesktopLyricsWindowController(options: {
   const isHoverDimmed = ref(false);
   const isToolbarVisible = ref(false);
   const isResizeInteractionActive = ref(false);
+  const isCursorOverLockButton = ref(false);
+  let lockPollingTimer: ReturnType<typeof setInterval> | null = null;
+
   const isAutoHidden = computed(() => shouldAutoHideDesktopLyrics({
     autoHideWhenFullscreen: settings.value.autoHideWhenFullscreen,
     autoHideWhenPaused: settings.value.autoHideWhenPaused,
@@ -203,8 +206,54 @@ export function useDesktopLyricsWindowController(options: {
     }
   }
 
+  async function checkLockCursorProximity() {
+    if (!settings.value.isLocked) return;
+    try {
+      const position = await cursorPosition(); // Global physical coordinates
+      const winPos = await appWindow.outerPosition(); // Window physical coordinates
+      const size = await appWindow.outerSize(); // Window physical size
+      const scaleFactor = await appWindow.scaleFactor();
+
+      const W = size.width;
+      const x = position.x - winPos.x;
+      const y = position.y - winPos.y;
+
+      const toleranceY = 48 * scaleFactor;
+      const toleranceX = 28 * scaleFactor;
+
+      const centerX = W / 2;
+      const isOver = y >= 0 && y <= toleranceY && x >= centerX - toleranceX && x <= centerX + toleranceX;
+
+      if (settings.value.isLocked) {
+        isToolbarVisible.value = isOver;
+      }
+
+      if (isOver !== isCursorOverLockButton.value) {
+        isCursorOverLockButton.value = isOver;
+        await applyTransientWindowFlags();
+      }
+    } catch (err) {
+      console.warn('Failed to check cursor proximity:', err);
+    }
+  }
+
+  function startLockPolling() {
+    stopLockPolling();
+    lockPollingTimer = setInterval(() => {
+      void checkLockCursorProximity();
+    }, 80);
+  }
+
+  function stopLockPolling() {
+    if (lockPollingTimer) {
+      clearInterval(lockPollingTimer);
+      lockPollingTimer = null;
+    }
+    isCursorOverLockButton.value = false;
+  }
+
   async function applyTransientWindowFlags() {
-    const shouldIgnoreCursor = settings.value.isLocked || isAutoHidden.value;
+    const shouldIgnoreCursor = (settings.value.isLocked && !isCursorOverLockButton.value) || isAutoHidden.value;
     await appWindow.setIgnoreCursorEvents(shouldIgnoreCursor);
     await appWindow.setFocusable(!shouldIgnoreCursor);
   }
@@ -305,6 +354,9 @@ export function useDesktopLyricsWindowController(options: {
   }
 
   function handlePointerEnter() {
+    if (settings.value.isLocked) {
+      return;
+    }
     revealToolbar();
     isHoverDimmed.value = false;
     queueHoverDim();
@@ -321,6 +373,9 @@ export function useDesktopLyricsWindowController(options: {
   }
 
   function handlePointerLeave() {
+    if (settings.value.isLocked) {
+      return;
+    }
     clearHoverDimTimer();
     isHoverDimmed.value = false;
 
@@ -469,6 +524,7 @@ export function useDesktopLyricsWindowController(options: {
   });
 
   onUnmounted(() => {
+    stopLockPolling();
     stopPlaybackClock();
     stopAutoHideLoop();
     clearHoverDimTimer();
@@ -501,9 +557,18 @@ export function useDesktopLyricsWindowController(options: {
   watch(
     () => [settings.value.isLocked, isAutoHidden.value],
     () => {
-      if (settings.value.isLocked || isAutoHidden.value) {
+      if (settings.value.isLocked) {
         clearToolbarHideTimer();
+        clearHoverDimTimer();
+        isHoverDimmed.value = false;
         isToolbarVisible.value = false;
+        if (!isAutoHidden.value) {
+          startLockPolling();
+        } else {
+          stopLockPolling();
+        }
+      } else {
+        stopLockPolling();
       }
       void applyTransientWindowFlags();
     },
@@ -540,6 +605,7 @@ export function useDesktopLyricsWindowController(options: {
     showDragShadow,
     isSystemHidden,
     isToolbarVisible,
+    isCursorOverLockButton,
     widgetShellStyle,
     handlePointerEnter,
     handlePointerMove,

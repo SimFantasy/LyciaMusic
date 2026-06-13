@@ -39,6 +39,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-is-minimized",
     "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-cursor-position",
     "core:window:allow-set-background-color",
     "core:window:allow-set-effects",
     "core:window:allow-start-resize-dragging",
