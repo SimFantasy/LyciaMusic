@@ -2,6 +2,8 @@
 import { onMounted, ref } from 'vue';
 import { getVersion } from '@tauri-apps/api/app';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { invoke, isTauri } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import ModernModal from '../common/ModernModal.vue';
 import SponsorModal from './SponsorModal.vue';
 import { compareVersions, fetchLatestRelease, fetchOfficialLatestRelease } from '../../utils/update';
@@ -28,6 +30,11 @@ const updateChoiceTitle = ref('');
 const updateChoiceContent = ref('');
 const updateOfficialUrl = ref('');
 const updateGithubUrl = ref(GITHUB_LATEST_RELEASE_URL);
+
+const isDownloading = ref(false);
+const downloadProgress = ref(0);
+const downloadSpeedText = ref('');
+const downloadStatusText = ref('');
 
 async function loadAppVersion() {
   try {
@@ -118,7 +125,7 @@ async function handleCheckUpdate() {
           title: '发现新版本',
           content: `当前版本：v${appVersion.value}；官网最新版本：v${latestRelease.version}${publishedText}。请选择下载来源。`,
           officialUrl: latestRelease.downloadUrl ?? latestRelease.url,
-          githubUrl: GITHUB_LATEST_RELEASE_URL
+          githubUrl: `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/V${latestRelease.version}/Lycia.Player_${latestRelease.version}_x64-setup-portable.exe`
         });
         return;
       }
@@ -171,12 +178,63 @@ async function handleDialogConfirm() {
   }
 }
 
+async function startDownload(url: string) {
+  isDownloading.value = true;
+  downloadProgress.value = 0;
+  downloadSpeedText.value = '0 KB/s';
+  downloadStatusText.value = '准备下载...';
+
+  let unlisten: (() => void) | null = null;
+  try {
+    unlisten = await listen<any>('update-download-progress', (event) => {
+      const payload = event.payload;
+      downloadProgress.value = Math.round(payload.progress);
+      
+      const speedInMB = payload.speed / (1024 * 1024);
+      if (speedInMB >= 1.0) {
+        downloadSpeedText.value = `${speedInMB.toFixed(2)} MB/s`;
+      } else {
+        downloadSpeedText.value = `${(payload.speed / 1024).toFixed(1)} KB/s`;
+      }
+
+      const downloadedMB = (payload.downloaded / (1024 * 1024)).toFixed(2);
+      const totalMB = (payload.total / (1024 * 1024)).toFixed(2);
+      downloadStatusText.value = `已下载: ${downloadedMB} MB / ${totalMB} MB`;
+    });
+
+    const filePath = await invoke<string>('download_update_file', { url });
+    
+    downloadStatusText.value = '下载完成，正在启动安装程序...';
+    await invoke('run_installer', { path: filePath });
+    await invoke('exit_app');
+  } catch (error) {
+    console.error('Download failed:', error);
+    showDialog({
+      title: '下载失败',
+      content: `无法在软件内完成下载。您可以前往浏览器下载。\n错误原因: ${error}`,
+      confirmText: '去浏览器下载',
+      cancelText: '取消',
+      action: 'open-release'
+    });
+    dialogOpenUrl.value = url;
+  } finally {
+    isDownloading.value = false;
+    if (unlisten) {
+      unlisten();
+    }
+  }
+}
+
 async function handleDownloadChoice(target: 'official' | 'github') {
   updateChoiceVisible.value = false;
   const targetUrl = target === 'official' ? updateOfficialUrl.value : updateGithubUrl.value;
 
   if (targetUrl) {
-    await openUrl(targetUrl);
+    if (isTauri() && (targetUrl.endsWith('.exe') || targetUrl.includes('/releases/download/'))) {
+      await startDownload(targetUrl);
+    } else {
+      await openUrl(targetUrl);
+    }
   }
 }
 
@@ -308,6 +366,37 @@ onMounted(() => {
             >
               从 GitHub 下载
             </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
+      <div
+        v-if="isDownloading"
+        class="fixed inset-0 z-[10000] flex items-center justify-center p-4"
+      >
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+
+        <div class="relative w-full max-w-sm overflow-hidden rounded-2xl border border-white/20 bg-white/85 shadow-2xl ring-1 ring-black/5 backdrop-blur-md dark:bg-gray-900/90 p-6">
+          <div class="text-center space-y-4">
+            <h3 class="text-lg font-bold leading-6 text-gray-900 dark:text-white">正在下载更新...</h3>
+            
+            <!-- Progress Bar -->
+            <div class="w-full bg-gray-200 dark:bg-gray-700 h-2.5 rounded-full overflow-hidden">
+              <div
+                class="bg-blue-600 h-full transition-all duration-150 ease-out"
+                :style="{ width: `${downloadProgress}%` }"
+              ></div>
+            </div>
+
+            <!-- Stats -->
+            <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 font-medium">
+              <span>{{ downloadProgress }}%</span>
+              <span>{{ downloadSpeedText }}</span>
+            </div>
+
+            <p class="text-xs text-gray-400 dark:text-gray-500">{{ downloadStatusText }}</p>
           </div>
         </div>
       </div>

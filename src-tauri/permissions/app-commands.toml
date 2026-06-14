@@ -108,4 +108,7 @@ commands.allow = [
   "get_taskbar_tray_geometry",
   "file_exists",
   "set_gpu_acceleration",
+  "check_update_by_rust",
+  "download_update_file",
+  "run_installer",
 ]

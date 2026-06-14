@@ -57,8 +57,8 @@ use taskbar::{
     setup_taskbar_window, uninstall_taskbar_zorder_guard,
 };
 use toolbox::{
-    apply_rename, file_exists, open_external_program, preview_rename, refresh_folder_songs,
-    set_gpu_acceleration,
+    apply_rename, check_update_by_rust, download_update_file, file_exists, open_external_program,
+    preview_rename, refresh_folder_songs, run_installer, set_gpu_acceleration,
 };
 
 #[cfg(target_os = "windows")]
@@ -207,7 +207,10 @@ pub fn run() {
             refresh_taskbar_window_topmost,
             uninstall_taskbar_zorder_guard,
             exit_app,
-            set_gpu_acceleration
+            set_gpu_acceleration,
+            check_update_by_rust,
+            download_update_file,
+            run_installer
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
