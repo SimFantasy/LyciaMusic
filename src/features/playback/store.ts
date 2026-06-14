@@ -123,6 +123,28 @@ export const usePlaybackStore = defineStore('playback', () => {
     currentCoverFull.value = '';
   };
 
+  const hasExternalStartupFile = ref(false);
+  const isStartupPathsResolved = ref(false);
+  let startupResolver: (() => void) | null = null;
+  const startupPathsPromise = new Promise<void>((resolve) => {
+    startupResolver = resolve;
+  });
+
+  const markExternalStartupFile = () => {
+    hasExternalStartupFile.value = true;
+  };
+
+  const markStartupPathsResolved = () => {
+    if (isStartupPathsResolved.value) {
+      return;
+    }
+    isStartupPathsResolved.value = true;
+    if (startupResolver) {
+      startupResolver();
+      startupResolver = null;
+    }
+  };
+
   return {
     isPlaying,
     volume,
@@ -139,5 +161,10 @@ export const usePlaybackStore = defineStore('playback', () => {
     currentCoverPath,
     currentCoverFull,
     resetPlaybackState,
+    hasExternalStartupFile,
+    isStartupPathsResolved,
+    startupPathsPromise,
+    markExternalStartupFile,
+    markStartupPathsResolved,
   };
 });

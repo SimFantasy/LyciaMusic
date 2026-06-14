@@ -32,6 +32,7 @@ export interface SongCore {
   cue_source_path?: string;
   cue_start_offset?: number;
   cue_end_offset?: number;
+  comment?: string;
 }
 
 export interface Song extends SongCore {}
@@ -51,9 +52,11 @@ export interface SongDetail {
 }
 
 export interface ArtistCatalogItem {
+  id: number;
   name: string;
   count: number;
   firstSongPath: string;
+  avatarPath: string | null;
 }
 
 export interface AlbumCatalogItem {
@@ -229,6 +232,10 @@ export interface ThemeSettings {
     maskAlpha: number;
     scale: number;
     foregroundStyle: 'light' | 'dark';
+    translateX?: number;
+    translateY?: number;
+    imageWidth?: number;
+    imageHeight?: number;
   }
 }
 
@@ -246,10 +253,21 @@ export type LyricsPlayerAlignment = 'left' | 'center' | 'right';
 export type DesktopLyricsPlayerAlignment = LyricsPlayerAlignment | 'split-corners';
 export type LyricsColorScheme = 'auto' | 'default' | 'pink' | 'blue' | 'green' | 'white' | 'custom';
 export type LyricsFontPreset = string;
+export type LyricsPlayerRenderMode = 'amll' | 'light';
+
+export interface ImportedLyricsFont {
+  id: string;
+  name: string;
+  family: string;
+  filePath: string;
+  importedAt: number;
+  format: 'truetype' | 'opentype';
+}
 
 export interface LyricsSettings {
   showTranslation: boolean;
   showRomaji: boolean;
+  playerRenderMode: LyricsPlayerRenderMode;
   playerFontScale: number;
   playerLineGap: number;
   playerOffsetX: number;
@@ -262,13 +280,17 @@ export interface DesktopLyricsSettings {
   isAlwaysOnTop: boolean;
   alwaysShowShadowBackground: boolean;
   autoHideWhenFullscreen: boolean;
+  autoHideWhenPaused: boolean;
   showDoubleLine: boolean;
   enableWordEffect: boolean;
   isLocked: boolean;
   persistLock: boolean;
+  centerHorizontally: boolean;
   colorScheme: LyricsColorScheme;
   customPlayedColor: string;
   customUnplayedColor: string;
+  customRomajiPlayedColor: string;
+  customRomajiUnplayedColor: string;
   customRomajiColor: string;
   customTranslationColor: string;
   textOpacity: number;
@@ -285,8 +307,32 @@ export interface DesktopLyricsSettings {
 
 export type AudioOutputMode = 'shared' | 'wasapiExclusive';
 
+export interface EqualizerPreset {
+  id: string;
+  name: string;
+  preamp: number;
+  gains: number[];
+  isBuiltin: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface EqualizerSettings {
+  enabled: boolean;
+  preamp: number;
+  gains: number[];
+  currentPresetId?: string | null;
+}
+
 export interface AudioSettings {
   outputMode: AudioOutputMode;
+  volumeBalance: {
+    enabled: boolean;
+    gainOffsetDb: number;
+    preventClipping: boolean;
+  };
+  equalizer: EqualizerSettings;
+  showEqualizerInFooter: boolean; // 运行态必选属性
 }
 
 export type ShortcutActionId =
@@ -298,7 +344,7 @@ export type ShortcutActionId =
   | 'toggleMiniMode'
   | 'toggleFavorite'
   | 'toggleDesktopLyrics'
-  | 'toggleLyricTranslation';
+  | 'toggleDesktopLyricsLock';
 
 export interface ShortcutBinding {
   code: string;
@@ -320,8 +366,11 @@ export interface ShortcutSettings {
 
 export interface AppSettings {
   closeToTray: boolean;
+  showDesktopLyrics: boolean;
   showQualityBadges: boolean;
+  showSongComments: boolean;
   enableScrollToTopButton: boolean;
+  libraryMinDurationSeconds: number;
   // Deprecated compat field. Retained only for legacy config deserialization.
   linkFoldersToLibrary: boolean;
   lyricsSyncOffset: number;
@@ -329,9 +378,21 @@ export interface AppSettings {
   enableAutoOrganize: boolean;
   organizeRule: string;
   audio: AudioSettings;
+  customLyricsFonts: ImportedLyricsFont[];
   lyrics: LyricsSettings;
   desktopLyrics: DesktopLyricsSettings;
   theme: ThemeSettings;
   sidebar: SidebarSettings;
   shortcuts: ShortcutSettings;
+  showTaskbarPlayer: boolean;
+  taskbarPlayerCanDrag: boolean;
+  gpuAcceleration: boolean;
+  writeArtistAvatarToTags: boolean;
 }
+
+export interface SaveArtistAvatarResponse {
+  artistId: number;
+  avatarPath: string;
+  taskId?: string;
+}
+

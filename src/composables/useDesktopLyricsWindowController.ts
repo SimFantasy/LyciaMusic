@@ -1,11 +1,13 @@
 import { emitTo } from '@tauri-apps/api/event';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWindow, availableMonitors, currentMonitor, cursorPosition } from '@tauri-apps/api/window';
+import { PhysicalPosition } from '@tauri-apps/api/dpi';
 import { computed, onMounted, onUnmounted, ref, watch, type CSSProperties, type Ref } from 'vue';
 
 import { loadSystemLyricsFonts } from './lyrics';
 import {
   DESKTOP_LYRICS_BOUNDS_EVENT,
   DESKTOP_LYRICS_PLAYBACK_EVENT,
+  DESKTOP_LYRICS_READY_EVENT,
   DESKTOP_LYRICS_REVEAL_SURFACE_EVENT,
   DESKTOP_LYRICS_REQUEST_STATE_EVENT,
   DESKTOP_LYRICS_STATE_EVENT,
@@ -19,6 +21,27 @@ import { windowApi } from '../services/tauri/windowApi';
 
 const FULLSCREEN_POLL_INTERVAL_MS = 300;
 const RESIZE_VISIBILITY_HOLD_MS = 1200;
+
+export function shouldAutoHideDesktopLyrics({
+  autoHideWhenFullscreen,
+  autoHideWhenPaused,
+  isForegroundFullscreen,
+  isPlaying,
+  isResizeInteractionActive,
+}: {
+  autoHideWhenFullscreen: boolean;
+  autoHideWhenPaused: boolean;
+  isForegroundFullscreen: boolean;
+  isPlaying: boolean;
+  isResizeInteractionActive: boolean;
+}) {
+  if (isResizeInteractionActive) {
+    return false;
+  }
+
+  return (autoHideWhenFullscreen && isForegroundFullscreen)
+    || (autoHideWhenPaused && !isPlaying);
+}
 
 export function useDesktopLyricsWindowController(options: {
   showDragShadow: Ref<boolean>;
@@ -38,10 +61,78 @@ export function useDesktopLyricsWindowController(options: {
   } = options;
 
   const appWindow = getCurrentWindow();
+  let isApplyingCenterPosition = false;
+  let centerPositionFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+  let centerPositionDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  async function forceCenterHorizontally() {
+    if (isApplyingCenterPosition) return;
+    try {
+      let monitor = await currentMonitor();
+      if (!monitor) {
+        const monitors = await availableMonitors();
+        if (monitors.length > 0) {
+          monitor = monitors[0];
+        }
+      }
+      if (!monitor) return;
+
+      const workArea = monitor.workArea;
+      const size = await appWindow.outerSize();
+      const position = await appWindow.outerPosition();
+      const targetX = workArea.position.x + Math.round((workArea.size.width - size.width) / 2);
+
+      if (Math.abs(position.x - targetX) > 1) {
+        isApplyingCenterPosition = true;
+        if (centerPositionFallbackTimer) {
+          clearTimeout(centerPositionFallbackTimer);
+        }
+        centerPositionFallbackTimer = setTimeout(() => {
+          isApplyingCenterPosition = false;
+          centerPositionFallbackTimer = null;
+        }, 300);
+
+        try {
+          await appWindow.setPosition(new PhysicalPosition(targetX, position.y));
+        } catch (err) {
+          console.warn('Failed to call setPosition:', err);
+          isApplyingCenterPosition = false;
+          if (centerPositionFallbackTimer) {
+            clearTimeout(centerPositionFallbackTimer);
+            centerPositionFallbackTimer = null;
+          }
+        }
+
+        await emitWindowBounds({
+          x: targetX,
+          y: position.y,
+          width: size.width,
+          height: size.height,
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to force center horizontally:', error);
+      isApplyingCenterPosition = false;
+      if (centerPositionFallbackTimer) {
+        clearTimeout(centerPositionFallbackTimer);
+        centerPositionFallbackTimer = null;
+      }
+    }
+  }
   const isSystemHidden = ref(false);
   const isHoverDimmed = ref(false);
   const isToolbarVisible = ref(false);
   const isResizeInteractionActive = ref(false);
+  const isCursorOverLockButton = ref(false);
+  let lockPollingTimer: ReturnType<typeof setInterval> | null = null;
+
+  const isAutoHidden = computed(() => shouldAutoHideDesktopLyrics({
+    autoHideWhenFullscreen: settings.value.autoHideWhenFullscreen,
+    autoHideWhenPaused: settings.value.autoHideWhenPaused,
+    isForegroundFullscreen: isSystemHidden.value,
+    isPlaying: isPlaying.value,
+    isResizeInteractionActive: isResizeInteractionActive.value,
+  }));
 
   let hoverDimTimer: ReturnType<typeof setTimeout> | null = null;
   let toolbarHideTimer: ReturnType<typeof setTimeout> | null = null;
@@ -115,8 +206,54 @@ export function useDesktopLyricsWindowController(options: {
     }
   }
 
+  async function checkLockCursorProximity() {
+    if (!settings.value.isLocked) return;
+    try {
+      const position = await cursorPosition(); // Global physical coordinates
+      const winPos = await appWindow.outerPosition(); // Window physical coordinates
+      const size = await appWindow.outerSize(); // Window physical size
+      const scaleFactor = await appWindow.scaleFactor();
+
+      const W = size.width;
+      const x = position.x - winPos.x;
+      const y = position.y - winPos.y;
+
+      const toleranceY = 48 * scaleFactor;
+      const toleranceX = 28 * scaleFactor;
+
+      const centerX = W / 2;
+      const isOver = y >= 0 && y <= toleranceY && x >= centerX - toleranceX && x <= centerX + toleranceX;
+
+      if (settings.value.isLocked) {
+        isToolbarVisible.value = isOver;
+      }
+
+      if (isOver !== isCursorOverLockButton.value) {
+        isCursorOverLockButton.value = isOver;
+        await applyTransientWindowFlags();
+      }
+    } catch (err) {
+      console.warn('Failed to check cursor proximity:', err);
+    }
+  }
+
+  function startLockPolling() {
+    stopLockPolling();
+    lockPollingTimer = setInterval(() => {
+      void checkLockCursorProximity();
+    }, 80);
+  }
+
+  function stopLockPolling() {
+    if (lockPollingTimer) {
+      clearInterval(lockPollingTimer);
+      lockPollingTimer = null;
+    }
+    isCursorOverLockButton.value = false;
+  }
+
   async function applyTransientWindowFlags() {
-    const shouldIgnoreCursor = settings.value.isLocked || isSystemHidden.value;
+    const shouldIgnoreCursor = (settings.value.isLocked && !isCursorOverLockButton.value) || isAutoHidden.value;
     await appWindow.setIgnoreCursorEvents(shouldIgnoreCursor);
     await appWindow.setFocusable(!shouldIgnoreCursor);
   }
@@ -174,7 +311,7 @@ export function useDesktopLyricsWindowController(options: {
   function revealToolbar() {
     clearToolbarHideTimer();
 
-    if (settings.value.isLocked || isSystemHidden.value) {
+    if (settings.value.isLocked || isAutoHidden.value) {
       isToolbarVisible.value = false;
       return;
     }
@@ -207,7 +344,7 @@ export function useDesktopLyricsWindowController(options: {
   function queueHoverDim() {
     clearHoverDimTimer();
 
-    if (settings.value.isLocked || isSystemHidden.value || isResizeInteractionActive.value) {
+    if (settings.value.isLocked || isAutoHidden.value || isResizeInteractionActive.value) {
       return;
     }
 
@@ -217,6 +354,9 @@ export function useDesktopLyricsWindowController(options: {
   }
 
   function handlePointerEnter() {
+    if (settings.value.isLocked) {
+      return;
+    }
     revealToolbar();
     isHoverDimmed.value = false;
     queueHoverDim();
@@ -233,6 +373,9 @@ export function useDesktopLyricsWindowController(options: {
   }
 
   function handlePointerLeave() {
+    if (settings.value.isLocked) {
+      return;
+    }
     clearHoverDimTimer();
     isHoverDimmed.value = false;
 
@@ -244,7 +387,7 @@ export function useDesktopLyricsWindowController(options: {
   }
 
   async function startWindowDrag(event: MouseEvent) {
-    if (settings.value.isLocked || isSystemHidden.value) return;
+    if (settings.value.isLocked || isAutoHidden.value) return;
     if ((event.target as HTMLElement).closest('button, .settings-menu')) return;
 
     revealDragShadow();
@@ -256,9 +399,9 @@ export function useDesktopLyricsWindowController(options: {
   }
 
   const widgetShellStyle = computed<CSSProperties>(() => ({
-    opacity: !isResizeInteractionActive.value && isSystemHidden.value ? '0' : (isHoverDimmed.value ? '0.34' : '1'),
-    transform: !isResizeInteractionActive.value && isSystemHidden.value ? 'scale(0.96)' : 'scale(1)',
-    pointerEvents: !isResizeInteractionActive.value && isSystemHidden.value ? 'none' : 'auto',
+    opacity: isAutoHidden.value ? '0' : (isHoverDimmed.value ? '0.34' : '1'),
+    transform: isAutoHidden.value ? 'scale(0.96)' : 'scale(1)',
+    pointerEvents: isAutoHidden.value ? 'none' : 'auto',
   }));
 
   onMounted(async () => {
@@ -295,9 +438,37 @@ export function useDesktopLyricsWindowController(options: {
     unlistenMoved = await appWindow.onMoved(async ({ payload }) => {
       revealDragShadow();
 
+      if (isApplyingCenterPosition) {
+        isApplyingCenterPosition = false;
+        if (centerPositionFallbackTimer) {
+          clearTimeout(centerPositionFallbackTimer);
+          centerPositionFallbackTimer = null;
+        }
+        const size = await appWindow.outerSize();
+        await emitWindowBounds({
+          x: payload.x,
+          y: payload.y,
+          width: size.width,
+          height: size.height,
+        });
+        return;
+      }
+
       const size = await appWindow.outerSize();
+      let x = payload.x;
+
+      if (settings.value.centerHorizontally) {
+        if (centerPositionDebounceTimer) {
+          clearTimeout(centerPositionDebounceTimer);
+        }
+        centerPositionDebounceTimer = setTimeout(async () => {
+          centerPositionDebounceTimer = null;
+          await forceCenterHorizontally();
+        }, 300);
+      }
+
       await emitWindowBounds({
-        x: payload.x,
+        x,
         y: payload.y,
         width: size.width,
         height: size.height,
@@ -307,19 +478,53 @@ export function useDesktopLyricsWindowController(options: {
     unlistenResized = await appWindow.onResized(async ({ payload }) => {
       holdVisibleForResize();
 
+      if (isApplyingCenterPosition) {
+        isApplyingCenterPosition = false;
+        if (centerPositionFallbackTimer) {
+          clearTimeout(centerPositionFallbackTimer);
+          centerPositionFallbackTimer = null;
+        }
+        const position = await appWindow.outerPosition();
+        await emitWindowBounds({
+          x: position.x,
+          y: position.y,
+          width: payload.width,
+          height: payload.height,
+        });
+        return;
+      }
+
       const position = await appWindow.outerPosition();
+      let x = position.x;
+
+      if (settings.value.centerHorizontally) {
+        if (centerPositionDebounceTimer) {
+          clearTimeout(centerPositionDebounceTimer);
+        }
+        centerPositionDebounceTimer = setTimeout(async () => {
+          centerPositionDebounceTimer = null;
+          await forceCenterHorizontally();
+        }, 300);
+      }
+
       await emitWindowBounds({
-        x: position.x,
+        x,
         y: position.y,
         width: payload.width,
         height: payload.height,
       });
     });
 
-    await emitTo('main', DESKTOP_LYRICS_REQUEST_STATE_EVENT);
+    try {
+      await emitTo('main', DESKTOP_LYRICS_READY_EVENT);
+      await emitTo('main', DESKTOP_LYRICS_REQUEST_STATE_EVENT);
+    } catch (error) {
+      console.warn('Failed to notify main window that desktop lyrics is ready:', error);
+    }
   });
 
   onUnmounted(() => {
+    stopLockPolling();
     stopPlaybackClock();
     stopAutoHideLoop();
     clearHoverDimTimer();
@@ -333,6 +538,16 @@ export function useDesktopLyricsWindowController(options: {
     unlistenResized?.();
     void windowApi.stopTopmostGuard();
 
+    if (centerPositionFallbackTimer) {
+      clearTimeout(centerPositionFallbackTimer);
+      centerPositionFallbackTimer = null;
+    }
+
+    if (centerPositionDebounceTimer) {
+      clearTimeout(centerPositionDebounceTimer);
+      centerPositionDebounceTimer = null;
+    }
+
     if (dragShadowTimer) {
       clearTimeout(dragShadowTimer);
       dragShadowTimer = null;
@@ -340,11 +555,20 @@ export function useDesktopLyricsWindowController(options: {
   });
 
   watch(
-    () => [settings.value.isLocked, isSystemHidden.value],
+    () => [settings.value.isLocked, isAutoHidden.value],
     () => {
-      if (settings.value.isLocked || isSystemHidden.value) {
+      if (settings.value.isLocked) {
         clearToolbarHideTimer();
+        clearHoverDimTimer();
+        isHoverDimmed.value = false;
         isToolbarVisible.value = false;
+        if (!isAutoHidden.value) {
+          startLockPolling();
+        } else {
+          stopLockPolling();
+        }
+      } else {
+        stopLockPolling();
       }
       void applyTransientWindowFlags();
     },
@@ -368,10 +592,20 @@ export function useDesktopLyricsWindowController(options: {
     { immediate: true },
   );
 
+  watch(
+    () => settings.value.centerHorizontally,
+    (enabled) => {
+      if (enabled) {
+        void forceCenterHorizontally();
+      }
+    },
+  );
+
   return {
     showDragShadow,
     isSystemHidden,
     isToolbarVisible,
+    isCursorOverLockButton,
     widgetShellStyle,
     handlePointerEnter,
     handlePointerMove,

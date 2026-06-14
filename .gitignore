@@ -5,6 +5,7 @@ node_modules/
 dist/
 dist-ssr/
 *.local
+releases/
 
 # --- 🦀 Tauri/Rust 后端核心 (最重要部分) ---
 # Rust 的编译产物，体积极大，包含大量二进制文件
@@ -46,7 +47,7 @@ src-tauri/examples/*_probe.rs
 
 .codex/
 
-tools/
+tool/
 
 MD/
 
@@ -54,8 +55,18 @@ MD/
 
 website/
 
+# --- 本地临时文档与设计草稿 ---
+*.resolved
+lyrics_architecture_analysis.md
+lyrics_refactor_plan.md
+
 # --- Claude Code 本地配置 ---
 .claude/
 
 # --- CD 镜像文件目录 ---
 CDImage/
+
+# --- Local Agent Configurations ---
+.agents/
+AGENTS.md
+

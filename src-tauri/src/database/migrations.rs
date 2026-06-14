@@ -154,18 +154,16 @@ fn migrate_song_columns(conn: &Connection) -> Result<(), String> {
             .ok();
     }
     if !columns.iter().any(|column| column == "cue_start_offset") {
-        conn.execute(
-            "ALTER TABLE songs ADD COLUMN cue_start_offset INTEGER",
-            [],
-        )
-        .ok();
+        conn.execute("ALTER TABLE songs ADD COLUMN cue_start_offset INTEGER", [])
+            .ok();
     }
     if !columns.iter().any(|column| column == "cue_end_offset") {
-        conn.execute(
-            "ALTER TABLE songs ADD COLUMN cue_end_offset INTEGER",
-            [],
-        )
-        .ok();
+        conn.execute("ALTER TABLE songs ADD COLUMN cue_end_offset INTEGER", [])
+            .ok();
+    }
+    if !columns.iter().any(|column| column == "comment") {
+        conn.execute("ALTER TABLE songs ADD COLUMN comment TEXT", [])
+            .ok();
     }
 
     Ok(())
@@ -299,6 +297,58 @@ fn merge_legacy_sidebar_roots(conn: &Connection) {
     .ok();
 }
 
+fn migrate_song_loudness(conn: &Connection) -> Result<(), String> {
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS song_loudness (
+            song_id INTEGER PRIMARY KEY,
+            song_path TEXT NOT NULL,
+            loudness_lufs REAL,
+            estimated_loudness_lufs REAL,
+            sample_peak REAL,
+            true_peak REAL,
+            tag_track_gain_db REAL,
+            tag_track_peak REAL,
+            tag_album_gain_db REAL,
+            tag_album_peak REAL,
+            tag_r128_track_gain_db REAL,
+            tag_r128_album_gain_db REAL,
+            file_size INTEGER NOT NULL,
+            file_modified_at INTEGER NOT NULL,
+            file_hash TEXT,
+            scan_source TEXT NOT NULL DEFAULT 'none',
+            analyzer_name TEXT,
+            analyzer_version INTEGER NOT NULL DEFAULT 1,
+            scan_status TEXT NOT NULL DEFAULT 'pending',
+            scanned_at INTEGER,
+            error_message TEXT,
+            FOREIGN KEY(song_id) REFERENCES songs(id) ON DELETE CASCADE,
+            CONSTRAINT check_scan_source CHECK (scan_source IN ('none', 'tag_replaygain', 'tag_r128', 'file_analysis')),
+            CONSTRAINT check_scan_status CHECK (scan_status IN ('pending', 'scanning', 'scanned', 'failed'))
+        )",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_song_loudness_song_id ON song_loudness(song_id)",
+        [],
+    )
+    .ok();
+
+    Ok(())
+}
+
+fn migrate_artists_columns(conn: &Connection) -> Result<(), String> {
+    let columns = get_table_columns(conn, "artists")?;
+
+    if !columns.iter().any(|column| column == "avatar_path") {
+        conn.execute("ALTER TABLE artists ADD COLUMN avatar_path TEXT", [])
+            .map_err(|e| format!("Failed to add avatar_path to artists: {}", e))?;
+    }
+
+    Ok(())
+}
+
 pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
     migrate_library_folders(conn)?;
     merge_legacy_sidebar_roots(conn);
@@ -306,6 +356,8 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
     migrate_remote_library_tables(conn)?;
     normalize_song_added_at(conn)?;
     migrate_play_history(conn)?;
+    migrate_song_loudness(conn)?;
+    migrate_artists_columns(conn)?;
     Ok(())
 }
 
@@ -316,3 +368,67 @@ trait Pipe: Sized {
 }
 
 impl<T> Pipe for T {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    #[test]
+    fn test_fresh_database_migration() {
+        let conn = Connection::open_in_memory().unwrap();
+        // 初始化基线 Schema (包含所有表)
+        crate::database::schema::ensure_base_schema(&conn).unwrap();
+
+        // 运行迁移逻辑
+        run_migrations(&conn).unwrap();
+
+        // 验证 avatar_path 字段存在
+        let columns = get_table_columns(&conn, "artists").unwrap();
+        assert!(columns.iter().any(|c| c == "avatar_path"));
+    }
+
+    #[test]
+    fn test_upgrade_database_migration_retains_data() {
+        let conn = Connection::open_in_memory().unwrap();
+        // 初始化基线 Schema
+        crate::database::schema::ensure_base_schema(&conn).unwrap();
+        
+        // 模拟旧版本库：重建 artists 表并去掉 avatar_path 列
+        conn.execute("DROP TABLE artists", []).unwrap();
+        conn.execute(
+            "CREATE TABLE artists (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL COLLATE NOCASE UNIQUE
+            )",
+            [],
+        )
+        .unwrap();
+
+        // 插入测试数据，确保迁移时老数据不丢失
+        conn.execute(
+            "INSERT INTO artists (name) VALUES ('测试歌手')",
+            [],
+        )
+        .unwrap();
+
+        // 运行迁移逻辑
+        run_migrations(&conn).unwrap();
+
+        // 验证新列已成功添加
+        let columns = get_table_columns(&conn, "artists").unwrap();
+        assert!(columns.iter().any(|c| c == "avatar_path"));
+
+        // 验证旧数据依然完好
+        let artist_name: String = conn
+            .query_row("SELECT name FROM artists WHERE id = 1", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(artist_name, "测试歌手");
+
+        // 验证新列初始值为 NULL
+        let avatar_path: Option<String> = conn
+            .query_row("SELECT avatar_path FROM artists WHERE id = 1", [], |row| row.get(0))
+            .unwrap();
+        assert!(avatar_path.is_none());
+    }
+}

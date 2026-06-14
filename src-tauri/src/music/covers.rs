@@ -463,3 +463,38 @@ pub async fn get_song_cover(
     }
     Ok(String::new())
 }
+
+pub fn save_artist_avatar_auto(bytes: &[u8], covers_dir: &std::path::Path) -> Option<String> {
+    let ext = if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpg")
+    } else if bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
+        Some("png")
+    } else if bytes.starts_with(b"RIFF") && bytes.len() >= 12 && &bytes[8..12] == b"WEBP" {
+        Some("webp")
+    } else {
+        None
+    };
+
+    let Some(ext) = ext else {
+        eprintln!("[头像缓存] 警告：不支持的图片格式，跳过提取。");
+        return None;
+    };
+
+    let sha256_hex = generate_content_hash(bytes);
+    let target_filename = format!("artist-avatar-auto-{}.{}", sha256_hex, ext);
+    let target_path = covers_dir.join(target_filename);
+
+    if !covers_dir.exists() {
+        if let Err(e) = std::fs::create_dir_all(covers_dir) {
+            eprintln!("[头像缓存] 警告：创建缓存目录失败: {}, 路径: {:?}", e, covers_dir);
+            return None;
+        }
+    }
+
+    if let Some(path_str) = persist_bytes_atomically(bytes, &target_path) {
+        Some(normalize_path(&path_str))
+    } else {
+        None
+    }
+}
+

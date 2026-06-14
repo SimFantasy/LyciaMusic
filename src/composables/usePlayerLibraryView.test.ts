@@ -6,6 +6,7 @@ import { useCollectionsStore } from '../features/collections/store';
 import { useLibraryStore } from '../features/library/store';
 import { useNavigationStore } from '../shared/stores/navigation';
 import { usePlayerLibraryView } from '../features/library/usePlayerLibraryView';
+import { compareSongPathsByTrackNumber } from '../features/library/playerLibraryViewShared';
 
 const tauriInvokeMock = vi.fn();
 
@@ -203,6 +204,12 @@ describe('player library view', () => {
         const filtered = songs
           .filter(song => isDirectParent(folderPath, song.path))
           .filter(song => songMatchesQuery(song, query));
+
+        if (sortMode === 'track_number') {
+          const sorted = [...filtered];
+          sorted.sort((left, right) => compareSongPathsByTrackNumber(left.path, right.path, songLookup));
+          return sorted.map(song => song.path);
+        }
 
         return sortSongs(filtered, sortMode === 'name' ? 'title' : sortMode).map(song => song.path);
       }
@@ -495,5 +502,118 @@ describe('player library view', () => {
       firstTrack.path,
       secondTrack.path,
     ]);
+  });
+
+  it('applies folder view sorting rules including track order', async () => {
+    const libraryStore = useLibraryStore();
+    const navigationStore = useNavigationStore();
+    const discTwoSong = makeSong({
+      path: '/music/folder/disc-two.flac',
+      title: 'Disc Two',
+      added_at: 10,
+      disc_number: '2',
+      track_number: '1',
+    });
+    const firstTrack = makeSong({
+      path: '/music/folder/first-track.flac',
+      title: 'First Track',
+      added_at: 20,
+      disc_number: '1',
+      track_number: '1/10',
+    });
+    const secondTrack = makeSong({
+      path: '/music/folder/second-track.flac',
+      title: 'Second Track',
+      added_at: 30,
+      disc_number: '1',
+      track_number: '2',
+    });
+
+    libraryStore.librarySongs = [discTwoSong, secondTrack, firstTrack];
+    navigationStore.currentViewMode = 'folder';
+    navigationStore.currentFolderFilter = '/music/folder';
+    libraryStore.folderSortMode = 'track_number';
+
+    const { displaySongList } = usePlayerLibraryView();
+    await flushPromises();
+
+    expect(displaySongList.value.map(song => song.path)).toEqual([
+      firstTrack.path,
+      secondTrack.path,
+      discTwoSong.path,
+    ]);
+  });
+
+  it('applies playlist view sorting rules', async () => {
+    const libraryStore = useLibraryStore();
+    const collectionsStore = useCollectionsStore();
+    const navigationStore = useNavigationStore();
+
+    const alpha = makeSong({ path: '/music/alpha.flac', title: 'Alpha', added_at: 20 });
+    const beta = makeSong({ path: '/music/beta.flac', title: 'Beta', added_at: 10 });
+    const gamma = makeSong({ path: '/music/gamma.flac', title: 'Gamma', added_at: 30 });
+
+    libraryStore.librarySongs = [alpha, beta, gamma];
+    collectionsStore.playlists = [
+      {
+        id: 'test-playlist-1',
+        name: 'Test Playlist',
+        songPaths: [gamma.path, alpha.path, beta.path],
+      }
+    ];
+
+    navigationStore.currentViewMode = 'playlist';
+    navigationStore.filterCondition = 'test-playlist-1';
+    collectionsStore.playlistSortMode = 'title';
+
+    const { displaySongList } = usePlayerLibraryView();
+    await flushPromises();
+
+    expect(displaySongList.value.map(song => song.title)).toEqual(['Alpha', 'Beta', 'Gamma']);
+
+    collectionsStore.playlistSortMode = 'added_at';
+    await flushPromises();
+    expect(displaySongList.value.map(song => song.title)).toEqual(['Gamma', 'Alpha', 'Beta']);
+
+    collectionsStore.playlistSortMode = 'custom';
+    await flushPromises();
+    expect(displaySongList.value.map(song => song.title)).toEqual(['Gamma', 'Alpha', 'Beta']);
+  });
+
+  it('applies playlist view sorting rules when search query is active', async () => {
+    const libraryStore = useLibraryStore();
+    const collectionsStore = useCollectionsStore();
+    const navigationStore = useNavigationStore();
+
+    const alpha = makeSong({ path: '/music/alpha.flac', title: 'Alpha', name: 'alpha.flac', album: 'X', added_at: 20 });
+    const beta = makeSong({ path: '/music/beta.flac', title: 'Beta', name: 'beta.flac', album: 'Y', added_at: 10 });
+    const gamma = makeSong({ path: '/music/gamma.flac', title: 'Gamma', name: 'gamma.flac', album: 'Z', added_at: 30 });
+
+    libraryStore.librarySongs = [alpha, beta, gamma];
+    collectionsStore.playlists = [
+      {
+        id: 'test-playlist-1',
+        name: 'Test Playlist',
+        songPaths: [gamma.path, alpha.path, beta.path],
+      }
+    ];
+
+    navigationStore.currentViewMode = 'playlist';
+    navigationStore.filterCondition = 'test-playlist-1';
+    navigationStore.searchQuery = 'alpha';
+    collectionsStore.playlistSortMode = 'title';
+
+    const { displaySongList } = usePlayerLibraryView();
+    await flushPromises();
+
+    expect(displaySongList.value.map(song => song.title)).toEqual(['Alpha']);
+
+    collectionsStore.playlistSortMode = 'added_at';
+    await flushPromises();
+    expect(displaySongList.value.map(song => song.title)).toEqual(['Alpha']);
+
+    collectionsStore.playlistSortMode = 'custom';
+    await flushPromises();
+    expect(displaySongList.value.map(song => song.title)).toEqual(['Alpha']);
   });
 });

@@ -6,6 +6,8 @@ import SortModeIcon from '../common/SortModeIcon.vue';
 import { useToast } from '../../composables/toast';
 import { usePlayerViewState } from '../../composables/usePlayerViewState';
 import { dragSession } from '../../composables/dragState';
+import { useAddToPlaylistDialog } from '../../features/collections/addToPlaylistDialog';
+import { useLibraryRuntimeActions } from '../../features/library/useLibraryRuntimeActions';
 
 const { folderSortMode, setFolderSortMode } = usePlayerViewState();
 
@@ -118,6 +120,24 @@ const emitRootCreatePlaylist = () => {
   emit('rootCreatePlaylist', rootNode.path, rootNode.name);
 };
 
+const emitRootAddToPlaylist = () => {
+  const rootNode = props.folderTree.find(node => node.path === targetRootPath.value);
+  if (!rootNode) {
+    showRootMenu.value = false;
+    return;
+  }
+
+  showRootMenu.value = false;
+  const { getSongsInFolder } = useLibraryRuntimeActions();
+  const { openAddToPlaylistDialog } = useAddToPlaylistDialog();
+  const songs = getSongsInFolder(rootNode.path);
+  if (songs.length === 0) {
+    toast.showToast('该文件夹下没有可用于添加到歌单的歌曲', 'info');
+    return;
+  }
+  openAddToPlaylistDialog(songs.map(song => song.path));
+};
+
 onMounted(() => window.addEventListener('click', handleGlobalClick));
 onUnmounted(() => {
   window.removeEventListener('click', handleGlobalClick);
@@ -166,6 +186,7 @@ onUnmounted(() => {
           :isManagementMode="isManagementMode"
           @close="showRootMenu = false"
           @create-playlist="emitRootCreatePlaylist"
+          @add-to-playlist="emitRootAddToPlaylist"
           @remove="path => emit('removeFolder', path)"
           @new-folder="showRootMenu = false; emit('newFolder', targetRootPath)"
           @delete-disk="showRootMenu = false; emit('deleteFolderDisk', targetRootPath)"
@@ -240,7 +261,7 @@ onUnmounted(() => {
               : { left: sortMenuX + 'px', top: sortMenuY + 'px' }"
           >
             <div
-              v-for="mode in (['title', 'name', 'artist', 'added_at', 'custom'] as const)"
+              v-for="mode in (['title', 'name', 'artist', 'track_number', 'added_at', 'custom'] as const)"
               :key="mode"
               @click="
                 if (mode === 'added_at') {
@@ -253,7 +274,7 @@ onUnmounted(() => {
               class="px-3 py-2 text-xs cursor-pointer flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
               :class="(folderSortMode || '').startsWith(mode) ? 'text-blue-500 font-medium' : 'text-gray-600 dark:text-gray-300'"
             >
-              <span>{{ { title: '\u6b4c\u66f2\u540d', name: '\u6587\u4ef6\u540d', artist: '\u6b4c\u624b', added_at: '\u6dfb\u52a0\u65f6\u95f4', custom: '\u81ea\u5b9a\u4e49' }[mode] }}</span>
+              <span>{{ { title: '\u6b4c\u66f2\u540d', name: '\u6587\u4ef6\u540d', artist: '\u6b4c\u624b', track_number: '\u97f3\u8f68\u53f7', added_at: '\u6dfb\u52a0\u65f6\u95f4', custom: '\u81ea\u5b9a\u4e49' }[mode] }}</span>
               <div v-if="(folderSortMode || '').startsWith(mode)" class="flex items-center gap-1.5">
                 <svg v-if="mode === 'added_at'" xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform duration-200" :class="{ 'rotate-180': folderSortMode === 'added_at_asc' }" viewBox="0 0 20 20" fill="currentColor">
                   <path fill-rule="evenodd" d="M14.707 12.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l2.293-2.293a1 1 0 011.414 0z" clip-rule="evenodd" />

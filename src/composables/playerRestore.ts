@@ -84,6 +84,16 @@ export const createPlayerRestore = ({
   };
 
   const restorePathBackedState = async () => {
+    await playbackStore.startupPathsPromise;
+
+    if (
+      playbackStore.hasExternalStartupFile
+      || playbackStore.playQueue.length > 0
+      || playbackStore.currentSong !== null
+    ) {
+      return;
+    }
+
     const legacySongList = readStoredSongArray(keys.legacyPlayerPlaylist);
     const legacyQueue = readStoredSongArray(keys.legacyPlayerQueue);
     const legacyLastSong = readStoredSong(keys.legacyPlayerLastSong);
@@ -95,6 +105,13 @@ export const createPlayerRestore = ({
 
     if (libraryStore.canonicalSongs.length === 0) {
       await loadLibrarySongsFromCache();
+      if (
+        playbackStore.hasExternalStartupFile
+        || playbackStore.playQueue.length > 0
+        || playbackStore.currentSong !== null
+      ) {
+        return;
+      }
     }
 
     const storedSongListPaths = readStoredStringArray(keys.playerPlaylistPaths)

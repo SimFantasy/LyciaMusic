@@ -31,6 +31,10 @@ mod tests {
 #[derive(Serialize, Clone, Debug)]
 pub struct Song {
     pub id: Option<i64>, // 数据库主键 (新增用于行为统计关联)
+    #[serde(skip)]
+    pub artist_avatar_bytes: Option<Vec<u8>>,
+    #[serde(skip)]
+    pub artist_avatar_path: Option<String>,
     pub name: String,
     pub title: String,
     pub path: String,
@@ -58,6 +62,7 @@ pub struct Song {
     pub cue_source_path: Option<String>,
     pub cue_start_offset: Option<u32>,
     pub cue_end_offset: Option<u32>,
+    pub comment: Option<String>,
 }
 
 #[derive(Deserialize, Clone, Debug, Default)]
@@ -108,6 +113,7 @@ pub struct LibrarySong {
     pub cue_source_path: Option<String>,
     pub cue_start_offset: Option<u32>,
     pub cue_end_offset: Option<u32>,
+    pub comment: Option<String>,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -142,9 +148,38 @@ pub struct SongLyricsForEdit {
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtistCatalogItem {
+    pub id: i64,
     pub name: String,
     pub count: u32,
     pub first_song_path: String,
+    pub avatar_path: Option<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveArtistAvatarResponse {
+    pub artist_id: i64,
+    pub avatar_path: String,
+    pub task_id: Option<String>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteTagsProgressPayload {
+    pub task_id: String,
+    pub artist_id: i64,
+    pub current: usize,
+    pub total: usize,
+    pub success_count: usize,
+    pub failure_count: usize,
+    pub skipped_count: usize,
+    pub skipped_multi_artist: usize,
+    pub skipped_remote: usize,
+    pub skipped_cue: usize,
+    pub skipped_readonly: usize,
+    pub skipped_missing: usize,
+    pub done: bool,
+    pub error: Option<String>,
 }
 
 #[derive(Serialize, Clone, Debug)]

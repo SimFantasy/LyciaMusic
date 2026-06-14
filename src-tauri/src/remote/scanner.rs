@@ -113,6 +113,7 @@ fn song_from_remote_file(source: &RemoteSourceCredentials, file: &RemoteFileEntr
 
     let mut song = Song {
         id: None,
+        artist_avatar_bytes: None,
         name: file.name.clone(),
         title,
         path: remote_uri,
@@ -140,6 +141,8 @@ fn song_from_remote_file(source: &RemoteSourceCredentials, file: &RemoteFileEntr
         cue_source_path: None,
         cue_start_offset: None,
         cue_end_offset: None,
+        comment: None,
+        artist_avatar_path: None,
     };
     apply_filename_metadata_fallback(&mut song, file);
     song
@@ -322,7 +325,8 @@ fn load_remote_song_snapshots(
                 s.track_number,
                 s.disc_number,
                 s.added_at,
-                s.file_modified_at
+                s.file_modified_at,
+                s.comment
              FROM remote_files rf
              LEFT JOIN songs s ON s.path = rf.remote_uri
              WHERE rf.source_id = ?1 AND rf.is_audio = 1",
@@ -345,6 +349,7 @@ fn load_remote_song_snapshots(
 
                     Some(Song {
                         id: row.get::<_, Option<i64>>(4)?,
+                        artist_avatar_bytes: None,
                         name,
                         path,
                         title: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
@@ -372,6 +377,8 @@ fn load_remote_song_snapshots(
                         cue_source_path: None,
                         cue_start_offset: None,
                         cue_end_offset: None,
+                        comment: row.get::<_, Option<String>>(28)?,
+                        artist_avatar_path: None,
                     })
                 }
                 None => None,

@@ -107,7 +107,7 @@ import { useCoverCache } from '../../composables/useCoverCache';
 import { useLibraryStore } from '../../features/library/store';
 import { sortItemsByAlphabetIndex } from '../../utils/alphabetIndex';
 import type { FolderNode, Song } from '../../types';
-import { getSongFileNameLabel, getSongTitleLabel, isDirectParent } from '../../features/library/playerLibraryViewShared';
+import { getSongFileNameLabel, getSongTitleLabel, isDirectParent, compareSongPathsByTrackNumber } from '../../features/library/playerLibraryViewShared';
 
 const props = defineProps<{
   node: FolderNode;
@@ -204,6 +204,14 @@ const sortedDirectFolderSongPaths = computed(() => {
         'zh-CN',
       ),
     );
+  }
+
+  if (folderSortMode.value === 'track_number') {
+    const sortedPaths = [...paths];
+    sortedPaths.sort((left, right) =>
+      compareSongPathsByTrackNumber(left, right, songLookup.value),
+    );
+    return sortedPaths;
   }
 
   if (folderSortMode.value === 'custom') {

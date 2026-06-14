@@ -1,6 +1,10 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue';
+import { useLibraryStore } from './store';
 
-import { useLibraryAllSongPathCache } from '../../composables/useLibraryAllSongPathCache';
+import {
+  isStaleLibraryPathRequestError,
+  useLibraryAllSongPathCache,
+} from '../../composables/useLibraryAllSongPathCache';
 import { useLibraryCollectionSongPathCache } from '../../composables/useLibraryCollectionSongPathCache';
 import { useLibraryDetailSongPathCache } from '../../composables/useLibraryDetailSongPathCache';
 import { useLibraryFolderSongPathCache } from '../../composables/useLibraryFolderSongPathCache';
@@ -8,7 +12,9 @@ import type { AlbumDetailSortMode, FolderSortMode, LocalSortMode, PlaylistSortMo
 import type { HistoryItem, Playlist, Song } from '../../types';
 import { sortItemsByAlphabetIndex } from '../../utils/alphabetIndex';
 import {
+  compareSongPathsByTrackNumber,
   getSongArtistSearchText,
+  getSongFileNameLabel,
   getSongTitleLabel,
   matchesAlbumKey,
   songHasArtist,
@@ -59,6 +65,13 @@ export function useLibraryCurrentViewSongs({
   localCustomOrder,
   playlistSortMode,
 }: UseLibraryCurrentViewSongsOptions) {
+  const libraryStore = useLibraryStore();
+
+  const allViewLoading = ref(false);
+  const allViewUseCanonicalFallback = ref(false);
+  const lastSuccessfulAllViewSongPaths = ref<string[]>([]);
+  const currentQueryKey = ref('');
+
   const { loadAllViewSongPaths } = useLibraryAllSongPathCache();
   const { loadFavoriteSongPaths, loadRecentSongPaths } = useLibraryCollectionSongPathCache();
   const { loadArtistSongPaths, loadAlbumSongPaths } = useLibraryDetailSongPathCache();
@@ -101,25 +114,71 @@ export function useLibraryCurrentViewSongs({
         return;
       }
 
+      const nextQueryKey = `${musicTab}\u0001${artistFilter}\u0001${albumFilter}\u0001${sortMode}\u0001${query}`;
+      const isQueryKeyChanged = currentQueryKey.value !== nextQueryKey;
+      currentQueryKey.value = nextQueryKey;
+
+      // 如果过滤/查询条件变了，立即清空上一次结果，防旧数据筛选错乱
+      if (isQueryKeyChanged) {
+        allViewSongPaths.value = [];
+        allViewUseCanonicalFallback.value = false;
+        lastSuccessfulAllViewSongPaths.value = [];
+      }
+
+      allViewLoading.value = true;
+
+      // 扫描导入版本风暴控制：若正处于扫描中且已有旧成功数据，为防 batch 频繁失效风暴，延迟加载并使用旧列表做过渡渲染
+      const isScanning = !!libraryStore.libraryScanProgress && !libraryStore.libraryScanProgress.done;
+      if (isScanning && lastSuccessfulAllViewSongPaths.value.length > 0) {
+        allViewLoading.value = false;
+        return;
+      }
+
+      const loadCurrentAllViewPaths = () => loadAllViewSongPaths({
+        query,
+        artistFilter: musicTab === 'artist' ? artistFilter : '',
+        albumFilter: musicTab === 'album' ? albumFilter : '',
+        sortMode,
+      });
+
       try {
-        const paths = await loadAllViewSongPaths({
-          query,
-          artistFilter: musicTab === 'artist' ? artistFilter : '',
-          albumFilter: musicTab === 'album' ? albumFilter : '',
-          sortMode,
-        });
+        const paths = await loadCurrentAllViewPaths();
 
         if (requestId !== allViewRequestId) {
           return;
         }
 
         allViewSongPaths.value = paths;
-      } catch {
+        allViewUseCanonicalFallback.value = false;
+        lastSuccessfulAllViewSongPaths.value = paths; // 缓存成功列表
+      } catch (error) {
         if (requestId !== allViewRequestId) {
           return;
         }
-
+        if (isStaleLibraryPathRequestError(error)) {
+          allViewUseCanonicalFallback.value = true;
+          try {
+            const paths = await loadCurrentAllViewPaths();
+            if (requestId !== allViewRequestId) {
+              return;
+            }
+            allViewSongPaths.value = paths;
+            allViewUseCanonicalFallback.value = false;
+            lastSuccessfulAllViewSongPaths.value = paths;
+          } catch (retryError) {
+            if (!isStaleLibraryPathRequestError(retryError)) {
+              allViewSongPaths.value = [];
+              allViewUseCanonicalFallback.value = false;
+            }
+          }
+          return;
+        }
+        allViewUseCanonicalFallback.value = false;
         allViewSongPaths.value = [];
+      } finally {
+        if (requestId === allViewRequestId) {
+          allViewLoading.value = false;
+        }
       }
     },
     { immediate: true },
@@ -423,26 +482,6 @@ export function useLibraryCurrentViewSongs({
     return sortedPaths;
   };
 
-  const parseSortIndexValue = (value?: string) => {
-    if (!value) {
-      return null;
-    }
-
-    const match = value.trim().match(/\d+/);
-    if (!match) {
-      return null;
-    }
-
-    const parsed = Number.parseInt(match[0], 10);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-
-  const compareSongLabel = (left: string, right: string) =>
-    getSongTitleLabel(songLookup.value.get(left)!).localeCompare(
-      getSongTitleLabel(songLookup.value.get(right)!),
-      'zh-CN',
-    );
-
   const sortSongPathsByAlbumDetailMode = (paths: string[], mode: AlbumDetailSortMode) => {
     if (mode !== 'track_number' && mode !== 'track_number_desc') {
       return sortSongPathsByLocalMode(paths, mode as LocalSortMode);
@@ -450,41 +489,51 @@ export function useLibraryCurrentViewSongs({
 
     const sortedPaths = [...paths];
     sortedPaths.sort((left, right) => {
-      const leftSong = songLookup.value.get(left);
-      const rightSong = songLookup.value.get(right);
-      const leftDisc = parseSortIndexValue(leftSong?.disc_number);
-      const rightDisc = parseSortIndexValue(rightSong?.disc_number);
-      let result = 0;
-
-      if (leftDisc === null && rightDisc !== null) {
-        result = 1;
-      } else if (leftDisc !== null && rightDisc === null) {
-        result = -1;
-      } else if (leftDisc !== null && rightDisc !== null && leftDisc !== rightDisc) {
-        result = leftDisc - rightDisc;
-      }
-
-      if (result === 0) {
-        const leftTrack = parseSortIndexValue(leftSong?.track_number);
-        const rightTrack = parseSortIndexValue(rightSong?.track_number);
-
-        if (leftTrack === null && rightTrack !== null) {
-          result = 1;
-        } else if (leftTrack !== null && rightTrack === null) {
-          result = -1;
-        } else if (leftTrack !== null && rightTrack !== null && leftTrack !== rightTrack) {
-          result = leftTrack - rightTrack;
-        }
-      }
-
-      if (result === 0) {
-        result = compareSongLabel(left, right) || left.localeCompare(right, 'zh-CN');
-      }
-
+      const result = compareSongPathsByTrackNumber(left, right, songLookup.value);
       return mode === 'track_number_desc' ? -result : result;
     });
 
     return sortedPaths;
+  };
+
+  const sortSongPathsByPlaylistMode = (paths: string[], mode: PlaylistSortMode) => {
+    const sortedPaths = [...paths];
+
+    if (mode === 'title') {
+      sortedPaths.sort((left, right) =>
+        (songLookup.value.get(left)?.title || songLookup.value.get(left)?.name || '').localeCompare(
+          songLookup.value.get(right)?.title || songLookup.value.get(right)?.name || '',
+          'zh-CN',
+        ),
+      );
+    } else if (mode === 'name') {
+      sortedPaths.sort((left, right) =>
+        (songLookup.value.get(left)?.name || '').localeCompare(songLookup.value.get(right)?.name || '', 'zh-CN'),
+      );
+    } else if (mode === 'artist') {
+      sortedPaths.sort((left, right) =>
+        (songLookup.value.get(left)?.artist || '').localeCompare(songLookup.value.get(right)?.artist || '', 'zh-CN'),
+      );
+    } else if (mode === 'added_at') {
+      sortedPaths.sort((left, right) =>
+        (songLookup.value.get(right)?.added_at || 0) - (songLookup.value.get(left)?.added_at || 0),
+      );
+    } else if (mode === 'added_at_asc') {
+      sortedPaths.sort((left, right) =>
+        (songLookup.value.get(left)?.added_at || 0) - (songLookup.value.get(right)?.added_at || 0),
+      );
+    }
+
+    return sortedPaths;
+  };
+
+  const resolvePlaylistSongPaths = () => {
+    const playlist = playlists.value.find(item => item.id === filterCondition.value);
+    if (!playlist) {
+      return [];
+    }
+
+    return playlist.songPaths.filter(path => songLookup.value.has(path));
   };
 
   const currentViewSongPaths = computed(() => {
@@ -492,6 +541,12 @@ export function useLibraryCurrentViewSongs({
       const query = searchQuery.value.toLowerCase();
 
       if (currentViewMode.value === 'all' && localSortMode.value !== 'custom') {
+        if (localSortMode.value === 'title') {
+          return sortItemsByAlphabetIndex(
+            allViewSongPaths.value,
+            (path) => getSongTitleLabel(songLookup.value.get(path)!),
+          );
+        }
         return allViewSongPaths.value;
       }
 
@@ -500,7 +555,6 @@ export function useLibraryCurrentViewSongs({
         if (!song) {
           return false;
         }
-
         return song.name.toLowerCase().includes(query)
           || getSongArtistSearchText(song).includes(query)
           || song.album.toLowerCase().includes(query);
@@ -535,6 +589,18 @@ export function useLibraryCurrentViewSongs({
 
       if (currentViewMode.value === 'folder') {
         if (folderSortMode.value !== 'custom') {
+          if (folderSortMode.value === 'name') {
+            return sortItemsByAlphabetIndex(
+              folderViewSongPaths.value,
+              (path) => getSongFileNameLabel(songLookup.value.get(path)!),
+            );
+          }
+          if (folderSortMode.value === 'title') {
+            return sortItemsByAlphabetIndex(
+              folderViewSongPaths.value,
+              (path) => getSongTitleLabel(songLookup.value.get(path)!),
+            );
+          }
           return folderViewSongPaths.value;
         }
 
@@ -557,12 +623,39 @@ export function useLibraryCurrentViewSongs({
         );
       }
 
+      if (currentViewMode.value === 'playlist') {
+        return sortSongPathsByPlaylistMode(
+          resolvePlaylistSongPaths().filter(matchesQuery),
+          playlistSortMode.value,
+        );
+      }
+
       return canonicalSongPaths.value.filter(matchesQuery);
     }
 
     if (currentViewMode.value === 'all') {
       if (localSortMode.value !== 'custom') {
-        return allViewSongPaths.value;
+        let pathsToRender = allViewSongPaths.value;
+        const isCurrentlyEmpty = allViewSongPaths.value.length === 0;
+
+        if (isCurrentlyEmpty) {
+          if (lastSuccessfulAllViewSongPaths.value.length > 0) {
+            // 1. 优先展示上一次渲染成功的结果，实现毫秒级快速切回过渡
+            pathsToRender = lastSuccessfulAllViewSongPaths.value;
+          } else if (allViewLoading.value || allViewUseCanonicalFallback.value) {
+            // 2. 首次导入空档期且正在加载中：以常驻内存 canonicalSongPaths 辅以本地简排做临时兜底，根除空白
+            pathsToRender = sortSongPathsByLocalMode(canonicalSongPaths.value, localSortMode.value);
+          }
+        }
+        pathsToRender = pathsToRender.filter(path => songLookup.value.has(path));
+
+        if (localSortMode.value === 'title') {
+          return sortItemsByAlphabetIndex(
+            pathsToRender,
+            (path) => getSongTitleLabel(songLookup.value.get(path)!),
+          );
+        }
+        return pathsToRender;
       }
 
       let base = [...canonicalSongPaths.value];
@@ -584,6 +677,18 @@ export function useLibraryCurrentViewSongs({
 
     if (currentViewMode.value === 'folder') {
       if (folderSortMode.value !== 'custom') {
+        if (folderSortMode.value === 'name') {
+          return sortItemsByAlphabetIndex(
+            folderViewSongPaths.value,
+            (path) => getSongFileNameLabel(songLookup.value.get(path)!),
+          );
+        }
+        if (folderSortMode.value === 'title') {
+          return sortItemsByAlphabetIndex(
+            folderViewSongPaths.value,
+            (path) => getSongTitleLabel(songLookup.value.get(path)!),
+          );
+        }
         return folderViewSongPaths.value;
       }
 
@@ -618,39 +723,10 @@ export function useLibraryCurrentViewSongs({
     }
 
     if (currentViewMode.value === 'playlist') {
-      const playlist = playlists.value.find(item => item.id === filterCondition.value);
-      if (!playlist) {
-        return [];
-      }
-
-      const paths = playlist.songPaths.filter(path => songLookup.value.has(path));
-
-      if (playlistSortMode.value === 'title') {
-        paths.sort((left, right) =>
-          (songLookup.value.get(left)?.title || songLookup.value.get(left)?.name || '').localeCompare(
-            songLookup.value.get(right)?.title || songLookup.value.get(right)?.name || '',
-            'zh-CN',
-          ),
-        );
-      } else if (playlistSortMode.value === 'name') {
-        paths.sort((left, right) =>
-          (songLookup.value.get(left)?.name || '').localeCompare(songLookup.value.get(right)?.name || '', 'zh-CN'),
-        );
-      } else if (playlistSortMode.value === 'artist') {
-        paths.sort((left, right) =>
-          (songLookup.value.get(left)?.artist || '').localeCompare(songLookup.value.get(right)?.artist || '', 'zh-CN'),
-        );
-      } else if (playlistSortMode.value === 'added_at') {
-        paths.sort((left, right) =>
-          (songLookup.value.get(right)?.added_at || 0) - (songLookup.value.get(left)?.added_at || 0),
-        );
-      } else if (playlistSortMode.value === 'added_at_asc') {
-        paths.sort((left, right) =>
-          (songLookup.value.get(left)?.added_at || 0) - (songLookup.value.get(right)?.added_at || 0),
-        );
-      }
-
-      return paths;
+      return sortSongPathsByPlaylistMode(
+        resolvePlaylistSongPaths(),
+        playlistSortMode.value,
+      );
     }
 
     return [];

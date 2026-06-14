@@ -34,6 +34,19 @@ pub(super) const LIBRARY_SCAN_BATCH_EVENT: &str = "library-scan-batch";
 pub(super) const UNKNOWN_ARTIST: &str = "未知歌手";
 pub(super) const UNKNOWN_ALBUM: &str = "未知专辑";
 
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct ScanOptions {
+    pub(crate) minimum_duration_seconds: u32,
+}
+
+impl ScanOptions {
+    pub(crate) fn from_minimum_duration_seconds(value: Option<u32>) -> Self {
+        Self {
+            minimum_duration_seconds: value.unwrap_or(0),
+        }
+    }
+}
+
 pub(super) fn clamp_i64_to_u32(v: i64) -> u32 {
     if v <= 0 {
         0
@@ -107,7 +120,7 @@ fn pick_optional_tag_value(current: &str, candidate: Option<&str>) -> Option<Str
 
 fn artist_split_regex() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
-    REGEX.get_or_init(|| Regex::new(r"(?i)[;,&/]|feat\.|\s+with\s+").expect("artist split regex"))
+    REGEX.get_or_init(|| Regex::new(r"(?i)[;,&/、]|feat\.|\s+with\s+").expect("artist split regex"))
 }
 
 pub(super) fn split_artist_names(artist: &str) -> Vec<String> {
@@ -138,6 +151,30 @@ pub(super) fn primary_artist_name(song: &Song) -> String {
         .first()
         .cloned()
         .unwrap_or_else(|| song.artist.clone())
+}
+
+pub(crate) fn get_song_single_valid_artist(song: &Song) -> Option<String> {
+    let names = if song.artist_names.is_empty() {
+        vec![UNKNOWN_ARTIST.to_string()]
+    } else {
+        song.artist_names.clone()
+    };
+
+    if names.len() != 1 {
+        return None;
+    }
+
+    let artist_name = names[0].trim();
+    if artist_name.is_empty()
+        || artist_name.eq_ignore_ascii_case(UNKNOWN_ARTIST)
+        || artist_name.eq_ignore_ascii_case("Unknown Artist")
+        || artist_name.eq_ignore_ascii_case("Unknown")
+        || artist_name.eq_ignore_ascii_case(VARIOUS_ARTISTS)
+    {
+        return None;
+    }
+
+    Some(artist_name.to_string())
 }
 
 pub(super) fn normalize_album_key_part(value: &str, fallback: &str) -> String {
@@ -189,8 +226,10 @@ mod tests {
     use super::parser::{
         preferred_parse_workers_for_available, song_identity_missing, song_metadata_incomplete,
     };
-    use super::repository::apply_scan_changes;
+    use super::repository::{apply_scan_changes, scan_change_chunk_size};
+    use super::ScanOptions;
     use crate::music::types::Song;
+    use crate::music::utils::normalize_path;
     use rusqlite::{params, Connection};
     use std::collections::HashMap;
     use std::fs;
@@ -200,6 +239,7 @@ mod tests {
     fn make_song(path: &str) -> Song {
         Song {
             id: None,
+            artist_avatar_bytes: None,
             name: PathBuf::from(path)
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
@@ -230,6 +270,8 @@ mod tests {
             cue_source_path: None,
             cue_start_offset: None,
             cue_end_offset: None,
+            comment: None,
+            artist_avatar_path: None,
         }
     }
 
@@ -264,7 +306,11 @@ mod tests {
                 track_number TEXT,
                 disc_number TEXT,
                 added_at INTEGER,
-                file_modified_at INTEGER
+                file_modified_at INTEGER,
+                cue_source_path TEXT,
+                cue_start_offset INTEGER,
+                cue_end_offset INTEGER,
+                comment TEXT
             );
             CREATE TABLE artists (
                 id INTEGER PRIMARY KEY,
@@ -349,13 +395,107 @@ mod tests {
             },
         );
 
-        let diff = collect_scan_diff(&normalized_folder, db_snapshot, None).expect("collect diff");
+        let diff = collect_scan_diff(
+            &normalized_folder,
+            db_snapshot,
+            None,
+            ScanOptions::default(),
+        )
+        .expect("collect diff");
 
         assert_eq!(diff.songs.len(), 0);
         assert_eq!(diff.to_add.len(), 0);
         assert_eq!(diff.to_update.len(), 0);
         assert_eq!(diff.to_delete, vec![normalized_song_path]);
         assert!(!diff.has_disk_songs);
+
+        fs::remove_dir_all(temp_dir).expect("remove temp dir");
+    }
+
+    #[test]
+    fn collect_scan_diff_deletes_existing_songs_below_minimum_duration() {
+        let temp_dir = create_empty_temp_dir();
+        let short_path = temp_dir.join("short.flac");
+        fs::write(&short_path, b"fake flac").expect("write short audio placeholder");
+
+        let normalized_folder = normalize_path(&temp_dir.to_string_lossy());
+        let normalized_song_path = normalize_path(&short_path.to_string_lossy());
+        let metadata = fs::metadata(&short_path).expect("read placeholder metadata");
+        let disk_mtime = metadata
+            .modified()
+            .ok()
+            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+            .map(|duration| duration.as_secs() as i64);
+
+        let mut short_song = make_song(&normalized_song_path);
+        short_song.duration = 4;
+        short_song.file_size = metadata.len();
+        short_song.file_modified_at = disk_mtime.map(|value| value as u64);
+
+        let mut db_snapshot = HashMap::new();
+        db_snapshot.insert(
+            normalized_song_path.clone(),
+            DbSongSnapshot {
+                song: short_song,
+                file_modified_at: disk_mtime,
+                file_size: metadata.len() as i64,
+            },
+        );
+
+        let diff = collect_scan_diff(
+            &normalized_folder,
+            db_snapshot,
+            None,
+            ScanOptions {
+                minimum_duration_seconds: 10,
+            },
+        )
+        .expect("collect diff");
+
+        assert!(diff.songs.is_empty());
+        assert!(diff.to_add.is_empty());
+        assert!(diff.to_update.is_empty());
+        assert_eq!(diff.to_delete, vec![normalized_song_path]);
+        assert!(diff.has_disk_songs);
+
+        fs::remove_dir_all(temp_dir).expect("remove temp dir");
+    }
+
+    #[test]
+    fn collect_scan_diff_handles_cue_tracks_after_filtering_referenced_audio() {
+        let temp_dir = create_empty_temp_dir();
+        let audio_path = temp_dir.join("album.flac");
+        let cue_path = temp_dir.join("album.cue");
+        let normalized_folder = temp_dir.to_string_lossy().to_string();
+
+        fs::write(&audio_path, b"fake flac").expect("write referenced audio");
+        fs::write(
+            &cue_path,
+            concat!(
+                "TITLE \"Cue Album\"\n",
+                "PERFORMER \"Cue Artist\"\n",
+                "FILE \"album.flac\" WAVE\n",
+                "  TRACK 01 AUDIO\n",
+                "    TITLE \"First\"\n",
+                "    INDEX 01 00:00:00\n",
+                "  TRACK 02 AUDIO\n",
+                "    TITLE \"Second\"\n",
+                "    INDEX 01 03:00:00\n",
+            ),
+        )
+        .expect("write cue");
+
+        let diff = collect_scan_diff(
+            &normalized_folder,
+            HashMap::new(),
+            None,
+            ScanOptions::default(),
+        )
+        .expect("collect diff");
+
+        assert_eq!(diff.songs.len(), 2);
+        assert_eq!(diff.to_add.len(), 2);
+        assert!(diff.songs.iter().all(|song| song.path.contains("::track")));
 
         fs::remove_dir_all(temp_dir).expect("remove temp dir");
     }
@@ -437,5 +577,127 @@ mod tests {
         assert_eq!(remaining_songs, 0);
         assert_eq!(remaining_artists, 0);
         assert_eq!(remaining_links, 0);
+    }
+      
+    #[test]
+    fn large_import_chunk_size_stays_under_sqlite_variable_limit() {
+        assert!(scan_change_chunk_size(0, 6000) <= 999);
+    }
+  
+   #[test]
+    fn split_artist_names_chinese_enumeration_comma() {
+        let names = super::split_artist_names("周杰伦、林俊杰、王力宏");
+        assert_eq!(names, vec!["周杰伦", "林俊杰", "王力宏"]);
+    }
+
+    #[test]
+    fn split_artist_names_mixed_separators_with_chinese_comma() {
+        let names = super::split_artist_names("歌手A、歌手B & 歌手C");
+        assert_eq!(names, vec!["歌手A", "歌手B", "歌手C"]);
+    }
+
+    #[test]
+    fn split_artist_names_chinese_comma_with_spaces() {
+        let names = super::split_artist_names("アーティスト1 、 アーティスト2");
+        assert_eq!(names, vec!["アーティスト1", "アーティスト2"]);
+    }
+
+    #[test]
+    fn split_artist_names_preserves_existing_separators() {
+        let names = super::split_artist_names("Artist A, Artist B & Artist C");
+        assert_eq!(names, vec!["Artist A", "Artist B", "Artist C"]);
+
+        let names = super::split_artist_names("Artist A; Artist B");
+        assert_eq!(names, vec!["Artist A", "Artist B"]);
+
+        let names = super::split_artist_names("Artist A / Artist B");
+        assert_eq!(names, vec!["Artist A", "Artist B"]);
+
+        let names = super::split_artist_names("Artist A feat. Artist B");
+        assert_eq!(names, vec!["Artist A", "Artist B"]);
+
+        let names = super::split_artist_names("Artist A with Artist B");
+        assert_eq!(names, vec!["Artist A", "Artist B"]);
+    }
+
+    #[test]
+    fn split_artist_names_deduplicates_chinese_comma_separated() {
+        let names = super::split_artist_names("周杰伦、周杰伦、林俊杰");
+        assert_eq!(names, vec!["周杰伦", "林俊杰"]);
+    }
+
+    #[test]
+    fn split_artist_names_single_artist_without_separator() {
+        let names = super::split_artist_names("周杰伦");
+        assert_eq!(names, vec!["周杰伦"]);
+    }
+
+    // 最小真实可解码的 1x1 透明 PNG 图片数据 (真实为 68 字节)
+    const MINIMAL_PNG: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+        0x89, 0x00, 0x00, 0x00, 0x0B, 0x49, 0x44, 0x41, 0x54, 0x78, 0xDA, 0x63, 0x60, 0x00, 0x02, 0x00,
+        0x00, 0x05, 0x00, 0x01, 0xE7, 0x2A, 0x24, 0x8C, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44,
+        0xAE, 0x42, 0x60, 0x82
+    ];
+
+    #[test]
+    fn test_single_and_multi_artist_filtering() {
+        // 复用 make_song
+        let mut song_single = make_song("/music/test.flac");
+        song_single.artist_names = vec!["周杰伦".to_string()];
+        assert_eq!(super::get_song_single_valid_artist(&song_single), Some("周杰伦".to_string()));
+
+        let mut song_multi = make_song("/music/test.flac");
+        song_multi.artist_names = vec!["周杰伦".to_string(), "方文山".to_string()];
+        assert!(super::get_song_single_valid_artist(&song_multi).is_none());
+
+        let mut song_unknown = make_song("/music/test.flac");
+        song_unknown.artist_names = vec!["未知歌手".to_string()];
+        assert!(super::get_song_single_valid_artist(&song_unknown).is_none());
+    }
+
+    #[test]
+    fn test_avatar_format_validation() {
+        // 复用 create_empty_temp_dir
+        let temp_dir = create_empty_temp_dir();
+
+        // 真实 PNG 格式保存
+        let path = crate::music::covers::save_artist_avatar_auto(MINIMAL_PNG, &temp_dir);
+        assert!(path.is_some());
+        assert!(path.unwrap().ends_with(".png"));
+
+        // 未知格式跳过
+        let raw_bytes = vec![0x11, 0x22, 0x33, 0x44];
+        let path = crate::music::covers::save_artist_avatar_auto(&raw_bytes, &temp_dir);
+        assert!(path.is_none());
+
+        let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn test_db_avatar_no_override() {
+        // 复用 setup_test_db
+        let mut conn = setup_test_db();
+        let mut song = make_song("/music/test.flac");
+        song.artist_names = vec!["周杰伦".to_string()];
+        song.artist_avatar_path = Some("/cache/avatar.jpg".to_string());
+
+        // 首次写入
+        super::apply_scan_changes(&mut conn, &[song.clone()], &[], &[], None).unwrap();
+        let db_path: Option<String> = conn
+            .query_row("SELECT avatar_path FROM artists WHERE name = '周杰伦'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(db_path, Some("/cache/avatar.jpg".to_string()));
+
+        // 已有头像不覆盖验证
+        let mut song_new = song.clone();
+        song_new.artist_avatar_path = Some("/cache/new_avatar.jpg".to_string());
+        super::apply_scan_changes(&mut conn, &[], &[song_new], &[], None).unwrap();
+
+        let db_path_after: Option<String> = conn
+            .query_row("SELECT avatar_path FROM artists WHERE name = '周杰伦'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(db_path_after, Some("/cache/avatar.jpg".to_string()));
     }
 }

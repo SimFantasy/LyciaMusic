@@ -131,8 +131,10 @@ const updateVolume = (clientX: number) => {
   setVolume(percent * 100);
 };
 
-const startVolumeDrag = (event: MouseEvent) => {
+const startVolumeDrag = (event: PointerEvent) => {
+  if (event.pointerType === 'mouse' && event.button !== 0) return;
   event.preventDefault();
+  (event.currentTarget as HTMLElement | null)?.setPointerCapture?.(event.pointerId);
   showVolumePopover.value = true;
   isDraggingVolume.value = true;
   updateVolume(event.clientX);
@@ -164,14 +166,14 @@ const onMouseLeave = () => {
   resetIdleTimer();
 };
 
-const onGlobalMouseMove = (event: MouseEvent) => {
+const onGlobalPointerMove = (event: PointerEvent) => {
   if (isWindowVisible.value && isDraggingVolume.value) {
     event.preventDefault();
     updateVolume(event.clientX);
   }
 };
 
-const onGlobalMouseUp = () => {
+const onGlobalPointerEnd = () => {
   isDraggingVolume.value = false;
 };
 
@@ -212,12 +214,19 @@ watch([showMiniPlaylist, showVolumePopover, isDraggingVolume], () => {
 });
 
 onMounted(async () => {
+  try {
+    await appWindow.setBackgroundColor([0, 0, 0, 0]);
+  } catch (error) {
+    console.warn('Failed to force transparent background for mini player window:', error);
+  }
+
   await appWindow.setAlwaysOnTop(true);
   await applyWindowHeight();
   resetIdleTimer();
 
-  window.addEventListener('mousemove', onGlobalMouseMove);
-  window.addEventListener('mouseup', onGlobalMouseUp);
+  window.addEventListener('pointermove', onGlobalPointerMove);
+  window.addEventListener('pointerup', onGlobalPointerEnd);
+  window.addEventListener('pointercancel', onGlobalPointerEnd);
   window.addEventListener('mousedown', onGlobalMouseDown);
   window.addEventListener('resize', onGlobalResize);
   window.addEventListener('keydown', onGlobalKeydown);
@@ -273,8 +282,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
   stopIdleTimer();
-  window.removeEventListener('mousemove', onGlobalMouseMove);
-  window.removeEventListener('mouseup', onGlobalMouseUp);
+  window.removeEventListener('pointermove', onGlobalPointerMove);
+  window.removeEventListener('pointerup', onGlobalPointerEnd);
+  window.removeEventListener('pointercancel', onGlobalPointerEnd);
   window.removeEventListener('mousedown', onGlobalMouseDown);
   window.removeEventListener('resize', onGlobalResize);
   window.removeEventListener('keydown', onGlobalKeydown);
@@ -339,8 +349,8 @@ onUnmounted(() => {
               <div
                 v-if="showVolumePopover || isDraggingVolume"
                 ref="volumePopoverRef"
-                class="fixed z-[200] w-40 h-[46px] bg-white/95 dark:bg-gray-800/95 backdrop-blur shadow-xl rounded-xl border border-gray-200 dark:border-white/10 px-2.5 py-2 flex items-center gap-2"
-                :class="[isDarkTheme ? 'dark !bg-gray-800/95 !border-white/10' : '!bg-white/95 !border-gray-200']"
+                class="fixed z-[200] w-40 h-[46px] bg-white/95 dark:bg-zinc-900/85 backdrop-blur shadow-xl rounded-xl border border-gray-200 dark:border-white/10 px-2.5 py-2 flex items-center gap-2"
+                :class="[isDarkTheme ? 'dark !bg-zinc-900/85 !border-white/10' : '!bg-white/95 !border-gray-200']"
                 :style="volumePopoverStyle"
                 @wheel.prevent.stop="handleVolumeWheel"
               >
@@ -354,8 +364,8 @@ onUnmounted(() => {
 
                 <div
                   ref="volumeBarRef"
-                  class="relative flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full cursor-pointer"
-                  @mousedown.stop="startVolumeDrag"
+                  class="relative flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full cursor-pointer [touch-action:none]"
+                  @pointerdown.stop="startVolumeDrag"
                 >
                   <div class="absolute left-0 top-0 h-full bg-[#EC4141] rounded-full" :style="{ width: volume + '%' }"></div>
                   <div class="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 bg-white rounded-full shadow-sm cursor-grab active:cursor-grabbing" :style="{ left: volume + '%' }"></div>

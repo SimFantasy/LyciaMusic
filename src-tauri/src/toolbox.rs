@@ -235,6 +235,7 @@ pub fn open_external_program(path: String, args: Vec<String>) -> Result<(), Stri
 #[tauri::command]
 pub fn refresh_folder_songs(
     folder_path: String,
+    minimum_duration_seconds: Option<u32>,
     db_state: tauri::State<'_, crate::database::DbState>,
 ) -> Result<Vec<crate::music::types::Song>, String> {
     // 复用现有的扫描逻辑
@@ -244,5 +245,246 @@ pub fn refresh_folder_songs(
         None,
         1,
         1,
+        crate::music::scanner::ScanOptions::from_minimum_duration_seconds(minimum_duration_seconds),
     )
 }
+
+#[tauri::command]
+pub fn file_exists(path: String) -> bool {
+    std::path::Path::new(&path).is_file()
+}
+
+const APP_IDENTIFIER: &str = "com.lover.lyciaplayer";
+const GPU_CONFIG_FILE: &str = "gpu_config.json";
+
+#[derive(Debug, Serialize, Deserialize)]
+struct GpuConfig {
+    gpu_acceleration: bool,
+}
+
+#[cfg(target_os = "windows")]
+pub fn gpu_config_path() -> Result<PathBuf, String> {
+    std::env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .map(|dir| dir.join(APP_IDENTIFIER).join(GPU_CONFIG_FILE))
+        .ok_or_else(|| "APPDATA environment variable not found".to_string())
+}
+
+#[cfg(target_os = "windows")]
+pub fn should_disable_gpu_for_startup() -> bool {
+    let Ok(path) = gpu_config_path() else {
+        return false;
+    };
+
+    if !path.exists() {
+        return false;
+    }
+
+    let Ok(content) = fs::read_to_string(path) else {
+        return false;
+    };
+
+    match serde_json::from_str::<GpuConfig>(&content) {
+        Ok(config) => !config.gpu_acceleration,
+        Err(_) => false,
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn append_webview2_browser_arg(arg: &str) {
+    const KEY: &str = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
+
+    let current = std::env::var(KEY).unwrap_or_default();
+
+    if current.split_whitespace().any(|item| item == arg) {
+        return;
+    }
+
+    let next = if current.trim().is_empty() {
+        arg.to_string()
+    } else {
+        format!("{} {}", current.trim(), arg)
+    };
+
+    std::env::set_var(KEY, next);
+}
+
+#[tauri::command]
+pub fn set_gpu_acceleration(
+    app_handle: tauri::AppHandle,
+    enabled: bool,
+) -> Result<(), String> {
+    #[cfg(not(target_os = "windows"))]
+    use tauri::Manager;
+
+    #[cfg(target_os = "windows")]
+    let path = {
+        let _ = app_handle;
+        gpu_config_path()?
+    };
+    
+    #[cfg(not(target_os = "windows"))]
+    let path = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join(GPU_CONFIG_FILE);
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    let config = GpuConfig {
+        gpu_acceleration: enabled,
+    };
+
+    let content = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+
+    std::fs::write(path, content).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+use std::time::Duration;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateSource {
+    Official,
+    Github,
+}
+
+#[tauri::command]
+pub async fn check_update_by_rust(
+    source: UpdateSource,
+) -> Result<String, String> {
+    let url = match source {
+        UpdateSource::Official => "https://lycia.prettyboy.fun/latest.json",
+        UpdateSource::Github => {
+            "https://api.github.com/repos/Billy636/LyciaMusic/releases/latest"
+        }
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .user_agent("LyciaPlayer-Updater")
+        .build()
+        .map_err(|e| format!("创建更新请求失败: {e}"))?;
+
+    client
+        .get(url)
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("请求更新接口失败: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("更新接口返回错误状态: {e}"))?
+        .text()
+        .await
+        .map_err(|e| format!("读取更新数据失败: {e}"))
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DownloadProgress {
+    pub progress: f64,
+    pub downloaded: u64,
+    pub total: u64,
+    pub speed: f64,
+}
+
+#[tauri::command]
+pub async fn download_update_file(
+    app_handle: tauri::AppHandle,
+    url: String,
+) -> Result<String, String> {
+    use tauri::{Emitter, Manager};
+    use tokio::fs::File;
+    use tokio::io::AsyncWriteExt;
+    use std::time::Instant;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(300))
+        .user_agent("LyciaPlayer-Updater")
+        .build()
+        .map_err(|e| format!("创建下载请求客户端失败: {e}"))?;
+
+    let mut download_url = url.clone();
+    if download_url.contains("github.com") {
+        download_url = format!("https://gh-proxy.com/{}", download_url);
+    }
+
+    let response = client.get(&download_url).send().await.map_err(|e| format!("发送下载请求失败: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("下载服务器返回错误状态: {}", response.status()));
+    }
+
+    let total_size = response.content_length().unwrap_or(0);
+    let download_dir = app_handle.path().download_dir().map_err(|e| e.to_string())?;
+
+    let filename = if url.ends_with(".exe") {
+        if url.contains("portable") {
+            "Lycia.Player_Setup_Portable.exe"
+        } else {
+            "Lycia.Player_Setup_Standard.exe"
+        }
+    } else {
+        "Lycia.Player_Setup.exe"
+    };
+    let dest_path = download_dir.join(filename);
+
+    let mut file = File::create(&dest_path).await.map_err(|e| format!("创建目标文件失败: {e}"))?;
+    let mut downloaded: u64 = 0;
+    let start_time = Instant::now();
+    let mut last_emit = Instant::now();
+
+    let mut response = response;
+    while let Some(chunk) = response.chunk().await.map_err(|e| format!("下载数据分块失败: {e}"))? {
+        file.write_all(&chunk).await.map_err(|e| format!("写入文件失败: {e}"))?;
+        downloaded += chunk.len() as u64;
+
+        let now = Instant::now();
+        if now.duration_since(last_emit).as_millis() >= 100 || downloaded == total_size {
+            let elapsed = start_time.elapsed().as_secs_f64();
+            let speed = if elapsed > 0.0 { downloaded as f64 / elapsed } else { 0.0 };
+            let progress = if total_size > 0 { (downloaded as f64 / total_size as f64) * 100.0 } else { 0.0 };
+
+            let payload = DownloadProgress {
+                progress,
+                downloaded,
+                total: total_size,
+                speed,
+            };
+            let _ = app_handle.emit("update-download-progress", payload);
+            last_emit = now;
+        }
+    }
+
+    file.flush().await.map_err(|e| format!("刷新文件缓存失败: {e}"))?;
+
+    Ok(dest_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn run_installer(path: String) -> Result<(), String> {
+    use std::process::Command;
+    
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("cmd")
+            .args(&["/C", "start", "", &path])
+            .spawn()
+            .map_err(|e| format!("启动安装程序失败: {e}"))?;
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        Command::new(&path)
+            .spawn()
+            .map_err(|e| format!("启动安装程序失败: {e}"))?;
+    }
+    
+    Ok(())
+}
+
+
+

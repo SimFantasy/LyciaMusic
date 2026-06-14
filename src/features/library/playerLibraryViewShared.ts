@@ -39,3 +39,60 @@ export const getSongArtistSearchText = (song: Song) =>
 export const getSongTitleLabel = (song: Song) => song.title || song.name;
 
 export const getSongFileNameLabel = (song: Song) => song.name;
+
+export const parseSortIndexValue = (value?: string) => {
+  if (!value) {
+    return null;
+  }
+
+  const match = value.trim().match(/\d+/);
+  if (!match) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(match[0], 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+export const compareSongPathsByTrackNumber = (
+  left: string,
+  right: string,
+  songLookup: Map<string, Song>,
+): number => {
+  const leftSong = songLookup.get(left);
+  const rightSong = songLookup.get(right);
+
+  const leftDisc = parseSortIndexValue(leftSong?.disc_number);
+  const rightDisc = parseSortIndexValue(rightSong?.disc_number);
+  let result = 0;
+
+  if (leftDisc === null && rightDisc !== null) {
+    result = 1;
+  } else if (leftDisc !== null && rightDisc === null) {
+    result = -1;
+  } else if (leftDisc !== null && rightDisc !== null && leftDisc !== rightDisc) {
+    result = leftDisc - rightDisc;
+  }
+
+  if (result === 0) {
+    const leftTrack = parseSortIndexValue(leftSong?.track_number);
+    const rightTrack = parseSortIndexValue(rightSong?.track_number);
+
+    if (leftTrack === null && rightTrack !== null) {
+      result = 1;
+    } else if (leftTrack !== null && rightTrack === null) {
+      result = -1;
+    } else if (leftTrack !== null && rightTrack !== null && leftTrack !== rightTrack) {
+      result = leftTrack - rightTrack;
+    }
+  }
+
+  if (result === 0) {
+    const leftTitle = leftSong ? (leftSong.title || leftSong.name) : '';
+    const rightTitle = rightSong ? (rightSong.title || rightSong.name) : '';
+    result = leftTitle.localeCompare(rightTitle, 'zh-CN') || left.localeCompare(right, 'zh-CN');
+  }
+
+  return result;
+};
+

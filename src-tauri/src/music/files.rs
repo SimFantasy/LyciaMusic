@@ -25,7 +25,8 @@ use serde::Serialize;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
-use tauri::State;
+use tauri::{State, Emitter};
+use uuid::Uuid;
 
 use super::utils::normalize_path;
 
@@ -48,11 +49,18 @@ fn read_sidecar_lrc_with_path(path_obj: &Path) -> Option<(String, PathBuf)> {
     let stem = path_obj.file_stem()?.to_string_lossy().to_string();
     let parent = path_obj.parent()?;
 
-    let exact_path = parent.join(format!("{}.lrc", stem));
-    if let Ok(content) = fs::read_to_string(&exact_path) {
-        return Some((content, exact_path));
+    // 支持的侧边歌词文件后缀，按照优先级排序
+    let extensions = ["lrc", "ttml", "qrc", "yrc", "lys", "txt"];
+
+    // 1. 优先尝试精确匹配
+    for ext in &extensions {
+        let exact_path = parent.join(format!("{}.{}", stem, ext));
+        if let Ok(content) = fs::read_to_string(&exact_path) {
+            return Some((content, exact_path));
+        }
     }
 
+    // 2. 如果没有精确匹配到，进行目录遍历（不区分后缀大小写）
     let entries = fs::read_dir(parent).ok()?;
     for entry in entries.flatten() {
         let candidate = entry.path();
@@ -60,12 +68,14 @@ fn read_sidecar_lrc_with_path(path_obj: &Path) -> Option<(String, PathBuf)> {
             continue;
         }
 
-        let ext_is_lrc = candidate
+        let is_valid_ext = candidate
             .extension()
             .and_then(|ext| ext.to_str())
-            .map(|ext| ext.eq_ignore_ascii_case("lrc"))
+            .map(|ext| {
+                extensions.iter().any(|&valid_ext| ext.eq_ignore_ascii_case(valid_ext))
+            })
             .unwrap_or(false);
-        if !ext_is_lrc {
+        if !is_valid_ext {
             continue;
         }
 
@@ -461,6 +471,7 @@ pub async fn save_song_lyrics(
 
 #[tauri::command]
 pub fn save_song_info(
+    _app: tauri::AppHandle,
     path: String,
     payload: SongInfoEditPayload,
     db_state: State<'_, DbState>,
@@ -819,3 +830,315 @@ pub fn move_file_to_folder(
 pub fn is_directory(path: String) -> bool {
     Path::new(&path).is_dir()
 }
+
+struct SongTagWriteInfo {
+    path: String,
+    source_type: Option<String>,
+    remote_source_id: Option<String>,
+    cue_source_path: Option<String>,
+    artist_count: i64,
+}
+
+#[tauri::command]
+pub async fn save_artist_avatar(
+    app: tauri::AppHandle,
+    db_state: State<'_, DbState>,
+    artist_id: i64,
+    image_path: String,
+    write_to_tags: bool,
+) -> Result<super::types::SaveArtistAvatarResponse, String> {
+    use sha2::{Digest, Sha256};
+    use std::io::{Read, Seek};
+
+    let path = Path::new(&image_path);
+    if !path.exists() {
+        return Err("Image file does not exist".to_string());
+    }
+
+    let mut file = fs::File::open(path).map_err(|e| format!("Failed to open image file: {}", e))?;
+    let mut header = [0u8; 12];
+    let bytes_read = file.read(&mut header).map_err(|e| format!("Failed to read image header: {}", e))?;
+
+    if bytes_read < 3 {
+        return Err("Invalid image file: too short".to_string());
+    }
+
+    let ext = if header[..3] == [0xFF, 0xD8, 0xFF] {
+        "jpg"
+    } else if bytes_read >= 8 && header[..8] == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] {
+        "png"
+    } else if bytes_read >= 12 && &header[0..4] == b"RIFF" && &header[8..12] == b"WEBP" {
+        "webp"
+    } else {
+        return Err("Unsupported image format. Only JPEG, PNG, and WEBP are allowed.".to_string());
+    };
+
+    // Reset file read pointer to compute SHA-256
+    file.seek(std::io::SeekFrom::Start(0)).map_err(|e| format!("Failed to seek image file: {}", e))?;
+
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 8192];
+    loop {
+        let n = file.read(&mut buffer).map_err(|e| format!("Failed to read image file for hashing: {}", e))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+    let hash_result = hasher.finalize();
+    let sha256_hex = format!("{:x}", hash_result);
+
+    // Get covers cache directory
+    let covers_dir = super::covers::get_cover_cache_dir(&app);
+    let target_filename = format!("artist-avatar-{}-{}.{}", artist_id, sha256_hex, ext);
+    let target_path = covers_dir.join(target_filename);
+
+    // Copy file to target path
+    fs::copy(path, &target_path).map_err(|e| format!("Failed to copy image to covers directory: {}", e))?;
+
+    let target_path_str = normalize_path(&target_path.to_string_lossy());
+
+    // Update database & query song paths in a short-lived transaction block
+    let (songs_info, task_id) = if write_to_tags {
+        let conn = db_state.conn.lock().map_err(|e| e.to_string())?;
+        
+        conn.execute(
+            "UPDATE artists SET avatar_path = ?1 WHERE id = ?2",
+            params![Some(&target_path_str), artist_id],
+        )
+        .map_err(|e| format!("Failed to update database: {}", e))?;
+
+        let mut stmt = conn.prepare(
+            "SELECT s.path, s.source_type, s.remote_source_id, s.cue_source_path, \
+             (SELECT COUNT(*) FROM song_artists sa2 WHERE sa2.song_id = s.id) AS artist_count \
+             FROM songs s \
+             INNER JOIN song_artists sa ON s.id = sa.song_id \
+             WHERE sa.artist_id = ?1"
+        ).map_err(|e| e.to_string())?;
+        
+        let rows = stmt.query_map(params![artist_id], |row| {
+            Ok(SongTagWriteInfo {
+                path: row.get(0)?,
+                source_type: row.get(1)?,
+                remote_source_id: row.get(2)?,
+                cue_source_path: row.get(3)?,
+                artist_count: row.get(4)?,
+            })
+        }).map_err(|e| e.to_string())?;
+
+        let mut items = Vec::new();
+        for r in rows {
+            if let Ok(item) = r {
+                items.push(item);
+            }
+        }
+
+        let tid = Uuid::new_v4().to_string();
+        (items, Some(tid))
+    } else {
+        let conn = db_state.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE artists SET avatar_path = ?1 WHERE id = ?2",
+            params![Some(&target_path_str), artist_id],
+        )
+        .map_err(|e| format!("Failed to update database: {}", e))?;
+
+        (Vec::new(), None)
+    };
+
+    // Spawn background blocking task if task_id exists
+    if let Some(ref task_id_str) = task_id {
+        let app_clone = app.clone();
+        let avatar_path_clone = target_path_str.clone();
+        let task_id_clone = task_id_str.clone();
+        let ext_clone = ext.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let total = songs_info.len();
+            let mut success_count = 0;
+            let mut failure_count = 0;
+            let mut skipped_count = 0;
+            let mut skipped_multi_artist = 0;
+            let mut skipped_remote = 0;
+            let mut skipped_cue = 0;
+            let mut skipped_readonly = 0;
+            let mut skipped_missing = 0;
+
+            // Emit initial progress event
+            let _ = app_clone.emit("artist-avatar:write-tags-progress", super::types::WriteTagsProgressPayload {
+                task_id: task_id_clone.clone(),
+                artist_id,
+                current: 0,
+                total,
+                success_count: 0,
+                failure_count: 0,
+                skipped_count: 0,
+                skipped_multi_artist: 0,
+                skipped_remote: 0,
+                skipped_cue: 0,
+                skipped_readonly: 0,
+                skipped_missing: 0,
+                done: false,
+                error: None,
+            });
+
+            if total > 0 {
+                match fs::read(&avatar_path_clone) {
+                    Ok(image_bytes) => {
+                        let mime = match ext_clone.as_str() {
+                            "jpg" | "jpeg" => MimeType::Jpeg,
+                            "png" => MimeType::Png,
+                            "webp" => MimeType::Unknown("image/webp".to_string()),
+                            _ => MimeType::Unknown("application/octet-stream".to_string()),
+                        };
+
+                        for (idx, item) in songs_info.iter().enumerate() {
+                            let path_obj = Path::new(&item.path);
+
+                            // 1. Remote/CUE/Multi-artist checks
+                            let is_remote = {
+                                let is_remote_source = match &item.source_type {
+                                    Some(s) => !s.is_empty() && s != "local",
+                                    None => false,
+                                };
+                                let is_remote_id = match &item.remote_source_id {
+                                    Some(s) => !s.is_empty(),
+                                    None => false,
+                                };
+                                is_remote_source || is_remote_id || is_remote_uri(&item.path)
+                            };
+
+                            let is_cue = match &item.cue_source_path {
+                                Some(s) => !s.is_empty(),
+                                None => false,
+                              };
+
+                            if is_remote {
+                                skipped_remote += 1;
+                                skipped_count += 1;
+                            } else if is_cue {
+                                skipped_cue += 1;
+                                skipped_count += 1;
+                            } else if item.artist_count > 1 {
+                                skipped_multi_artist += 1;
+                                skipped_count += 1;
+                            } else if !path_obj.is_file() {
+                                // 2. Existence check
+                                skipped_missing += 1;
+                                skipped_count += 1;
+                            } else {
+                                // 3. Readonly check
+                                let is_readonly = match fs::metadata(path_obj) {
+                                    Ok(meta) => meta.permissions().readonly(),
+                                    Err(_) => false,
+                                };
+
+                                if is_readonly {
+                                    skipped_readonly += 1;
+                                    skipped_count += 1;
+                                } else {
+                                    // 4. lofty tag update
+                                    match read_tagged_file_from_path(path_obj) {
+                                        Ok(mut tagged_file) => {
+                                            let tag_type = tagged_file.primary_tag_type();
+                                            if tagged_file.tag_mut(tag_type).is_none() {
+                                                tagged_file.insert_tag(Tag::new(tag_type));
+                                            }
+                                            if let Some(tag) = tagged_file.tag_mut(tag_type) {
+                                                let picture = Picture::new_unchecked(
+                                                    PictureType::Artist,
+                                                    Some(mime.clone()),
+                                                    None,
+                                                    image_bytes.clone(),
+                                                );
+                                                tag.remove_picture_type(PictureType::Artist);
+                                                tag.push_picture(picture);
+
+                                                match tagged_file.save_to_path(path_obj, WriteOptions::default()) {
+                                                    Ok(_) => {
+                                                        success_count += 1;
+                                                    }
+                                                    Err(_) => {
+                                                        failure_count += 1;
+                                                    }
+                                                }
+                                            } else {
+                                                failure_count += 1;
+                                            }
+                                        }
+                                        Err(_) => {
+                                            failure_count += 1;
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Emit periodic progress
+                            let _ = app_clone.emit("artist-avatar:write-tags-progress", super::types::WriteTagsProgressPayload {
+                                task_id: task_id_clone.clone(),
+                                artist_id,
+                                current: idx + 1,
+                                total,
+                                success_count,
+                                failure_count,
+                                skipped_count,
+                                skipped_multi_artist,
+                                skipped_remote,
+                                skipped_cue,
+                                skipped_readonly,
+                                skipped_missing,
+                                done: false,
+                                error: None,
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        let error_msg = format!("Failed to read avatar cache: {}", e);
+                        let _ = app_clone.emit("artist-avatar:write-tags-progress", super::types::WriteTagsProgressPayload {
+                            task_id: task_id_clone.clone(),
+                            artist_id,
+                            current: 0,
+                            total,
+                            success_count: 0,
+                            failure_count: total,
+                            skipped_count: 0,
+                            skipped_multi_artist: 0,
+                            skipped_remote: 0,
+                            skipped_cue: 0,
+                            skipped_readonly: 0,
+                            skipped_missing: 0,
+                            done: true,
+                            error: Some(error_msg),
+                        });
+                        return;
+                    }
+                }
+            }
+
+            // Emit final done event
+            let _ = app_clone.emit("artist-avatar:write-tags-progress", super::types::WriteTagsProgressPayload {
+                task_id: task_id_clone,
+                artist_id,
+                current: total,
+                total,
+                success_count,
+                failure_count,
+                skipped_count,
+                skipped_multi_artist,
+                skipped_remote,
+                skipped_cue,
+                skipped_readonly,
+                skipped_missing,
+                done: true,
+                error: None,
+            });
+        });
+    }
+
+    Ok(super::types::SaveArtistAvatarResponse {
+        artist_id,
+        avatar_path: target_path_str,
+        task_id,
+    })
+}
+

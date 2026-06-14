@@ -4,6 +4,7 @@ import type { FolderSortMode } from '../../services/storage/playerStorage';
 import type { Song } from '../../types';
 import { sortItemsByAlphabetIndex } from '../../utils/alphabetIndex';
 import {
+  compareSongPathsByTrackNumber,
   getSongFileNameLabel,
   getSongTitleLabel,
   isDirectParent,
@@ -64,6 +65,14 @@ export function useLibraryFolderSelectors({
       return [...paths].sort((left, right) =>
         (songLookup.value.get(right)?.added_at || 0) - (songLookup.value.get(left)?.added_at || 0),
       );
+    }
+
+    if (folderSortMode.value === 'track_number') {
+      const sortedPaths = [...paths];
+      sortedPaths.sort((left, right) =>
+        compareSongPathsByTrackNumber(left, right, songLookup.value),
+      );
+      return sortedPaths;
     }
 
     if (folderSortMode.value === 'custom') {
